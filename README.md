@@ -1,6 +1,6 @@
 # kbexplorer
 
-CLI tool for the [kbexplorer](https://github.com/anokye-labs/kbexplorer) interactive knowledge base — turn any GitHub repository into a navigable knowledge graph.
+CLI tool for the [kbexplorer-template](https://github.com/anokye-labs/kbexplorer-template) interactive knowledge base — turn any GitHub repository into a navigable knowledge graph.
 
 ## Install
 
