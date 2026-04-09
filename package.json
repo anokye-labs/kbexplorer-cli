@@ -4,17 +4,23 @@
   "description": "CLI tool for the kbexplorer interactive knowledge base — turn any repo into a navigable knowledge graph",
   "type": "module",
   "bin": {
-    "kbexplorer": "./bin/cli.js"
+    "kbexplorer": "bin/cli.js"
   },
   "scripts": {
     "test": "node --test tests/**/*.test.js"
   },
-  "keywords": ["knowledge-base", "graph", "documentation", "code-analysis", "copilot"],
+  "keywords": [
+    "knowledge-base",
+    "graph",
+    "documentation",
+    "code-analysis",
+    "copilot"
+  ],
   "author": "Anokye Labs",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/anokye-labs/kbexplorer-cli.git"
+    "url": "git+https://github.com/anokye-labs/kbexplorer-cli.git"
   },
   "homepage": "https://github.com/anokye-labs/kbexplorer-cli",
   "engines": {
