@@ -10,6 +10,7 @@ import { resolve } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { getAppRoot } from '../lib/detect-repo.js';
+import { transformCatalogue } from '../lib/transform.js';
 
 export default async function generate(args) {
   const cwd = process.cwd();
@@ -19,16 +20,9 @@ export default async function generate(args) {
   const cataloguePath = resolve(cwd, 'catalogue.json');
   if (existsSync(cataloguePath)) {
     console.log('📋 Found catalogue.json — transforming to content...');
-    const transformScript = resolve(appRoot || cwd, 'scripts', 'transform-catalogue.js');
-    if (existsSync(transformScript)) {
-      execSync(`node "${transformScript}" "${cataloguePath}" content`, {
-        cwd,
-        stdio: 'inherit',
-      });
-    } else {
-      console.error('✗ transform-catalogue.js not found. Run `kbexplorer init` first.');
-      process.exit(1);
-    }
+    const catalogue = JSON.parse(readFileSync(cataloguePath, 'utf-8'));
+    const contentDir = resolve(cwd, 'content');
+    transformCatalogue(catalogue, contentDir);
   } else {
     console.log('No catalogue.json found.');
     console.log('');

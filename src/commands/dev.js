@@ -2,10 +2,9 @@
  * kbexplorer dev — Start dev server in local mode.
  */
 
-import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
-import { execSync } from 'node:child_process';
 import { getAppRoot, isTemplateRepo } from '../lib/detect-repo.js';
+import { generateManifest } from '../lib/manifest.js';
 
 export default async function dev(args) {
   const cwd = process.cwd();
@@ -19,12 +18,7 @@ export default async function dev(args) {
   // Generate manifest
   console.log('📋 Generating manifest...');
   try {
-    const manifestScript = resolve(appRoot, 'scripts', 'generate-manifest.js');
-    execSync(`node "${manifestScript}"`, {
-      cwd,
-      stdio: 'inherit',
-      env: { ...process.env, VITE_KB_LOCAL: 'true' },
-    });
+    generateManifest(cwd);
   } catch {
     console.warn('⚠ Manifest generation failed — continuing anyway');
   }

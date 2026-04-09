@@ -3,8 +3,8 @@
  */
 
 import { resolve } from 'node:path';
-import { execSync } from 'node:child_process';
 import { getAppRoot } from '../lib/detect-repo.js';
+import { generateManifest } from '../lib/manifest.js';
 
 export default async function manifest(args) {
   const cwd = process.cwd();
@@ -15,10 +15,5 @@ export default async function manifest(args) {
     process.exit(1);
   }
 
-  const manifestScript = resolve(appRoot, 'scripts', 'generate-manifest.js');
-  execSync(`node "${manifestScript}"`, {
-    cwd,
-    stdio: 'inherit',
-    env: { ...process.env, VITE_KB_LOCAL: 'true' },
-  });
+  generateManifest(cwd);
 }
