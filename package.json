@@ -1,5 +1,5 @@
 {
-  "name": "kbexplorer",
+  "name": "@anokye-labs/kbexplorer",
   "version": "0.1.0",
   "description": "CLI tool for the kbexplorer interactive knowledge base — turn any repo into a navigable knowledge graph",
   "type": "module",
@@ -19,6 +19,9 @@
   "homepage": "https://github.com/anokye-labs/kbexplorer-cli",
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "bin/",

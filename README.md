@@ -6,10 +6,10 @@ CLI tool for the [kbexplorer](https://github.com/anokye-labs/kbexplorer) interac
 
 ```bash
 # Use directly
-npx kbexplorer init
+npx @anokye-labs/kbexplorer init
 
 # Or install as dev dependency
-npm install -D kbexplorer
+npm install -D @anokye-labs/kbexplorer
 ```
 
 ## Commands
