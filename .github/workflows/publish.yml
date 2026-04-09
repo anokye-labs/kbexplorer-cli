@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - run: npm test
 
   publish:
@@ -26,7 +26,13 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
-      - run: npm publish --provenance --access public
+      # OIDC trusted publishing is used automatically when configured on npmjs.com.
+      # For the initial publish before trusted publishing is set up, add an
+      # NPM_TOKEN secret to the repo (Settings → Secrets → Actions).
+      # Once trusted publishing is configured, remove the NPM_TOKEN secret.
+      - run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
