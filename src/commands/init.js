@@ -15,10 +15,10 @@ import {
 import { execSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { detectGitRemote, detectBranch, isTemplateRepo, hasSubmodule } from '../lib/detect-repo.js';
+import { getLatestTag, checkoutTag, TEMPLATE_REPO } from '../lib/version.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = resolve(__dirname, '..', 'assets');
-const TEMPLATE_REPO = 'https://github.com/anokye-labs/kbexplorer-template.git';
 
 function createPrompt() {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -86,13 +86,20 @@ export default async function init(args) {
 
   // Step 1: Add submodule (if not self-hosted and not already present)
   if (!selfHosted && !hasSubmodule(cwd)) {
-    console.log('📦 Adding .kbexplorer submodule...');
+    const tag = getLatestTag();
+    console.log(`📦 Adding .kbexplorer submodule${tag ? ` (pinned to ${tag})` : ''}...`);
     try {
       execSync(`git submodule add ${TEMPLATE_REPO} .kbexplorer`, {
         cwd,
         stdio: 'inherit',
       });
-      console.log('✓ Submodule added');
+      if (tag) {
+        checkoutTag(tag, cwd);
+        execSync('git add .kbexplorer', { cwd });
+        console.log(`✓ Submodule added and pinned to ${tag}`);
+      } else {
+        console.log('✓ Submodule added (no release tags found, using latest main)');
+      }
     } catch (err) {
       console.error('✗ Failed to add submodule:', err.message);
       prompt.close();
