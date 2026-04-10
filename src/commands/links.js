@@ -58,9 +58,9 @@ function analyzeGraph(manifest, cwd) {
     orphans: [],
     brokenRefs: [],
     weakClusters: [],
-    missingRefs: [],
+    unlinkified: [],          // mentions that should be inline links
+    redundantFrontmatter: [], // frontmatter duplicating inline links
     coverageGaps: [],
-    suggestions: [],
   };
 
   // Parse all authored content nodes
@@ -197,44 +197,74 @@ function analyzeGraph(manifest, cwd) {
     }
   }
 
-  // ── 4. Missing cross-references ──────────────────────────
+  // ── 4. Inline link extraction — find existing inline links ─
 
-  // Check if authored content body mentions other node IDs or file paths
-  // without having a corresponding connection
-  const authoredIdList = [...authoredNodes.keys()];
+  // Scan body for [text](target) markdown links that resolve to node IDs
+  // These are edges that exist in content but aren't in frontmatter
+  const inlineEdges = new Map(); // nodeId → Set<targetId>
+  for (const [id, node] of authoredNodes) {
+    const body = node.raw || '';
+    const inlineTargets = new Set();
 
+    // Markdown links: [text](target)
+    for (const m of body.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g)) {
+      const target = m[2].trim();
+      if (allNodeIds.has(target)) inlineTargets.add(target);
+    }
+
+    inlineEdges.set(id, inlineTargets);
+  }
+
+  // ── 5. Redundant frontmatter — frontmatter duplicating inline links ─
+
+  report.redundantFrontmatter = [];
+  for (const [id, node] of authoredNodes) {
+    const inline = inlineEdges.get(id) || new Set();
+    for (const conn of node.connections || []) {
+      if (inline.has(conn.to)) {
+        report.redundantFrontmatter.push({
+          node: id,
+          to: conn.to,
+          reason: `frontmatter connection duplicates inline link`,
+        });
+      }
+    }
+  }
+
+  // ── 6. Unlinkified mentions — text mentions that should be inline links ─
+
+  report.unlinkified = [];
   for (const [id, node] of authoredNodes) {
     const body = node.raw || '';
     const bodyLower = body.toLowerCase();
     const connectedTo = new Set((node.connections || []).map(c => c.to));
-
-    // Check for mentions of other authored node titles (deduplicate)
+    const inlineTo = inlineEdges.get(id) || new Set();
     const alreadySuggested = new Set();
+
+    // Check for title mentions that aren't inline links or frontmatter connections
     for (const [otherId, otherNode] of authoredNodes) {
       if (otherId === id) continue;
-      if (connectedTo.has(otherId)) continue;
+      if (connectedTo.has(otherId) || inlineTo.has(otherId)) continue;
       if (alreadySuggested.has(otherId)) continue;
       const otherTitle = (otherNode.title || '').toLowerCase();
       const words = otherTitle.split(/\s+/).filter(w => w.length > 3);
       if (words.length >= 2) {
         const matchCount = words.filter(w => bodyLower.includes(w)).length;
         if (matchCount >= Math.ceil(words.length * 0.7)) {
-          report.missingRefs.push({
+          report.unlinkified.push({
             from: id,
             to: otherId,
-            reason: `body mentions "${otherNode.title}"`,
+            suggestion: `change "${otherNode.title}" to [${otherNode.title}](${otherId})`,
           });
           alreadySuggested.add(otherId);
         }
       }
     }
 
-    // Check for issue references #N not in connections
-    // Filter out line number references (#L42, #Lline) and deduplicate
+    // Check for issue references #N not linked
     const issueRefNums = new Set();
     for (const m of body.matchAll(/(?<!\w)#(\d+)(?!\d)/g)) {
       const num = parseInt(m[1], 10);
-      // Skip likely line number references (in GitHub URLs or citations)
       const idx = m.index || 0;
       const context = body.substring(Math.max(0, idx - 20), idx);
       if (context.includes('#L') || context.includes('line') || context.includes('blob/')) continue;
@@ -242,11 +272,11 @@ function analyzeGraph(manifest, cwd) {
     }
     for (const num of issueRefNums) {
       const ref = `issue-${num}`;
-      if (!connectedTo.has(ref) && allNodeIds.has(ref)) {
-        report.missingRefs.push({
+      if (!connectedTo.has(ref) && !inlineTo.has(ref) && allNodeIds.has(ref)) {
+        report.unlinkified.push({
           from: id,
           to: ref,
-          reason: `body references #${num}`,
+          suggestion: `convert #${num} to inline link [#${num}](${ref})`,
         });
       }
     }
@@ -330,14 +360,26 @@ function printReport(report) {
     console.log('');
   }
 
-  // Missing cross-references
-  if (report.missingRefs.length > 0) {
-    console.log(`⚠ Missing cross-references (${report.missingRefs.length}):`);
-    for (const ref of report.missingRefs.slice(0, 15)) {
-      console.log(`  ${ref.from} → ${ref.to}: ${ref.reason}`);
+  // Redundant frontmatter
+  if (report.redundantFrontmatter.length > 0) {
+    console.log(`⚠ Redundant frontmatter — duplicates inline links (${report.redundantFrontmatter.length}):`);
+    for (const r of report.redundantFrontmatter.slice(0, 10)) {
+      console.log(`  ${r.node} → ${r.to}: remove from frontmatter (inline link exists)`);
     }
-    if (report.missingRefs.length > 15) {
-      console.log(`  ... and ${report.missingRefs.length - 15} more`);
+    if (report.redundantFrontmatter.length > 10) {
+      console.log(`  ... and ${report.redundantFrontmatter.length - 10} more`);
+    }
+    console.log('');
+  }
+
+  // Unlinkified mentions
+  if (report.unlinkified.length > 0) {
+    console.log(`⚠ Unlinkified mentions — convert to inline links (${report.unlinkified.length}):`);
+    for (const ref of report.unlinkified.slice(0, 15)) {
+      console.log(`  ${ref.from}: ${ref.suggestion}`);
+    }
+    if (report.unlinkified.length > 15) {
+      console.log(`  ... and ${report.unlinkified.length - 15} more`);
     }
     console.log('');
   }
@@ -356,12 +398,14 @@ function printReport(report) {
 
   // Summary
   const issues = report.brokenRefs.length + report.orphans.length +
-    report.weakClusters.length + report.missingRefs.length + report.coverageGaps.length;
+    report.weakClusters.length + report.unlinkified.length +
+    report.redundantFrontmatter.length + report.coverageGaps.length;
   if (issues === 0) {
     console.log('✅ Graph is healthy — no issues found.');
   } else {
     console.log(`───────────────────────────────────────────`);
-    console.log(`  ${report.brokenRefs.length} broken, ${report.orphans.length} orphans, ${report.weakClusters.length} weak clusters, ${report.missingRefs.length} missing refs, ${report.coverageGaps.length} coverage gaps`);
+    console.log(`  ${report.brokenRefs.length} broken, ${report.orphans.length} orphans, ${report.weakClusters.length} weak clusters`);
+    console.log(`  ${report.unlinkified.length} unlinkified mentions, ${report.redundantFrontmatter.length} redundant frontmatter, ${report.coverageGaps.length} coverage gaps`);
   }
   console.log('');
 }
