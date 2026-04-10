@@ -26,6 +26,7 @@ const COMMANDS = {
   build: '../src/commands/build.js',
   manifest: '../src/commands/manifest.js',
   update: '../src/commands/update.js',
+  links: '../src/commands/links.js',
 };
 
 function printUsage() {
@@ -40,6 +41,7 @@ function printUsage() {
     dev         Start dev server in local mode
     build       Production build
     manifest    Regenerate repo manifest from local data
+    links       Analyze graph health (orphans, broken refs, coverage gaps)
     update      Pull latest template + refresh agents/skills
 
   Options:
