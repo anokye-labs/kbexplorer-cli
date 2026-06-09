@@ -186,20 +186,37 @@ export function audit({ contentDir, cwd, contentPath = 'content' }) {
 
   // ── Undeclared cluster ───────────────────────────────────
   let declaredClusters = new Set();
+  let configFound = false;
   if (cwd) {
     const configRaw = readConfig(cwd, contentPath);
-    declaredClusters = parseClusterKeys(configRaw);
+    if (configRaw !== null) {
+      configFound = true;
+      declaredClusters = parseClusterKeys(configRaw);
+    }
   }
-  if (declaredClusters.size > 0) {
+  const hasAnyCluster = parsed.some(({ frontmatter }) => frontmatter.cluster);
+  if (cwd && !configFound && hasAnyCluster) {
+    findings.push({
+      severity: SEVERITY.ERROR,
+      rule: 'missing-config',
+      message: 'content files declare clusters but config.yaml is missing or unreadable',
+    });
+  } else if (configFound && declaredClusters.size === 0 && hasAnyCluster) {
+    findings.push({
+      severity: SEVERITY.ERROR,
+      rule: 'missing-clusters',
+      message: 'content files declare clusters but config.yaml has no `clusters:` block',
+    });
+  } else if (declaredClusters.size > 0) {
     for (const { file, frontmatter } of parsed) {
       const cluster = frontmatter.cluster;
       if (cluster && !declaredClusters.has(cluster)) {
         findings.push({
-          severity: SEVERITY.WARNING,
+          severity: SEVERITY.ERROR,
           rule: 'undeclared-cluster',
           file,
           cluster,
-          message: `cluster "${cluster}" not declared in config.yaml (auto-color will be assigned)`,
+          message: `cluster "${cluster}" not declared in config.yaml`,
         });
       }
     }
@@ -254,7 +271,7 @@ export function audit({ contentDir, cwd, contentPath = 'content' }) {
         target === 'repo-root';
       if (!idSet.has(target) && !isBuiltin) {
         findings.push({
-          severity: SEVERITY.WARNING,
+          severity: SEVERITY.ERROR,
           rule: 'dead-connection',
           file: node.file,
           from: node.id,

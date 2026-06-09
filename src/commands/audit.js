@@ -14,6 +14,7 @@
 
 import { resolve } from 'node:path';
 import { audit } from '../lib/audit.js';
+import { resolveContentDir } from '../lib/frontmatter.js';
 
 function parseArgs(args) {
   const out = { json: false, content: null };
@@ -72,14 +73,12 @@ function printHumanReport({ findings, summary }) {
 export default async function auditCommand(args) {
   const opts = parseArgs(args);
   const cwd = process.cwd();
-  const contentDir = opts.content
-    ? resolve(cwd, opts.content)
-    : resolve(cwd, process.env.VITE_KB_PATH || 'content');
+  const { contentDir, contentPath } = resolveContentDir(cwd, opts.content);
 
   const result = audit({
     contentDir,
     cwd,
-    contentPath: opts.content || process.env.VITE_KB_PATH || 'content',
+    contentPath,
   });
 
   if (opts.json) {

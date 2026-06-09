@@ -14,6 +14,7 @@
 import { resolve } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { inferIcon } from '../lib/transform.js';
+import { resolveContentDir } from '../lib/frontmatter.js';
 
 function parseArgs(args) {
   const out = {
@@ -79,9 +80,7 @@ export default async function scaffoldCommand(args) {
   }
 
   const cwd = process.cwd();
-  const contentDir = opts.content
-    ? resolve(cwd, opts.content)
-    : resolve(cwd, process.env.VITE_KB_PATH || 'content');
+  const { contentDir } = resolveContentDir(cwd, opts.content);
 
   mkdirSync(contentDir, { recursive: true });
 

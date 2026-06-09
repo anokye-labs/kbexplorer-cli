@@ -12,6 +12,7 @@
 
 import { resolve } from 'node:path';
 import { affected } from '../lib/affected.js';
+import { resolveContentDir } from '../lib/frontmatter.js';
 
 function parseArgs(args) {
   const out = { json: false, ref: 'HEAD', content: null };
@@ -74,9 +75,7 @@ function printHumanReport(result) {
 export default async function affectedCommand(args) {
   const opts = parseArgs(args);
   const cwd = process.cwd();
-  const contentDir = opts.content
-    ? resolve(cwd, opts.content)
-    : resolve(cwd, process.env.VITE_KB_PATH || 'content');
+  const { contentDir } = resolveContentDir(cwd, opts.content);
 
   const result = affected({ ref: opts.ref, contentDir, cwd });
 

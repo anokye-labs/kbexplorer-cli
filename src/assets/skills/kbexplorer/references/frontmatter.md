@@ -1,5 +1,12 @@
 # Frontmatter — full schema
 
+> **Schema scope.** The kbexplorer CLI parser handles a deliberate
+> subset of YAML — scalar fields plus a list of `connections`. Not
+> supported: multi-line strings (`|` / `>`), inline objects/arrays,
+> anchors/aliases, escaped specials inside quoted strings, numeric
+> ids. If you need exotic YAML, the renderer and `audit` are the
+> source of truth for what actually breaks.
+
 Every file under the content directory begins with a YAML frontmatter block.
 This is the contract between authored content and the explorer's graph. Get
 it right or the page will not appear, the graph will break, or both.

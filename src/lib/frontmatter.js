@@ -1,18 +1,61 @@
 /**
  * Minimal zero-dependency frontmatter parser tuned for kbexplorer content files.
  *
- * Supports the kbexplorer schema only — id, title, emoji, cluster, parent,
- * image, sprite, and a list of {to, description} connections. Anything more
+ * Supports a deliberate subset of YAML — id, title, emoji, cluster, parent,
+ * image, sprite, and a list of {to, description} connections. This is NOT a
+ * general YAML parser: multi-line strings, anchors, inline objects/arrays,
+ * and escaped quoted special characters are NOT supported. Anything more
  * exotic is preserved in `extra` (raw string) for round-tripping.
  *
  * Returns:
  *   { ok: true,  frontmatter: {...}, body, raw } on success
- *   { ok: false, error: "...",       body, raw } on malformed YAML
+ *   { ok: false, error: "...",       body, raw } on parse error
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
+
+/**
+ * Load `.env.kbexplorer` from the given cwd and return the parsed keys.
+ * Minimal parser: `KEY=value` lines, ignores blanks and `#`-comments.
+ * Does NOT mutate `process.env`. Returns `{}` if the file is missing.
+ */
+export function loadKbEnv(cwd) {
+  const envPath = resolve(cwd, '.env.kbexplorer');
+  if (!existsSync(envPath)) return {};
+  const out = {};
+  const raw = readFileSync(envPath, 'utf-8');
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq < 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let val = trimmed.slice(eq + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    out[key] = val;
+  }
+  return out;
+}
+
+/**
+ * Resolve the kbexplorer content directory for a given cwd.
+ * Priority: explicit override → process.env.VITE_KB_PATH → .env.kbexplorer → 'content'.
+ * Returns `{ contentDir: absolute, contentPath: relative }`.
+ */
+export function resolveContentDir(cwd, override) {
+  const envFile = loadKbEnv(cwd);
+  const contentPath = override
+    || process.env.VITE_KB_PATH
+    || envFile.VITE_KB_PATH
+    || 'content';
+  return { contentDir: resolve(cwd, contentPath), contentPath };
+}
 
 function stripQuotes(value) {
   if (value == null) return value;

@@ -3,11 +3,13 @@
  *
  * Analyzes the knowledge graph and reports:
  * - Orphan nodes (zero connections)
- * - Broken references (connections to non-existent nodes)
  * - Weak clusters (no cross-cluster edges)
  * - Missing cross-references (content mentions without edges)
  * - Coverage gaps (source files with no content node)
  * - Connection suggestions
+ *
+ * Note: broken references (connections.to → unknown id) are reported by
+ * `kbexplorer audit`, not here.
  */
 
 import { resolve } from 'node:path';
@@ -155,19 +157,12 @@ function analyzeGraph(manifest, cwd) {
     }
   }
 
-  // ── 2. Broken references ─────────────────────────────────
-
-  for (const [id, node] of authoredNodes) {
-    for (const conn of node.connections || []) {
-      if (!allNodeIds.has(conn.to)) {
-        report.brokenRefs.push({
-          from: id,
-          to: conn.to,
-          description: conn.description,
-        });
-      }
-    }
-  }
+  // ── 2. Broken references — DEPRECATED ────────────────────
+  //
+  // Broken `connections.to` targets are now hard errors enforced by
+  // `kbexplorer audit`. We skip detection here to avoid duplicating that
+  // signal; `report.brokenRefs` stays for backward-compatible JSON output
+  // but will always be empty.
 
   // ── 3. Weak clusters ─────────────────────────────────────
 
@@ -330,9 +325,9 @@ function printReport(report) {
   console.log(`  Edges: ${stats.totalEdges}`);
   console.log('');
 
-  // Broken refs (errors)
+  // Broken refs (now reported by `kbexplorer audit`; kept for JSON parity but expected empty)
   if (report.brokenRefs.length > 0) {
-    console.log(`✗ Broken references (${report.brokenRefs.length}):`);
+    console.log(`✗ Broken references (${report.brokenRefs.length}) — run \`kbexplorer audit\`:`);
     for (const ref of report.brokenRefs) {
       console.log(`  ${ref.from} → ${ref.to} (${ref.description || 'no description'})`);
     }

@@ -54,8 +54,15 @@ function printUsage() {
     --help      Show this help message
     --version   Show version
 
+  init options:
+    --template, -t <url>       Install from a custom template repo
+    --ref, --branch <ref>      Install a specific tag or branch
+    --vendor, --no-submodule   One-time copy instead of a git submodule
+
   Examples:
     npx kbexplorer init
+    npx kbexplorer init --template https://github.com/my-org/my-template.git
+    npx kbexplorer init --vendor --ref main
     npx kbexplorer generate
     npx kbexplorer dev
     npx kbexplorer build --base /docs/

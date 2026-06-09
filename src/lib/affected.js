@@ -9,7 +9,7 @@
 
 import { resolve, extname } from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { readContentFile, extractCitedFiles } from './frontmatter.js';
 
 function listMarkdownFiles(dir) {
@@ -37,7 +37,7 @@ function listMarkdownFiles(dir) {
 }
 
 export function gitChangedFiles(ref, cwd) {
-  const raw = execSync(`git diff --name-only ${ref}`, {
+  const raw = execFileSync('git', ['diff', '--name-only', ref], {
     cwd,
     encoding: 'utf-8',
     timeout: 15000,
