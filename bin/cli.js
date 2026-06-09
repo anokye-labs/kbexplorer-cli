@@ -27,6 +27,9 @@ const COMMANDS = {
   manifest: '../src/commands/manifest.js',
   update: '../src/commands/update.js',
   links: '../src/commands/links.js',
+  audit: '../src/commands/audit.js',
+  affected: '../src/commands/affected.js',
+  scaffold: '../src/commands/scaffold.js',
 };
 
 function printUsage() {
@@ -42,6 +45,9 @@ function printUsage() {
     build       Production build
     manifest    Regenerate repo manifest from local data
     links       Analyze graph health (orphans, broken refs, coverage gaps)
+    audit       Schema/structural validation (duplicate ids, broken parents, cycles)
+    affected    Map a git diff to impacted content nodes via citations
+    scaffold    Create a new content/<slug>.md skeleton with valid frontmatter
     update      Pull latest template + refresh agents/skills
 
   Options:

@@ -1,204 +1,125 @@
 ---
 name: kbexplorer
 description: >-
-  This skill should be used when the user asks to "set up KB explorer",
-  "add a knowledge base", "explore this repo", "visualize the knowledge graph",
-  "bootstrap kbexplorer", "configure kbexplorer", "run the knowledge base",
-  "view issues as a graph", "browse repo knowledge", or mentions kbexplorer,
-  knowledge base explorer, or knowledge graph visualization. Provides guidance
-  for setting up, configuring, and running the kbexplorer interactive knowledge
-  base tool — either as a submodule in another repo or self-hosted.
-version: 0.1.0
+  This skill should be used when the user mentions "kbexplorer", "knowledge
+  base explorer", "knowledge graph", "kb graph", or asks to "set up
+  kbexplorer", "bootstrap a knowledge base", "add a page to the KB", "add a
+  node", "refresh the KB", "update the knowledge base", "audit kb content",
+  "validate kb frontmatter", "recolor a cluster", "move a node between
+  clusters", "merge KB pages", "split a KB page", "change the kb theme",
+  "change visual mode", "add hero images", "investigate this repo deeply",
+  "generate kb content", "explore this repo as a graph", or works with any
+  file under `content/*.md`, `content/config.yaml`, `.kbexplorer/`,
+  `.github/agents/kb-*.md`, or `.github/skills/kbexplorer/`. Provides
+  end-to-end lifecycle guidance for creating, maintaining, refactoring,
+  validating, and presenting an interactive kbexplorer knowledge base —
+  with on-demand reference playbooks for each task.
+version: 0.2.0
 ---
 
-# kbexplorer — Interactive Knowledge Base Explorer
+# kbexplorer — Lifecycle Skill
 
-kbexplorer transforms any GitHub repository into a navigable, interactive knowledge graph.
-It visualizes issues, pull requests, README files, source directories, and hand-authored
-markdown as an interconnected constellation — explorable through card grids, force-directed
-networks, and deep-dive reading views.
+kbexplorer turns any repository into a navigable, interactive knowledge
+graph. This skill covers the **full lifecycle**: bootstrap, authoring,
+refactoring, validation, presentation, and incremental refresh — through a
+library of focused references loaded on demand.
 
-## When to Use
+## How to use this skill
 
-Activate this skill when a user wants to:
-- Set up kbexplorer in a new or existing repo
-- Configure content modes, visuals, or themes
-- Launch the explorer dev server or build for deployment
-- Author knowledge base content (markdown with YAML frontmatter)
-- Troubleshoot kbexplorer setup issues
+This file is a **router**. The real depth lives in `references/`. Identify
+the user's task in the table below, then load the matching reference(s) and
+follow them.
 
-## Setup Flow
+| User intent | Load |
+|---|---|
+| Bootstrap kbexplorer in a repo for the first time | `references/setup.md` |
+| Understand the frontmatter schema | `references/frontmatter.md` |
+| Add a single new page | `references/add-node.md` (uses `kbexplorer scaffold`) |
+| Refresh a single existing page | `references/update-node.md` |
+| Refresh content after a code change | `references/incremental-refresh.md` (uses `kbexplorer affected`) |
+| Validate content integrity | `references/audit.md` (uses `kbexplorer audit`) |
+| Reorganize the graph (rename/move/merge/split nodes, recolor clusters) | `references/graph-curation.md` |
+| Decide what connects to what, and how to phrase it | `references/connections.md` |
+| Change the visual mode, theme, or fonts | `references/presentation.md` |
+| Wire sprite or hero images to nodes | `references/assets-pipeline.md` |
+| Build a fresh catalogue from a repository (no agent runtime) | `references/architect-playbook.md` |
+| Fill in a single page deeply (no agent runtime) | `references/writer-playbook.md` |
+| Investigate a part of the codebase systematically | `references/researcher-playbook.md` |
+| Look up a `config.yaml` field | `references/configuration.md` |
+| Understand the architect → transform → writer pipeline | `references/content-generation.md` |
 
-The setup is fully agent-driven. The agent executes every step — the user only
-answers configuration questions during the interactive wizard.
+## Working without agents
 
-### Self-Hosted Mode (kbexplorer repo itself)
+This skill works in environments that lack agent support (e.g., Copilot
+desktop). The three `*-playbook.md` references mirror the behavior of the
+installed `kb-architect`, `kb-writer`, and `kb-researcher` agents step by
+step — any LLM can follow them directly to get the same outcome.
 
-If the current repo IS kbexplorer (check `package.json` name or git remote), skip submodule
-setup. Run the init wizard directly, then start the dev server and validate:
+When an agent runtime IS available, invoking the agent is faster than
+following the playbook by hand, but the playbook remains the source of
+truth for what the agent should do.
 
-```bash
-node scripts/init.js      # interactive config questions
-npm run dev               # agent starts this
-# agent validates with playwright-cli
-```
+## CLI helpers — deterministic, no LLM
 
-### Submodule Mode (any other repo)
+These commands handle the parts of the workflow that are pure computation.
+Prefer shelling out to them over reasoning through the same logic.
 
-The agent performs these steps in order:
+| Command | Use for |
+|---|---|
+| `kbexplorer init` | Bootstrap; see `references/setup.md`. |
+| `kbexplorer scaffold <slug> --cluster <id>` | Create a single new page with valid frontmatter; see `references/add-node.md`. |
+| `kbexplorer audit` | Hard structural lint (duplicate ids, broken parents, cycles, dead connections); see `references/audit.md`. Exits non-zero on errors — CI-grade. |
+| `kbexplorer affected <git-ref>` | Map a diff to impacted content nodes via citations; see `references/incremental-refresh.md`. |
+| `kbexplorer links` | Soft graph-health analysis (orphans, weak clusters, coverage gaps). |
+| `kbexplorer generate` | Run the architect → transform → writer pipeline; see `references/content-generation.md`. |
+| `kbexplorer dev` / `kbexplorer build` | Start the dev server / production build. |
 
-1. **Add the submodule** (agent runs this):
-   ```bash
-   git submodule add https://github.com/anokye-labs/kbexplorer.git .kbexplorer
-   ```
+## Invariants — true in every workflow
 
-2. **Run the interactive init wizard** (user answers config questions):
-   ```bash
-   node .kbexplorer/scripts/init.js
-   ```
-   The wizard asks about content mode, title, visual style, theme, and features.
-   It creates `.env.kbexplorer`, `content/config.yaml`, adds npm scripts, and
-   installs dependencies automatically.
+These rules apply universally. References repeat them where relevant.
 
-3. **Start the explorer** (agent runs this):
-   ```bash
-   npm run kb:dev
-   ```
+1. **Resolve the source repository context first.** Citations are useless
+   without it. Detect the git remote, decide linked vs. local citations,
+   determine the branch. Don't write or edit without this resolved.
 
-4. **Validate with playwright-cli** (agent does this — MANDATORY):
-   Navigate to `http://localhost:5173`, take a screenshot, evaluate with vision.
+2. **Cite or strike.** Every non-trivial claim is followed by a citation in
+   one of the two supported formats:
 
-### What Init Creates
+   | Style | Use when | Example |
+   |---|---|---|
+   | Linked | A remote URL is known | `[src/auth.ts:42](URL/blob/main/src/auth.ts#L42)` |
+   | Local | Local-only repo | `(src/auth.ts:42)` |
 
-| File | Purpose |
-|------|---------|
-| `.env.kbexplorer` | Vite env vars (`VITE_KB_OWNER`, `VITE_KB_REPO`, etc.) — gitignored |
-| `content/config.yaml` | Full kbexplorer configuration |
-| `package.json` updates | `kb:dev`, `kb:build`, `kb:install` scripts |
-| `.gitignore` update | Ensures `.env.kbexplorer` is ignored |
+   After every Mermaid diagram add `<!-- Sources: file:line, file:line -->`.
 
-## Content Modes
+3. **Audit before declaring done.** Run `kbexplorer audit` after any change
+   to `content/` or `content/config.yaml`. Zero errors is the bar; warnings
+   are acknowledged or remediated. Run `kbexplorer links` for the soft
+   graph-health pass.
 
-### Repo-Aware (default)
+4. **Validate visually.** After authoring or refactoring, start `kbexplorer
+   dev` and confirm the affected nodes render correctly in the browser.
+   Use playwright-cli or computer-use MCP for screenshot evidence when
+   available.
 
-No content path set. kbexplorer auto-discovers issues, PRs, README, and source directories
-from the target GitHub repo. Issue labels become clusters; `#N` cross-references become edges.
+5. **Names lie. Read the code.** Never paraphrase from a file name, type
+   name, or naming convention. Open the file, trace the path, then write.
 
-### Authored
+6. **Preserve author intent.** When refreshing existing content, the
+   default is the smallest surgical edit that fixes the issue. Wholesale
+   rewrites destroy commentary and editorial judgement the author put
+   there on purpose.
 
-Set `source.path` to a directory of markdown files (e.g., `content/`). Each file's YAML
-frontmatter defines node metadata, hierarchy, and connections. Full control over the graph.
+## File locations the skill cares about
 
-### Frontmatter Fields (Authored Mode)
-
-```yaml
----
-id: unique-node-id
-title: Display Title
-emoji: "🔧"
-cluster: cluster-key
-image: assets/hero.jpg       # heroes visual mode
-sprite: assets/sprite.png    # sprites visual mode
-parent: parent-node-id       # hierarchical grouping
-connections:
-  - to: other-node-id
-    description: "relates to"
----
-```
-
-## Configuration Reference
-
-The full `config.yaml` schema is documented in `references/configuration.md`.
-Consult it for cluster definitions, visual modes, theme options, graph settings,
-and feature flags.
-
-## Visual Modes
-
-| Mode | Assets | Best For |
-|------|--------|----------|
-| `emoji` | Unicode emoji | Lightweight, text-focused |
-| `sprites` | Character illustrations | Technical docs, branded content |
-| `heroes` | Full-bleed photography | Essays, narratives, editorial |
-| `none` | Text only | Minimal deployments |
-
-## Commands
-
-After setup, these npm scripts are available:
-
-| Command | Description |
-|---------|-------------|
-| `npm run kb:dev` | Start dev server with hot reload |
-| `npm run kb:build` | Production build to `dist/kb/` |
-| `npm run kb:install` | Install kbexplorer dependencies |
-
-## Validation with Playwright (REQUIRED)
-
-After starting the dev server, validation is **mandatory** — not optional. The agent
-MUST validate the explorer loaded correctly. Do NOT skip this step. Do NOT ask the
-user to validate manually unless playwright-cli is unavailable.
-
-Use the **playwright-cli** skill to:
-1. Navigate to `http://localhost:5173`
-2. Wait for the page to fully load (network idle or ~5 seconds)
-3. Take a full-page screenshot
-4. Evaluate the screenshot with vision:
-   - Page should show knowledge base content (cards, graph, or titles)
-   - No blank screens, error messages, or broken layouts
-5. Report the validation result with the screenshot
-
-### If playwright-cli is NOT available
-
-Inform the user that automated validation requires playwright-cli:
-- **Where to get it**: Install the `playwright-cli` Copilot CLI plugin
-- **Fallback**: Open `http://localhost:5173` in the user's browser automatically
-  (use `start` on Windows, `open` on macOS, `xdg-open` on Linux)
-- Clearly note that playwright-cli should be installed for the best experience
-
-## Troubleshooting
-
-- **Rate limit errors**: GitHub API allows 60 unauthenticated requests/hour. Add a
-  `GITHUB_TOKEN` env var for higher limits.
-- **Empty graph**: Verify the `owner` and `repo` in `.env.kbexplorer` are correct.
-  Check that the repo has issues or content files.
-- **Build fails**: Run `npm run kb:install` to ensure dependencies are installed.
-- **Config not loading**: Ensure `content/config.yaml` exists in the target repo
-  at the expected path.
-
-## Content Generation
-
-kbexplorer can auto-generate rich knowledge base content from any repository
-using its built-in agents (adapted from Deep Wiki, MIT license).
-
-### Quick Start
-
-Run `/kb:generate` to analyze the current repo and produce a full knowledge graph.
-
-### Agents
-
-| Agent | Purpose |
-|-------|---------|
-| **kb-architect** | Scans repo → structured JSON catalogue with clusters and connections |
-| **kb-writer** | Generates rich content pages with citations, Mermaid diagrams |
-| **kb-researcher** | Deep investigation with evidence-first analysis |
-
-### Pipeline
-
-```
-/kb:generate → kb-architect → catalogue → transform-catalogue.js → kb-writer → content/
-```
-
-The transform script converts the catalogue into kbexplorer-native frontmatter
-(id, title, emoji, cluster, parent, connections). The kb-writer agent then fills
-in each page with deep, evidence-based content.
-
-See `references/content-generation.md` for the full format specification,
-emoji mapping, and connection derivation rules.
-
-## Additional Resources
-
-### Reference Files
-
-- **`references/configuration.md`** — Complete config.yaml schema with all options,
-  defaults, and examples.
-- **`references/content-generation.md`** — Content generation pipeline, frontmatter
-  format, catalogue-to-node mapping, and emoji assignments.
+| Path | Role |
+|---|---|
+| `content/*.md` | Authored nodes. One file per node; filename slug = id. |
+| `content/config.yaml` | Title, subtitle, clusters, visual mode, theme. |
+| `content/assets/heroes/`, `content/assets/sprites/` | Optional image assets. |
+| `catalogue.json` | Architect output (transient, consumed by `kbexplorer generate`). |
+| `.kbexplorer/` | The explorer app submodule. |
+| `.env.kbexplorer` | Vite env vars (gitignored). |
+| `.github/agents/kb-*.md` | Installed agent definitions. |
+| `.github/skills/kbexplorer/SKILL.md` | This file. |
+| `.github/skills/kbexplorer/references/*.md` | The playbook library. |
