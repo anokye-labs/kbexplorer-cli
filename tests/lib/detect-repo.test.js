@@ -4,7 +4,7 @@ import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const { isTemplateRepo, hasSubmodule } = await import('../../src/lib/detect-repo.js');
+const { isTemplateRepo, hasSubmodule, hasTemplate, isSubmoduleInstall, getSubmoduleUrl } = await import('../../src/lib/detect-repo.js');
 
 describe('isTemplateRepo', () => {
   it('returns true for kbexplorer package name', () => {
@@ -44,6 +44,47 @@ describe('hasSubmodule', () => {
     const dir = join(tmpdir(), `kbe-test-sub-${Date.now()}`);
     mkdirSync(dir, { recursive: true });
     assert.strictEqual(hasSubmodule(dir), false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('hasTemplate / isSubmoduleInstall', () => {
+  it('hasTemplate mirrors hasSubmodule (present when package.json exists)', () => {
+    const dir = join(tmpdir(), `kbe-test-tmpl-${Date.now()}`);
+    mkdirSync(join(dir, '.kbexplorer'), { recursive: true });
+    writeFileSync(join(dir, '.kbexplorer', 'package.json'), '{"name":"kbexplorer"}');
+    assert.strictEqual(hasTemplate(dir), true);
+    // vendored copy has no inner .git
+    assert.strictEqual(isSubmoduleInstall(dir), false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('isSubmoduleInstall is true when .kbexplorer/.git exists', () => {
+    const dir = join(tmpdir(), `kbe-test-sm-${Date.now()}`);
+    mkdirSync(join(dir, '.kbexplorer'), { recursive: true });
+    writeFileSync(join(dir, '.kbexplorer', 'package.json'), '{"name":"kbexplorer"}');
+    writeFileSync(join(dir, '.kbexplorer', '.git'), 'gitdir: ../.git/modules/.kbexplorer');
+    assert.strictEqual(isSubmoduleInstall(dir), true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('getSubmoduleUrl', () => {
+  it('returns null when no .gitmodules', () => {
+    const dir = join(tmpdir(), `kbe-test-gm0-${Date.now()}`);
+    mkdirSync(dir, { recursive: true });
+    assert.strictEqual(getSubmoduleUrl(dir), null);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('parses the .kbexplorer submodule url', () => {
+    const dir = join(tmpdir(), `kbe-test-gm1-${Date.now()}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, '.gitmodules'),
+      '[submodule ".kbexplorer"]\n\tpath = .kbexplorer\n\turl = https://github.com/my-org/my-template.git\n',
+    );
+    assert.strictEqual(getSubmoduleUrl(dir), 'https://github.com/my-org/my-template.git');
     rmSync(dir, { recursive: true, force: true });
   });
 });

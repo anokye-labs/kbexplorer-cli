@@ -39,6 +39,38 @@ npx kbexplorer dev     # Launch the explorer
 4. Runs interactive config wizard (content mode, title, theme, etc.)
 5. Creates `.env.kbexplorer` and adds npm scripts
 
+## Using a Custom Template
+
+By default `init` installs the official `anokye-labs/kbexplorer-template`. To use your own
+fork or an org-internal template, pass `--template`:
+
+```bash
+npx kbexplorer init --template https://github.com/my-org/my-template.git
+```
+
+### Install modes
+
+| Mode | Flag | What you get |
+|------|------|--------------|
+| **Submodule** (default) | _(none)_ | `.kbexplorer/` is a pinned git submodule. Lightweight; `kbexplorer update` bumps the pin. Best when you track upstream as-is. |
+| **Vendor** (one-time copy) | `--vendor` / `--no-submodule` | `.kbexplorer/` is a plain folder (the template's `.git` is stripped). Best when you want to copy-and-customize. |
+
+```bash
+# Pin to a specific tag or branch (default: latest release tag)
+npx kbexplorer init --ref v1.2.0
+npx kbexplorer init --vendor --ref main
+```
+
+Both modes record where the template came from in **`.kbexplorer.json`** at your repo root:
+
+```json
+{ "template": "<url>", "ref": "v1.2.0", "refType": "tag", "resolvedCommit": "…", "mode": "submodule" }
+```
+
+`kbexplorer update` reads this record. For vendored installs it never overwrites your
+`.kbexplorer/` silently — it fetches the new version into a sibling folder for review, and
+`--force` backs up your current copy before swapping it in.
+
 ## Content Generation
 
 Generate rich documentation from code analysis:
