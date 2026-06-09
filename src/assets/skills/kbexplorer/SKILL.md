@@ -68,6 +68,19 @@ The agent performs these steps in order:
 4. **Validate with playwright-cli** (agent does this — MANDATORY):
    Navigate to `http://localhost:5173`, take a screenshot, evaluate with vision.
 
+### Custom Templates & Install Modes
+
+`init` installs the official template by default, but supports alternatives:
+
+- `--template <url>` — install from a fork or org-internal template repo.
+- `--vendor` / `--no-submodule` — install a one-time copy instead of a git submodule
+  (best for "copy and customize"); the template's `.git` is stripped and the files become yours.
+- `--ref <tag|branch>` — install a specific version (default: latest release tag).
+
+The install source is recorded in `.kbexplorer.json` at the repo root, which `update` uses.
+For vendored installs, `update` never clobbers local changes: it fetches into a sibling folder
+for review, and `--force` backs up the current copy before swapping.
+
 ### What Init Creates
 
 | File | Purpose |
@@ -76,6 +89,7 @@ The agent performs these steps in order:
 | `content/config.yaml` | Full kbexplorer configuration |
 | `package.json` updates | `kb:dev`, `kb:build`, `kb:install` scripts |
 | `.gitignore` update | Ensures `.env.kbexplorer` is ignored |
+| `.kbexplorer.json` | Records the template source (url, ref, mode) for `update` |
 
 ## Content Modes
 
