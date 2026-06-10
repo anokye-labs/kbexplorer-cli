@@ -43,6 +43,83 @@ export function parseInitArgs(args = []) {
 }
 
 /**
+ * Parse `generate` arguments.
+ *
+ * Supported flags:
+ *   --prompt, -p <text>        Override the architect prompt sent to copilot.
+ *   --model <model>            Model passed to copilot (`--model`).
+ *   --allow-tool <spec>        Scoped tool permission (repeatable). Providing any
+ *                              scoped tool disables the implicit `--allow-all-tools`.
+ *   --allow-all-tools          Allow all tools (default for the agent step).
+ *   --timeout <ms>             Time budget for the programmatic run.
+ *   --no-agent                 Skip the fuzzy (copilot) step; deterministic only.
+ *   --refresh, --force         Re-run the agent even if catalogue.json exists.
+ *   --dry-run                  Print the assembled `copilot -p` command; do not run.
+ *   --help, -h                 Show help.
+ *
+ * @param {string[]} args
+ * @returns {{
+ *   prompt: string|null, model: string|null, allowTools: string[],
+ *   allowAllTools: boolean|null, timeout: number|null, noAgent: boolean,
+ *   refresh: boolean, dryRun: boolean, help: boolean, unknown: string[]
+ * }}
+ */
+export function parseGenerateArgs(args = []) {
+  const out = {
+    prompt: null,
+    model: null,
+    allowTools: [],
+    allowAllTools: null,
+    timeout: null,
+    noAgent: false,
+    refresh: false,
+    dryRun: false,
+    help: false,
+    unknown: [],
+  };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    switch (a) {
+      case '--prompt':
+      case '-p':
+        out.prompt = args[++i] ?? null;
+        break;
+      case '--model':
+        out.model = args[++i] ?? null;
+        break;
+      case '--allow-tool':
+        if (args[i + 1] != null) out.allowTools.push(args[++i]);
+        break;
+      case '--allow-all-tools':
+        out.allowAllTools = true;
+        break;
+      case '--timeout': {
+        const n = Number(args[++i]);
+        out.timeout = Number.isFinite(n) ? n : null;
+        break;
+      }
+      case '--no-agent':
+        out.noAgent = true;
+        break;
+      case '--refresh':
+      case '--force':
+        out.refresh = true;
+        break;
+      case '--dry-run':
+        out.dryRun = true;
+        break;
+      case '--help':
+      case '-h':
+        out.help = true;
+        break;
+      default:
+        out.unknown.push(a);
+    }
+  }
+  return out;
+}
+
+/**
  * Parse `update` arguments.
  *
  * Supported flags:

@@ -59,6 +59,15 @@ function printUsage() {
     --ref, --branch <ref>      Install a specific tag or branch
     --vendor, --no-submodule   One-time copy instead of a git submodule
 
+  generate options:
+    --prompt, -p <text>        Override the architect prompt sent to copilot
+    --model <model>            Model to use (copilot --model)
+    --allow-tool <spec>        Scoped tool permission, repeatable (e.g. 'shell(git)')
+    --allow-all-tools          Allow all tools (default for the agent step)
+    --no-agent                 Skip the copilot step; only transform an existing catalogue
+    --refresh, --force         Re-run the agent even if catalogue.json exists
+    --dry-run                  Print the assembled copilot command and exit
+
   Examples:
     npx kbexplorer init
     npx kbexplorer init --template https://github.com/my-org/my-template.git
