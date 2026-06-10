@@ -1,0 +1,45 @@
+title: "kbexplorer-cli"
+subtitle: "The CLI that turns any repo into an explorable knowledge graph"
+
+source:
+  owner: anokye-labs
+  repo: kbexplorer-cli
+  path: content
+  branch: main
+
+clusters:
+  entry:
+    name: "Overview"
+    color: "#A86FDF"
+  commands:
+    name: "CLI Commands"
+    color: "#39FF14"
+  libs:
+    name: "Core Libraries"
+    color: "#4A9CC8"
+  agents:
+    name: "Copilot Agents"
+    color: "#E8A838"
+  skill:
+    name: "Skill System"
+    color: "#FF6BCB"
+  infra:
+    name: "Design & Infra"
+    color: "#5A98A8"
+
+visuals:
+  mode: emoji
+  fallback: emoji
+
+theme:
+  default: dark
+
+graph:
+  physics: true
+  layout: force-atlas-2
+
+features:
+  hud: true
+  minimap: true
+  readingTools: true
+  keyboardNav: true

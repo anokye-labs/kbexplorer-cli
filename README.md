@@ -35,6 +35,23 @@ npx kbexplorer init    # Interactive setup wizard
 npx kbexplorer dev     # Launch the explorer
 ```
 
+## Dogfood: build a KB over this repo
+
+The `scripts/` folder contains a self-hosting demo that uses kbexplorer's own
+lifecycle commands to render a knowledge base about kbexplorer-cli itself.
+The authored content lives in [`content/`](content/) and is validated by
+`node bin/cli.js audit` (78 unit tests + 0 audit errors on every commit).
+
+```bash
+node scripts/preview-self-kb.js    # vendors .kbexplorer/, syncs content/, starts dev
+node scripts/verify-self-kb.js     # Playwright check; screenshots → dist-screenshots/
+```
+
+Open <http://localhost:5173>. You should see a graph of 23 nodes covering the
+CLI router, every command, the lib/ heart, the agents, the skill, install
+modes, and the zero-dependency design — the same content model the template
+demo uses, but authored entirely from this repo's source.
+
 ## What `init` Does
 
 1. Adds `.kbexplorer/` as a git submodule (the visual explorer app)
