@@ -11,6 +11,7 @@
  *   MOCK_COPILOT_STDOUT = literal text to print to stdout      (mode 'text')
  *   MOCK_COPILOT_STDERR = literal text to print to stderr
  *   MOCK_COPILOT_EXIT   = exit code to use                     (default 0; mode 'fail' => 7)
+ *   MOCK_COPILOT_RESPONSE = assistant text emitted as a JSONL event (mode 'json')
  *
  * It also echoes its received argv to stderr so tests can assert assembly.
  */
@@ -27,12 +28,18 @@ if (mode === 'hang') {
   // Never exit on its own — the runtime's timeout must terminate us.
   setInterval(() => {}, 1000);
 } else if (mode === 'json') {
-  const lines = [
-    { type: 'status', message: 'starting' },
-    { type: 'assistant', text: 'Hello from ' },
-    { type: 'assistant_message', content: 'the mock.' },
-    { type: 'stats', tokens: 42 },
-  ];
+  const lines = process.env.MOCK_COPILOT_RESPONSE
+    ? [
+        { type: 'status', message: 'starting' },
+        { type: 'assistant', text: process.env.MOCK_COPILOT_RESPONSE },
+        { type: 'stats', tokens: 1 },
+      ]
+    : [
+        { type: 'status', message: 'starting' },
+        { type: 'assistant', text: 'Hello from ' },
+        { type: 'assistant_message', content: 'the mock.' },
+        { type: 'stats', tokens: 42 },
+      ];
   for (const line of lines) process.stdout.write(JSON.stringify(line) + '\n');
   process.exit(Number(process.env.MOCK_COPILOT_EXIT || 0));
 } else if (mode === 'fail') {

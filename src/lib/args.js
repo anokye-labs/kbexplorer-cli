@@ -120,6 +120,91 @@ export function parseGenerateArgs(args = []) {
 }
 
 /**
+ * Parse `derive` arguments.
+ *
+ * Supported flags:
+ *   <source...>                One or more source files (.docx/.md/.markdown/.txt).
+ *   --out <dir>                Output directory for emitted *.jsonld (default content/derived).
+ *   --context <ctx>            Override the JSON-LD @context (default schema.org).
+ *   --check                    Drift mode: do not write; exit non-zero if any committed
+ *                              artifact is stale relative to its source. No LLM call.
+ *   --refresh, --force         Re-run fuzzy extraction even if a fresh artifact exists.
+ *   --model <model>            Model passed to copilot (`--model`).
+ *   --allow-tool <spec>        Scoped tool permission (repeatable); disables implicit allow-all.
+ *   --allow-all-tools          Allow all tools (default for the extraction step).
+ *   --timeout <ms>             Time budget for the programmatic run.
+ *   --dry-run                  Print the assembled copilot command + planned outputs; run nothing.
+ *   --help, -h                 Show help.
+ *
+ * @param {string[]} args
+ * @returns {{
+ *   sources: string[], out: string|null, context: string|null, check: boolean,
+ *   refresh: boolean, model: string|null, allowTools: string[], allowAllTools: boolean|null,
+ *   timeout: number|null, dryRun: boolean, help: boolean, unknown: string[]
+ * }}
+ */
+export function parseDeriveArgs(args = []) {
+  const out = {
+    sources: [],
+    out: null,
+    context: null,
+    check: false,
+    refresh: false,
+    model: null,
+    allowTools: [],
+    allowAllTools: null,
+    timeout: null,
+    dryRun: false,
+    help: false,
+    unknown: [],
+  };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    switch (a) {
+      case '--out':
+      case '-o':
+        out.out = args[++i] ?? null;
+        break;
+      case '--context':
+        out.context = args[++i] ?? null;
+        break;
+      case '--check':
+        out.check = true;
+        break;
+      case '--refresh':
+      case '--force':
+        out.refresh = true;
+        break;
+      case '--model':
+        out.model = args[++i] ?? null;
+        break;
+      case '--allow-tool':
+        if (args[i + 1] != null) out.allowTools.push(args[++i]);
+        break;
+      case '--allow-all-tools':
+        out.allowAllTools = true;
+        break;
+      case '--timeout': {
+        const n = Number(args[++i]);
+        out.timeout = Number.isFinite(n) ? n : null;
+        break;
+      }
+      case '--dry-run':
+        out.dryRun = true;
+        break;
+      case '--help':
+      case '-h':
+        out.help = true;
+        break;
+      default:
+        if (a.startsWith('-')) out.unknown.push(a);
+        else out.sources.push(a);
+    }
+  }
+  return out;
+}
+
+/**
  * Parse `update` arguments.
  *
  * Supported flags:
