@@ -37,20 +37,23 @@ npx kbexplorer dev     # Launch the explorer
 
 ## Dogfood: build a KB over this repo
 
-The `scripts/` folder contains a self-hosting demo that uses kbexplorer's own
-lifecycle commands to render a knowledge base about kbexplorer-cli itself.
-The authored content lives in [`content/`](content/) and is validated by
-`node bin/cli.js audit` (78 unit tests + 0 audit errors on every commit).
+The authored content in [`content/`](content/) describes kbexplorer-cli
+itself. Once the explorer is installed (`init`), `dev` will render it:
 
 ```bash
-node scripts/preview-self-kb.js    # vendors .kbexplorer/, syncs content/, starts dev
-node scripts/verify-self-kb.js     # Playwright check; screenshots → dist-screenshots/
+npx kbexplorer init --vendor   # one-time: vendors the explorer into .kbexplorer/
+npx kbexplorer dev             # build the manifest, start Vite at :5173
 ```
 
-Open <http://localhost:5173>. You should see a graph of 23 nodes covering the
-CLI router, every command, the lib/ heart, the agents, the skill, install
-modes, and the zero-dependency design — the same content model the template
-demo uses, but authored entirely from this repo's source.
+Open <http://localhost:5173>. You should see a graph of 23 nodes covering
+the CLI router, every command, the lib/ heart, the agents, the skill,
+install modes, and the zero-dependency design.
+
+To regression-check the dogfood loop end-to-end:
+
+```bash
+node scripts/verify-self-kb.js   # headless Playwright; screenshots → dist-screenshots/
+```
 
 ## What `init` Does
 

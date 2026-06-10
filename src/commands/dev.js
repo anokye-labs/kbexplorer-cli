@@ -34,6 +34,7 @@ export default async function dev(args) {
       ...process.env,
       VITE_KB_LOCAL: 'true',
       VITE_ENV_DIR: envDir,
+      VITE_KB_HOST_ROOT: cwd,
     },
   });
 
