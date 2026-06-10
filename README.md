@@ -18,6 +18,7 @@ npm install -D @anokye-labs/kbexplorer
 |---------|-------------|
 | `kbexplorer init` | Add `.kbexplorer/` submodule, install agents/skills, configure |
 | `kbexplorer generate` | Run content generation pipeline (architect → transform → writer) |
+| `kbexplorer derive <source...>` | Extract JSON-LD entities from unstructured sources (.docx/.md/.txt) via Copilot |
 | `kbexplorer scaffold <slug> --cluster <id>` | Create a single new content page with valid frontmatter |
 | `kbexplorer audit` | Schema/structural validation (duplicate ids, broken parents, cycles) — CI-grade |
 | `kbexplorer affected <git-ref>` | Map a git diff to impacted content nodes via citations |
@@ -127,6 +128,57 @@ for the adapter's public API and configuration.
 
 You can still produce `catalogue.json` out-of-band (e.g. via the kb-architect
 agent in an interactive Copilot session) and run `kbexplorer generate --no-agent`.
+
+## Build-time Derivation (unstructured → JSON-LD)
+
+`kbexplorer derive` turns **unstructured / semi-structured** sources — `.docx`,
+prose Markdown, and loosely-structured text — into committed `*.jsonld` entity
+artifacts that conform to the engine's node-type contract. It mirrors
+`generate`: a fuzzy (LLM) phase runs through **Copilot programmatic mode**
+(`copilot -p`) to extract entities and relationships, then a deterministic phase
+normalizes and validates them into canonical JSON-LD.
+
+```bash
+# Read .docx/.md/.txt, extract via `copilot -p`, emit content/derived/*.jsonld
+npx kbexplorer derive docs/org-chart.docx notes/teams.md
+
+# Preview the exact copilot command + planned outputs without running anything
+npx kbexplorer derive docs/org-chart.docx --dry-run
+
+# Write to a custom output directory
+npx kbexplorer derive docs/*.docx --out content/derived
+
+# CI drift gate: fail (non-zero exit) if any committed artifact is stale.
+# Never calls the LLM — purely deterministic.
+npx kbexplorer derive content/derived/*.jsonld --check
+
+# Force re-extraction even when a fresh artifact already exists
+npx kbexplorer derive docs/org-chart.docx --refresh
+```
+
+Each emitted node carries the F1 contract fields: an `@id` identity URN
+(`kg://<type>/<slug>`, reused as identity and **never** derived from a file
+path), an open lowercase `@type` entity kind (also never path-derived), a
+`@context` (defaults to `https://schema.org`), and relationships mapped onto the
+six-relation taxonomy `leads | staffs | reports-to | structural | derived |
+deprecated`. The committed artifact also embeds a KBNode mirror (`entityType` +
+`jsonld` + `data`) and a reversible `source.ref` back to the originating
+document.
+
+**Idempotency & drift.** Artifacts are timestamp-free and serialized with sorted
+keys, so identical input yields **byte-identical** output. The artifact embeds
+the extraction intermediate keyed by the source's SHA-256; re-running `derive`
+on an unchanged source reuses that intermediate and re-emits deterministically
+**without calling the LLM**. `--check` is a read-only CI gate: it reports drift
+(and exits non-zero) when an artifact is missing, when its source has changed, or
+when a fresh deterministic emit differs from the committed bytes — never invoking
+Copilot.
+
+Like `generate`, the fuzzy phase requires the
+[Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli) on your
+`PATH` (or `KBEXPLORER_COPILOT_BIN`); sources already derived from unchanged
+input do not need it. Both phases flow through the same **runtime router** — see
+[`docs/copilot-runtime.md`](docs/copilot-runtime.md).
 
 ## Agents
 

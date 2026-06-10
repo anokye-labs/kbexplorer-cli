@@ -30,6 +30,7 @@ const COMMANDS = {
   audit: '../src/commands/audit.js',
   affected: '../src/commands/affected.js',
   scaffold: '../src/commands/scaffold.js',
+  derive: '../src/commands/derive.js',
 };
 
 function printUsage() {
@@ -48,6 +49,7 @@ function printUsage() {
     audit       Schema/structural validation (duplicate ids, broken parents, cycles)
     affected    Map a git diff to impacted content nodes via citations
     scaffold    Create a new content/<slug>.md skeleton with valid frontmatter
+    derive      Extract entities from .docx/prose into committed *.jsonld (F8)
     update      Pull latest template + refresh agents/skills
 
   Options:
@@ -68,11 +70,20 @@ function printUsage() {
     --refresh, --force         Re-run the agent even if catalogue.json exists
     --dry-run                  Print the assembled copilot command and exit
 
+  derive options:
+    <source...>                One or more .docx/.md/.markdown/.txt sources
+    --out, -o <dir>            Output directory for *.jsonld (default content/derived)
+    --check                    Drift check: non-zero exit if a committed artifact is stale
+    --refresh, --force         Re-run fuzzy extraction even if a fresh artifact exists
+    --dry-run                  Print the assembled copilot command + planned outputs
+
   Examples:
     npx kbexplorer init
     npx kbexplorer init --template https://github.com/my-org/my-template.git
     npx kbexplorer init --vendor --ref main
     npx kbexplorer generate
+    npx kbexplorer derive docs/org-chart.docx
+    npx kbexplorer derive docs/*.md --check
     npx kbexplorer dev
     npx kbexplorer build --base /docs/
 `);
