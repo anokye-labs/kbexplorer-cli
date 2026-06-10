@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { parseInitArgs, parseUpdateArgs } = await import('../../src/lib/args.js');
+const { parseInitArgs, parseUpdateArgs, parseGenerateArgs } = await import('../../src/lib/args.js');
 
 describe('parseInitArgs', () => {
   it('returns defaults for no args', () => {
@@ -63,5 +63,50 @@ describe('parseUpdateArgs', () => {
 
   it('collects unknown args', () => {
     assert.deepStrictEqual(parseUpdateArgs(['--nope']).unknown, ['--nope']);
+  });
+});
+
+describe('parseGenerateArgs', () => {
+  it('returns defaults for no args', () => {
+    assert.deepStrictEqual(parseGenerateArgs([]), {
+      prompt: null,
+      model: null,
+      allowTools: [],
+      allowAllTools: null,
+      timeout: null,
+      noAgent: false,
+      refresh: false,
+      dryRun: false,
+      help: false,
+      unknown: [],
+    });
+  });
+
+  it('parses --prompt/-p and --model', () => {
+    assert.strictEqual(parseGenerateArgs(['--prompt', 'do x']).prompt, 'do x');
+    assert.strictEqual(parseGenerateArgs(['-p', 'do y']).prompt, 'do y');
+    assert.strictEqual(parseGenerateArgs(['--model', 'gpt-5.2']).model, 'gpt-5.2');
+  });
+
+  it('collects repeatable --allow-tool specs', () => {
+    const out = parseGenerateArgs(['--allow-tool', 'shell(git)', '--allow-tool', 'write']);
+    assert.deepStrictEqual(out.allowTools, ['shell(git)', 'write']);
+  });
+
+  it('parses --allow-all-tools, --no-agent, --refresh/--force, --dry-run', () => {
+    assert.strictEqual(parseGenerateArgs(['--allow-all-tools']).allowAllTools, true);
+    assert.strictEqual(parseGenerateArgs(['--no-agent']).noAgent, true);
+    assert.strictEqual(parseGenerateArgs(['--refresh']).refresh, true);
+    assert.strictEqual(parseGenerateArgs(['--force']).refresh, true);
+    assert.strictEqual(parseGenerateArgs(['--dry-run']).dryRun, true);
+  });
+
+  it('parses a numeric --timeout', () => {
+    assert.strictEqual(parseGenerateArgs(['--timeout', '5000']).timeout, 5000);
+    assert.strictEqual(parseGenerateArgs(['--timeout', 'nope']).timeout, null);
+  });
+
+  it('collects unknown args', () => {
+    assert.deepStrictEqual(parseGenerateArgs(['--bogus']).unknown, ['--bogus']);
   });
 });

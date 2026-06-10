@@ -97,15 +97,36 @@ Both modes record where the template came from in **`.kbexplorer.json`** at your
 
 ## Content Generation
 
-Generate rich documentation from code analysis:
+`kbexplorer generate` runs the content pipeline on top of **Copilot CLI
+programmatic mode** (`copilot -p`). When there is no `catalogue.json` (or you
+pass `--refresh`), it drives Copilot to analyze the repo and emit one, then
+deterministically transforms it into `content/` and regenerates the manifest:
 
 ```bash
-# In Copilot CLI, ask the kb-architect agent to analyze the repo
-# It produces catalogue.json, then:
+# Drives `copilot -p` (kb-architect) → catalogue.json → content/ → manifest
 npx kbexplorer generate
+
+# Preview the exact copilot command without running it
+npx kbexplorer generate --dry-run
+
+# Scope tool permissions instead of the default --allow-all-tools
+npx kbexplorer generate --allow-tool 'shell(git)' --allow-tool 'write'
+
+# Re-run analysis even if catalogue.json already exists
+npx kbexplorer generate --refresh
+
+# Skip the agent step and just transform an existing catalogue
+npx kbexplorer generate --no-agent
 ```
 
-Or use the full pipeline in Copilot CLI — the kb-architect, kb-writer, and kb-researcher agents are installed in your repo's `.github/agents/`.
+Requires the [Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli)
+on your `PATH` (or set `KBEXPLORER_COPILOT_BIN` to its full path). The fuzzy
+(LLM) and deterministic (transform/manifest) phases both flow through a single
+**runtime router** — see [`docs/copilot-runtime.md`](docs/copilot-runtime.md)
+for the adapter's public API and configuration.
+
+You can still produce `catalogue.json` out-of-band (e.g. via the kb-architect
+agent in an interactive Copilot session) and run `kbexplorer generate --no-agent`.
 
 ## Agents
 
