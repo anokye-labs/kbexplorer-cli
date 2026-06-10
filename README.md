@@ -18,6 +18,10 @@ npm install -D @anokye-labs/kbexplorer
 |---------|-------------|
 | `kbexplorer init` | Add `.kbexplorer/` submodule, install agents/skills, configure |
 | `kbexplorer generate` | Run content generation pipeline (architect → transform → writer) |
+| `kbexplorer scaffold <slug> --cluster <id>` | Create a single new content page with valid frontmatter |
+| `kbexplorer audit` | Schema/structural validation (duplicate ids, broken parents, cycles) — CI-grade |
+| `kbexplorer affected <git-ref>` | Map a git diff to impacted content nodes via citations |
+| `kbexplorer links` | Graph health report (orphans, weak clusters, coverage gaps) |
 | `kbexplorer dev` | Start dev server in local mode |
 | `kbexplorer build` | Production build |
 | `kbexplorer manifest` | Regenerate repo manifest from local data |
@@ -29,6 +33,26 @@ npm install -D @anokye-labs/kbexplorer
 # In any GitHub repo:
 npx kbexplorer init    # Interactive setup wizard
 npx kbexplorer dev     # Launch the explorer
+```
+
+## Dogfood: build a KB over this repo
+
+The authored content in [`content/`](content/) describes kbexplorer-cli
+itself. Once the explorer is installed (`init`), `dev` will render it:
+
+```bash
+npx kbexplorer init --vendor   # one-time: vendors the explorer into .kbexplorer/
+npx kbexplorer dev             # build the manifest, start Vite at :5173
+```
+
+Open <http://localhost:5173>. You should see a graph of 23 nodes covering
+the CLI router, every command, the lib/ heart, the agents, the skill,
+install modes, and the zero-dependency design.
+
+To regression-check the dogfood loop end-to-end:
+
+```bash
+node scripts/verify-self-kb.js   # headless Playwright; screenshots → dist-screenshots/
 ```
 
 ## What `init` Does
@@ -91,7 +115,36 @@ Or use the full pipeline in Copilot CLI — the kb-architect, kb-writer, and kb-
 | `kb-writer` | Generates rich content pages with citations, Mermaid diagrams |
 | `kb-researcher` | Deep investigation with evidence-first analysis |
 
+For environments without agent support, each agent has an equivalent
+step-by-step playbook in
+`.github/skills/kbexplorer/references/{architect,writer,researcher}-playbook.md`
+that any LLM can follow directly.
+
 Adapted from [microsoft/skills deep-wiki](https://github.com/microsoft/skills/tree/main/.github/plugins/deep-wiki) (MIT License).
+
+## Skill — full lifecycle
+
+`kbexplorer init` installs the `kbexplorer` skill at
+`.github/skills/kbexplorer/`. It is a single skill with a slim router and a
+library of focused references loaded on demand:
+
+| Reference | Covers |
+|---|---|
+| `setup.md` | Bootstrap in a new repo |
+| `frontmatter.md` | Full schema for content files |
+| `add-node.md` | Add a single page |
+| `update-node.md` | Refresh one page preserving author intent |
+| `incremental-refresh.md` | Diff-driven multi-page refresh |
+| `graph-curation.md` | Rename / move / merge / split nodes; recolor clusters |
+| `connections.md` | Edge derivation rules and good descriptions |
+| `audit.md` | Hard structural lint rules and remediation |
+| `presentation.md` | Visual mode, theme, fonts, HUD |
+| `assets-pipeline.md` | Sprite and hero image workflows |
+| `architect-playbook.md` | Build a catalogue without an agent runtime |
+| `writer-playbook.md` | Author one page deeply without an agent runtime |
+| `researcher-playbook.md` | Systematic codebase investigation |
+| `configuration.md` | `config.yaml` reference |
+| `content-generation.md` | Pipeline + catalogue → node mapping |
 
 ## License
 

@@ -26,7 +26,7 @@ one that matches what you're doing — or read several if you wear multiple hats
 - **Language/runtime:** JavaScript (ES modules), Node.js **≥ 22** — see [`package.json:26-28`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/package.json#L26-L28).
 - **Dependencies:** **None at runtime.** The CLI shells out to `git`, `gh`, and `vite`. This keeps `npx` cold-starts fast and the supply chain tiny.
 - **Two halves:** this repo is the **CLI** (the installer/orchestrator). The visual app it installs lives in a separate repo, [`anokye-labs/kbexplorer-template`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/version.js#L12).
-- **Seven commands:** `init`, `generate`, `dev`, `build`, `manifest`, `update`, `links` — routed by [`bin/cli.js:22-30`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/bin/cli.js#L22-L30).
+- **Ten commands:** `init`, `generate`, `dev`, `build`, `manifest`, `update`, `links`, `audit`, `affected`, `scaffold` — routed by [`bin/cli.js:22-33`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/bin/cli.js#L22-L33).
 
 ## The 10,000-foot picture
 
@@ -42,6 +42,9 @@ graph TB
         manifest["manifest"]:::node
         update["update"]:::node
         links["links"]:::node
+        audit["audit"]:::node
+        affected["affected"]:::node
+        scaffold["scaffold"]:::node
     end
 
     cli --> cmds
@@ -53,6 +56,9 @@ graph TB
         args["args.js"]:::node
         mlib["manifest.js"]:::node
         transform["transform.js"]:::node
+        frontmatter["frontmatter.js"]:::node
+        auditlib["audit.js"]:::node
+        affectedlib["affected.js"]:::node
     end
 
     cmds --> lib
@@ -93,6 +99,4 @@ graph TB
 ## Source & citations
 
 All citations link to the default branch (`main`) of
-[`anokye-labs/kbexplorer-cli`](https://github.com/anokye-labs/kbexplorer-cli). A few files
-referenced here (`src/lib/args.js`, `src/lib/source.js`) arrive with the custom-template-source
-work; links resolve once that change is merged to `main`.
+[`anokye-labs/kbexplorer-cli`](https://github.com/anokye-labs/kbexplorer-cli).

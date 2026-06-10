@@ -17,7 +17,7 @@ kbexplorer turns a content store — a GitHub repo, or a directory of markdown �
 **interactive knowledge graph**: a constellation of clickable cards and a force-directed network
 you can explore, search, and read, instead of a flat wiki. You run one setup command, choose
 where the content comes from, preview it locally, and publish it as a static website you host
-wherever you like ([`README.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/README.md), [`SKILL.md:14-19`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/SKILL.md#L14-L19)).
+wherever you like ([`README.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/README.md), [`SKILL.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/SKILL.md)).
 
 Because the graph is regenerated from the *live* repo each time you preview or build, it
 reflects what's actually there — issues, pull requests, the README, the file tree, and any pages
@@ -34,10 +34,12 @@ graph LR
     C -->|From the repo| F["Repo-aware:<br>issues, PRs, README, folders"]:::s
     C -->|You write it| G["Authored:<br>markdown + frontmatter"]:::s
     C -->|AI drafts it| H["kbexplorer generate<br>(agent-assisted)"]:::s
+    G --> G2["kbexplorer scaffold<br>(add one page safely)"]:::s
     F --> P["kbexplorer dev<br>(preview locally)"]:::s
+    G2 --> P
     G --> P
     H --> P
-    P --> Q["kbexplorer links<br>(health check)"]:::s
+    P --> Q["kbexplorer audit + links<br>(health checks)"]:::s
     Q --> R["kbexplorer build<br>(static site)"]:::s
     R --> S([Publish anywhere<br>e.g. GitHub Pages]):::a
 
@@ -46,7 +48,7 @@ graph LR
     classDef d fill:#161b22,stroke:#8b949e,color:#e6edf3
 ```
 
-<!-- Sources: src/commands/init.js:226-249, src/commands/generate.js, src/commands/dev.js, src/commands/links.js, src/commands/build.js -->
+<!-- Sources: src/commands/init.js:226-249, src/commands/generate.js, src/commands/scaffold.js, src/commands/dev.js, src/commands/audit.js, src/commands/links.js, src/commands/build.js -->
 
 The loop is: **set up once**, then repeat **author → preview → check → build** as your content
 grows.
@@ -99,7 +101,7 @@ This is the most important choice you make. It decides where the nodes in your g
 | **Authored** | A directory of markdown files you write. Each file's frontmatter defines the node and its links. | Full editorial control — curated docs, essays, hand-shaped graphs. | Choose "Authored" and set a content directory (default `content/`). |
 | **Both** | Repo-aware *plus* your authored pages, merged into one graph. | Layering a few hand-written overview pages on top of the auto-map. | Choose "Both". |
 
-<!-- Sources: src/assets/skills/kbexplorer/SKILL.md:94-104, src/commands/init.js:235-243 -->
+<!-- Sources: src/assets/skills/kbexplorer/references/setup.md, src/commands/init.js:235-243 -->
 
 Not sure which to pick? This decides it:
 
@@ -232,11 +234,12 @@ can change them **without touching any code**
 | HUD, minimap, reading tools, keyboard nav | On-screen helpers | On |
 | Intro screen ("BLUF") | Optional opening quote screen | Off |
 
-<!-- Sources: src/assets/skills/kbexplorer/SKILL.md:129-136, src/commands/init.js:245-249 -->
+<!-- Sources: src/assets/skills/kbexplorer/references/presentation.md, src/commands/init.js:245-249 -->
 
 The visual modes map to different content styles — `emoji` is lightweight, `sprites` suits
-technical docs, `heroes` suits editorial/narrative content, and `none` is text-only
-([`SKILL.md:129-136`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/SKILL.md#L129-L136)).
+technical docs, `heroes` suits editorial/narrative content, and `none` is text-only. The
+full mapping and switching procedure lives in
+[`references/presentation.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/presentation.md).
 
 ---
 
@@ -267,15 +270,47 @@ npx kbexplorer build --base /my-repo/
 
 ## 9. Keep the graph healthy
 
-As your graph grows, run the built-in health check to catch problems before you publish:
+Two complementary checks run before you publish:
 
 ```bash
-npx kbexplorer links
+npx kbexplorer audit        # hard structural lint (exits non-zero on errors)
+npx kbexplorer links        # soft graph-health report (advisory)
 ```
 
-It reports broken connections (edges pointing at pages that don't exist), orphan pages (nodes
-nothing links to), and coverage gaps. It's advisory — it tells you what to fix, it doesn't
-rewrite your content ([`src/commands/links.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/links.js)).
+`audit` enforces frontmatter integrity — duplicate ids, broken `parent:` references,
+parent cycles, dead `connections.to`, missing required fields, undeclared clusters. It
+exits non-zero on errors, so it's safe to wire into CI ([`src/commands/audit.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/audit.js),
+[`src/lib/audit.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/audit.js)).
+
+`links` is advisory — orphan pages, weak clusters, coverage gaps, mentions that should
+be linkified ([`src/commands/links.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/links.js)). The two are non-overlapping by design.
+
+### Add a single page safely
+
+When you want to add one new node without hand-writing frontmatter:
+
+```bash
+npx kbexplorer scaffold my-new-topic --cluster getting-started
+```
+
+This creates `content/my-new-topic.md` with valid id / cluster / title / emoji
+frontmatter and a writer-prompt placeholder, then you fill in the body
+([`src/commands/scaffold.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/scaffold.js); see
+[`references/add-node.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/add-node.md)
+for the full workflow).
+
+### After a code change: refresh only what's affected
+
+If your authored pages cite specific source files, you can map a git diff to the nodes
+that need a refresh:
+
+```bash
+npx kbexplorer affected HEAD~10
+```
+
+It walks the citations in every `content/*.md` file, intersects with the changed files,
+and prints the impacted node ids ([`src/commands/affected.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/affected.js); see
+[`references/incremental-refresh.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/incremental-refresh.md)).
 
 ---
 
@@ -325,11 +360,12 @@ and stores nothing on external servers — the only outbound calls are to GitHub
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Empty graph | Wrong owner/repo, or no issues/content | Check `.env.kbexplorer`; confirm the repo has issues or content files ([`SKILL.md:174-176`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/SKILL.md#L174-L176)) |
-| "Rate limit" errors fetching issues | Unauthenticated GitHub API (60/hr) | Run `gh auth login`, or set a `GITHUB_TOKEN` ([`SKILL.md:173-174`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/SKILL.md#L173-L174)) |
+| Empty graph | Wrong owner/repo, or no issues/content | Check `.env.kbexplorer`; confirm the repo has issues or content files ([`references/setup.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/setup.md)) |
+| "Rate limit" errors fetching issues | Unauthenticated GitHub API (60/hr) | Run `gh auth login`, or set a `GITHUB_TOKEN` ([`references/setup.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/setup.md)) |
 | `kbexplorer not found` on `dev`/`build` | `.kbexplorer/` isn't installed | Run `kbexplorer init` first ([`dev.js:13-16`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/dev.js#L13-L16)) |
-| Build fails | Template dependencies missing | Run `npm install` inside `.kbexplorer/` ([`SKILL.md:177`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/SKILL.md#L177)) |
-| Config not loading | `config.yaml` missing or wrong path | Ensure `content/config.yaml` exists where the wizard set it ([`SKILL.md:178-179`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/SKILL.md#L178-L179)) |
+| Build fails | Template dependencies missing | Run `npm install` inside `.kbexplorer/` |
+| Config not loading | `config.yaml` missing or wrong path | Ensure `content/config.yaml` exists where the wizard set it ([`references/configuration.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/configuration.md)) |
+| `kbexplorer audit` reports errors | Duplicate ids, broken parents, dead connections | See [`references/audit.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/audit.md) for each rule and remediation |
 
 ---
 

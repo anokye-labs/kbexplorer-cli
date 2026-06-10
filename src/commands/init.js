@@ -310,7 +310,17 @@ export default async function init(args) {
   console.log('\n───────────────────────────────────────────');
   console.log('✅ kbexplorer is configured!');
   console.log('');
-  console.log('  Run: npx kbexplorer dev');
-  console.log('  Or:  npx kbexplorer generate');
+  console.log('  Get started:');
+  console.log('    npx kbexplorer dev               Start the dev server');
+  console.log('    npx kbexplorer generate          Build a catalogue + content');
+  console.log('');
+  console.log('  Lifecycle helpers:');
+  console.log('    npx kbexplorer scaffold <slug> --cluster <id>   Add a single page');
+  console.log('    npx kbexplorer audit                            Validate frontmatter integrity');
+  console.log('    npx kbexplorer affected <git-ref>               Diff → impacted nodes');
+  console.log('    npx kbexplorer links                            Graph health report');
+  console.log('');
+  console.log('  Skill docs:');
+  console.log('    .github/skills/kbexplorer/SKILL.md and references/');
   console.log('───────────────────────────────────────────\n');
 }

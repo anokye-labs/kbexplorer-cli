@@ -85,20 +85,26 @@ kbexplorer-cli/
 │   │   ├── dev.js            #   build manifest + spawn the Vite dev server
 │   │   ├── build.js          #   build manifest + Vite production build -> dist/kb/
 │   │   ├── manifest.js       #   regenerate the manifest only
-│   │   └── links.js          #   graph health report (orphans, broken refs, gaps)
+│   │   ├── links.js          #   soft graph health report (orphans, weak clusters, gaps)
+│   │   ├── audit.js          #   hard structural lint (duplicate ids, broken parents, cycles)
+│   │   ├── affected.js       #   map git diff -> impacted content nodes via citations
+│   │   └── scaffold.js       #   create one content/<slug>.md with valid frontmatter
 │   ├── lib/                  # Shared, dependency-free logic (the reusable "heart")
 │   │   ├── detect-repo.js    #   git remote/branch detection + getAppRoot (the seam)
 │   │   ├── version.js        #   remote tag/SHA lookups, checkout helpers
 │   │   ├── source.js         #   read/write .kbexplorer.json + classifyRef
 │   │   ├── args.js           #   pure flag parsers (parseInitArgs/parseUpdateArgs)
 │   │   ├── manifest.js       #   generateManifest: repo -> JSON snapshot
-│   │   └── transform.js      #   catalogue JSON -> content/*.md + config.yaml
+│   │   ├── transform.js      #   catalogue JSON -> content/*.md + config.yaml
+│   │   ├── frontmatter.js    #   zero-dep YAML frontmatter parse + citation extraction
+│   │   ├── audit.js          #   schema validator (rules: duplicate-id, broken-parent, ...)
+│   │   └── affected.js       #   citation index + diff -> nodes mapping
 │   └── assets/               # Files copied into a host repo's .github/ during init
 │       ├── agents/           #   kb-architect, kb-writer, kb-researcher (Copilot agents)
-│       └── skills/kbexplorer/#   SKILL.md + references (configuration, content-generation)
+│       └── skills/kbexplorer/#   slim router SKILL.md + 15 task-focused references/
 ├── tests/
 │   ├── lib/                  # Unit tests for each lib module (node:test)
-│   └── commands/             # Command-level tests (links)
+│   └── commands/             # Command-level tests (links, scaffold)
 ├── .github/workflows/        # CI: publish, pr-title, linked-issue, dependency-review
 ├── package.json              # name, bin, "test" script, engines.node >=22, NO deps
 ├── AGENTS.md                 # Org rules: issue-first workflow, branch protection
@@ -123,6 +129,9 @@ graph TB
         build["build"]:::node
         manifestcmd["manifest"]:::node
         links["links"]:::node
+        audit["audit"]:::node
+        affected["affected"]:::node
+        scaffold["scaffold"]:::node
     end
     cli --> cmds
 
@@ -133,6 +142,9 @@ graph TB
         args["args.js"]:::node
         mlib["manifest.js"]:::node
         transform["transform.js"]:::node
+        frontmatter["frontmatter.js"]:::node
+        auditlib["audit.js"]:::node
+        affectedlib["affected.js"]:::node
     end
     cmds --> lib
 
@@ -607,7 +619,7 @@ Expected `npm test` tail:
 |---------|--------------|-----|
 | `✗ kbexplorer not found. Run kbexplorer init first.` | `getAppRoot` returned `null` — no `.kbexplorer/package.json` | Run `init`, or run from the host repo root ([`detect-repo.js:109-114`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/detect-repo.js#L109-L114)) |
 | Empty graph / no issues or PRs | `gh` not installed or not authenticated | Install/auth `gh`, or accept the degraded build (warns, continues) ([`manifest.js:168-175`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/manifest.js#L168-L175)) |
-| GitHub rate-limit warnings | 60 unauth requests/hour | Set `GITHUB_TOKEN` / `gh auth login` ([`SKILL.md:173`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/SKILL.md#L173)) |
+| GitHub rate-limit warnings | 60 unauth requests/hour | Set `GITHUB_TOKEN` / `gh auth login` ([`references/setup.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/setup.md)) |
 | `git submodule add` fails with `file://` locally | Git blocks the file protocol for submodules by default | Use a real `https` URL, or test vendor mode (`--vendor`) which uses `git clone` |
 | Test fails after adding a flag | The exact-shape default test wasn't updated | Update the `deepStrictEqual` default-shape assertion ([`args.test.js:7-11`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/tests/lib/args.test.js#L7-L11)) |
 | `update` says "Already up to date" unexpectedly | `resolvedCommit` in `.kbexplorer.json` matches remote SHA | Expected — it compares SHAs ([`update.js:228-232`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L228-L232)) |
