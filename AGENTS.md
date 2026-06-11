@@ -1,5 +1,33 @@
 # kbexplorer-cli
 
+## Running the Site Locally
+
+This repo (`@anokye-labs/kbexplorer`) is the **CLI**, not the visual explorer app. The explorer is the separate `anokye-labs/kbexplorer-template` repo, which the CLI installs into `.kbexplorer/`. Because of this, `kbexplorer dev` only works once `.kbexplorer/` exists — otherwise it exits with ``✗ kbexplorer not found. Run `kbexplorer init` first.``
+
+Requirements: Node >= 22 and network access (the one-time setup clones the template repo).
+
+```bash
+# 1. Pull latest
+git pull
+
+# 2. One-time setup — only if .kbexplorer/ is absent
+npx kbexplorer init --vendor
+
+# 3. Launch the dev server (opens http://localhost:5173)
+npx kbexplorer dev
+```
+
+**About step 2 (`init --vendor`):** it's an interactive wizard, but every prompt (owner / repo / branch / title / content mode / visual mode / theme) is pre-filled with values auto-detected from your git remote and branch — just press **Enter** through all of them to accept the defaults. It vendors a one-time copy of the template into `.kbexplorer/`, runs `npm install` there, and writes `.env.kbexplorer` (gitignored). Run it once per checkout; skip it if `.kbexplorer/` already exists.
+
+**About step 3 (`dev`):** it regenerates the manifest from local `content/`, the file tree, the README, and best-effort `gh` issues/PRs/commits, then starts Vite with `VITE_KB_LOCAL=true` and `--open`. The authored content in `content/` is what renders.
+
+**How it works / why:** `dev` requires `.kbexplorer/` because this repo isn't the template itself (its `package.json` name is `@anokye-labs/kbexplorer`, not `kbexplorer`/`kbexplorer-template`). If you hit ``kbexplorer not found. Run `kbexplorer init` first``, run the init step above.
+
+- **Production build:** `npx kbexplorer build` (outputs to `dist/kb/`).
+- **Headless verification:** with the dev server running, `node scripts/verify-self-kb.js` drives a headless browser and writes screenshots to `dist-screenshots/`.
+
+See the [README](README.md) "Dogfood" section for more detail.
+
 ## Branch Protection Rules
 
 The following rules are enforced on this repository's default branch:
