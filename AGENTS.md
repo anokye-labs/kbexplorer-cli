@@ -28,6 +28,87 @@ npx kbexplorer dev
 
 See the [README](README.md) "Dogfood" section for more detail.
 
+## Dogfooding kbexplorer on This Repo
+
+This repo is its own test bed: the authored pages in `content/` describe the CLI itself, and the dev server above renders them. The full content lifecycle is driven by the CLI commands below. **Every command here can be — and should be — run against this checkout to verify changes.**
+
+### Prerequisite: Copilot CLI (for fuzzy phases)
+
+`generate` and `derive` shell out to **GitHub Copilot CLI programmatic mode** (`copilot -p`) for their LLM phases. Install it from <https://docs.github.com/copilot/how-tos/copilot-cli> and confirm it's on your `PATH`:
+
+```bash
+copilot --version
+which copilot                 # or: Get-Command copilot   (PowerShell)
+```
+
+If the binary lives somewhere else, point the CLI at it with `KBEXPLORER_COPILOT_BIN=/full/path/to/copilot`. The deterministic commands (`scaffold`, `audit`, `affected`, `links`, `manifest`, `dev`, `build`, and `derive --check`) do **not** need Copilot and run fully offline.
+
+Before invoking any fuzzy phase, preview the exact command the CLI will spawn — never run a Copilot-backed phase blind:
+
+```bash
+npx kbexplorer generate --dry-run
+npx kbexplorer derive docs/samples/platform-squad.md --dry-run
+```
+
+The runtime adapter, router, and error codes (`BINARY_MISSING`, `TIMEOUT`, `NONZERO_EXIT`, `SPAWN_FAILED`, `INVALID_INPUT`) are documented in [`docs/copilot-runtime.md`](docs/copilot-runtime.md).
+
+### Content Lifecycle Commands
+
+Run all of these from the repo root (no `init` needed for the deterministic ones):
+
+| Command | When to use | Needs Copilot? |
+|---|---|---|
+| `npx kbexplorer generate` | First-time content bootstrap, or after a structural repo change. Drives `copilot -p` to build `catalogue.json`, then deterministically transforms it into `content/` + manifest. Use `--refresh` to force a re-run, `--no-agent` to only run the transform. | Yes (unless `--no-agent`) |
+| `npx kbexplorer scaffold <slug> --cluster <id> [--parent <id>] [--title …]` | Add **one** new page with valid frontmatter. Edit the body by hand or hand off to a writer playbook. | No |
+| `npx kbexplorer derive <source...>` | Extract entities/relationships from `.docx`/prose `.md`/`.txt` into committed `content/derived/*.jsonld`. Idempotent — re-running on an unchanged source reuses the embedded extraction and re-emits **byte-identical** output without calling the LLM. | Yes (first emit per source) |
+| `npx kbexplorer derive <source...> --check` | CI drift gate. Pass the **source** files (never the `.jsonld` outputs); exits non-zero if any artifact is missing, its source changed, or a fresh emit differs from the committed bytes. | No |
+| `npx kbexplorer affected <git-ref>` | After a code change, list which content nodes cite the changed files (`--json` for tooling). Tells you what to refresh. | No |
+| `npx kbexplorer audit` | Hard structural lint — duplicate ids, broken parents, parent cycles, dead connections, missing required frontmatter, undeclared clusters. **CI-grade**, exits non-zero on errors. `--json` for CI. | No |
+| `npx kbexplorer links` | Soft graph-health report — orphans, weak clusters, coverage gaps. Advisory only. | No |
+| `npx kbexplorer manifest` | Regenerate `public/manifest/local.json` from current `content/` without starting Vite. | No |
+| `npx kbexplorer update` | Pull the latest template version into `.kbexplorer/`. For vendored installs it never silently clobbers — `--force` backs up the current copy to `.kbexplorer.backup-<ts>`. | No |
+
+### Keeping the Repo Content Up to Date (recommended loop)
+
+After any code change in `src/`, `bin/`, or `scripts/`:
+
+```bash
+# 1. Find which content nodes cite the changed files
+npx kbexplorer affected HEAD~1
+
+# 2. Refresh those pages. For a single page, follow the writer playbook at
+#    .github/skills/kbexplorer/references/writer-playbook.md (or update-node.md).
+#    For multi-page diff-driven refresh, see incremental-refresh.md.
+
+# 3. If a .docx or prose source under a derived path changed, refresh its artifact
+npx kbexplorer derive path/to/source.md --refresh
+
+# 4. Validate structurally and as a graph
+npx kbexplorer audit
+npx kbexplorer links
+npx kbexplorer derive content/derived-sources/*.md --check   # drift gate
+
+# 5. Confirm it renders
+npx kbexplorer dev
+node scripts/verify-self-kb.js   # in a second shell while dev is running
+```
+
+The `derive --check` and `audit` commands are the two gates safe to run unattended in CI — neither calls Copilot, both exit non-zero on drift/structural errors.
+
+### Testing the CLI Itself
+
+The CLI is fully hermetic to test — the Copilot binary is stubbed via an injectable `spawn` seam and a real `tests/fixtures/mock-copilot.mjs` process. No live LLM is ever required by the test suite.
+
+```bash
+npm test                          # 194 tests, runs in ~1.5s
+node bin/cli.js --help            # smoke-check command surface
+node bin/cli.js audit             # CI-grade structural gate over content/
+node bin/cli.js generate --dry-run    # prints the exact `copilot -p …` argv
+node bin/cli.js derive docs/samples/platform-squad.md --check   # deterministic drift gate
+```
+
+If you change Copilot-runtime behaviour, also run a real `copilot -p` smoke through the adapter (with `--allow-all-tools` or scoped `--allow-tool`) and confirm the dogfood content still renders via `scripts/verify-self-kb.js`. Anything you can't verify locally — for example because the template isn't installed in your worktree — must be called out explicitly when you hand back control (see "When You Cannot Verify" below).
+
 ## Branch Protection Rules
 
 The following rules are enforced on this repository's default branch:
