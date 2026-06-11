@@ -21,9 +21,11 @@ connections:
     description: "single-node creation"
   - to: "cmd-links"
     description: "graph health"
+  - to: "cmd-derive"
+    description: "unstructured → JSON-LD entities"
 ---
 
-Ten verbs cover the full kbexplorer lifecycle. Each one is a thin orchestration
+Eleven verbs cover the full kbexplorer lifecycle. Each one is a thin orchestration
 module in `src/commands/`; the heavy lifting lives in [`src/lib/`](libs-overview).
 
 ## Lifecycle phases

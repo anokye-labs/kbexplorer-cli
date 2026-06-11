@@ -46,9 +46,11 @@ npx kbexplorer init --vendor   # one-time: vendors the explorer into .kbexplorer
 npx kbexplorer dev             # build the manifest, start Vite at :5173
 ```
 
-Open <http://localhost:5173>. You should see a graph of 23 nodes covering
+Open <http://localhost:5173>. You should see a graph of 27 nodes covering
 the CLI router, every command, the lib/ heart, the agents, the skill,
-install modes, and the zero-dependency design.
+install modes, the zero-dependency design, and the **derivation & contract**
+subsystem (the `derive` command, the programmatic-mode runtime, and the engine
+node-type contract).
 
 To regression-check the dogfood loop end-to-end:
 
@@ -149,8 +151,9 @@ npx kbexplorer derive docs/org-chart.docx --dry-run
 npx kbexplorer derive docs/*.docx --out content/derived
 
 # CI drift gate: fail (non-zero exit) if any committed artifact is stale.
+# Pass the SAME source files you derived from — never the .jsonld outputs.
 # Never calls the LLM — purely deterministic.
-npx kbexplorer derive content/derived/*.jsonld --check
+npx kbexplorer derive docs/*.docx --check
 
 # Force re-extraction even when a fresh artifact already exists
 npx kbexplorer derive docs/org-chart.docx --refresh
@@ -164,6 +167,17 @@ six-relation taxonomy `leads | staffs | reports-to | structural | derived |
 deprecated`. The committed artifact also embeds a KBNode mirror (`entityType` +
 `jsonld` + `data`) and a reversible `source.ref` back to the originating
 document.
+
+These fields are exactly the **engine node-type contract** published by the
+template (Epic 1 / F1 — see
+[kbexplorer-template#148](https://github.com/anokye-labs/kbexplorer-template/issues/148)).
+The engine renders a `structured` node by resolving its `entityType` against an
+open node-type registry: spine kinds such as `person`, `squad`, `workstream`,
+`mission`, `priority`, `cycle`, and `org` get bespoke viewers, and any other
+`@type` falls back to a generic structured view — so a derived artifact always
+renders without core edits. A worked end-to-end example (a `.docx` sentence →
+`kg://person/…` + a `leads` edge → a rendered node) lives in the dogfood KB at
+[`content/node-type-contract.md`](content/node-type-contract.md).
 
 **Idempotency & drift.** Artifacts are timestamp-free and serialized with sorted
 keys, so identical input yields **byte-identical** output. The artifact embeds

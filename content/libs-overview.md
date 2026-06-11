@@ -19,6 +19,8 @@ connections:
     description: "repo → manifest JSON; catalogue → content/*.md"
   - to: "lib-version"
     description: "remote tag / SHA lookups"
+  - to: "derivation-runtime"
+    description: "F7/F8 runtime + extraction libs (copilot-runtime, ingest, jsonld)"
 ---
 
 `src/lib/` is the **reusable heart** of kbexplorer-cli. Pure functions, no
@@ -50,5 +52,17 @@ Three libraries were added to support the lifecycle tooling:
   [audit](cmd-audit).
 - [lib-affected](lib-affected) — builds the citation index and computes
   diff-to-node mappings for [affected](cmd-affected).
+
+## The derivation libs (F7 / F8)
+
+The build-time [derivation subsystem](derivation-runtime) added a further set of
+pure libs, documented under [derivation-overview](derivation-overview):
+
+- `copilot-runtime.js` / `runtime-router.js` — the `copilot -p` adapter and the
+  deterministic-vs-fuzzy router.
+- `ingest.js` / `docx.js` — read `.docx` / prose / text into a normalized
+  document (zero-dep `.docx` unzip included).
+- `extract.js` / `jsonld.js` — fuzzy entity extraction and the deterministic,
+  canonical JSON-LD emitter + contract validator.
 
 <!-- Sources: src/lib/*.js -->
