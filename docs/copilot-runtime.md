@@ -186,3 +186,15 @@ The suite is **hermetic** — it never calls a live LLM:
 ```bash
 npm test
 ```
+
+## See also
+
+- **F8 build-time derivation** — `kbexplorer derive` reuses `runCopilot(...)`
+  through the router to turn `.docx`/prose into committed `*.jsonld`. See the
+  "Build-time Derivation" section of the [README](../README.md) and
+  `src/commands/derive.js`.
+- **Engine node-type contract** — derived artifacts conform to the template
+  engine's contract (Epic 1 / F1,
+  [kbexplorer-template#148](https://github.com/anokye-labs/kbexplorer-template/issues/148)):
+  `kg://` `@id` URNs, an open `@type`, and the six-relation taxonomy
+  `leads | staffs | reports-to | structural | derived | deprecated`.

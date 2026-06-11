@@ -26,6 +26,9 @@ clusters:
   infra:
     name: "Design & Infra"
     color: "#5A98A8"
+  derivation:
+    name: "Derivation & Contract"
+    color: "#FF6B35"
 
 visuals:
   mode: emoji

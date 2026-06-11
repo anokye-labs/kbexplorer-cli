@@ -1,0 +1,4 @@
+# Derived knowledge artifacts are byte-canonical (sorted keys, LF newlines, no
+# timestamps) so `kbexplorer derive --check` is deterministic. Pin them to LF so
+# autocrlf can't rewrite line endings on checkout and trip a false drift.
+*.jsonld text eol=lf

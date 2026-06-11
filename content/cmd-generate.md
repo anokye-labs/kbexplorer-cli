@@ -9,6 +9,8 @@ connections:
     description: "orchestrates the three agents"
   - to: "lib-manifest-transform"
     description: "transforms catalogue.json into content/*.md"
+  - to: "derivation-runtime"
+    description: "the architect step runs through copilot -p"
 ---
 
 `generate` runs the AI-assisted content pipeline. The agents do the writing;

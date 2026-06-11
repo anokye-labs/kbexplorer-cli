@@ -6,7 +6,7 @@ cluster: libs
 parent: home
 connections:
   - to: "commands-overview"
-    description: "dispatches the ten command modules"
+    description: "dispatches the eleven command modules"
   - to: "lib-detect-repo"
     description: "every command uses getAppRoot() under the hood"
 ---
@@ -22,7 +22,8 @@ exactly three things:
 
 That's it. No framework, no plugin system, no global state. A new command is
 wired up by adding one entry to the `COMMANDS` map plus a line to the help
-text — which is exactly how `audit`, `affected`, and `scaffold` were added.
+text — which is exactly how `audit`, `affected`, `scaffold`, and `derive` were
+added.
 
 ## Why so thin
 
@@ -33,7 +34,7 @@ That split lets `init` and `update` share `lib/version.js` without inheriting
 each other's concerns, and lets `audit` and `affected` reuse
 [`lib/frontmatter.js`](lib-frontmatter) without duplicating its parser.
 
-## The ten commands
+## The eleven commands
 
 | Verb | Module | What it does |
 |---|---|---|
@@ -47,5 +48,6 @@ each other's concerns, and lets `audit` and `affected` reuse
 | `audit` | [cmd-audit](cmd-audit) | Hard structural lint (CI-grade). |
 | `affected` | [cmd-affected](cmd-affected) | Diff → impacted nodes. |
 | `scaffold` | [cmd-scaffold](cmd-scaffold) | Create a single new node. |
+| `derive` | [cmd-derive](cmd-derive) | Unstructured docs → committed `*.jsonld`. |
 
 <!-- Sources: bin/cli.js, package.json -->

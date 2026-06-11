@@ -16,14 +16,16 @@ connections:
     description: "one skill, deep references library"
   - to: "zero-deps"
     description: "no runtime dependencies — by design"
+  - to: "derivation-overview"
+    description: "docx/prose → engine-contract JSON-LD"
 ---
 
 **kbexplorer-cli** is a zero-dependency Node.js CLI that turns any GitHub
 repository into a navigable, interactive **knowledge graph**. It installs the
 explorer web app into a host repo (as a git submodule or vendored copy), wires
-in a set of Copilot agents and a routing skill, and provides ten commands that
+in a set of Copilot agents and a routing skill, and provides eleven commands that
 cover the full content lifecycle — from `init` and `generate` through `audit`,
-`affected`, and `scaffold`.
+`affected`, `scaffold`, and `derive`.
 
 This knowledge base **dogfoods kbexplorer on its own source** — every node you
 see here is authored markdown that cites real files in this repository, and
@@ -34,6 +36,7 @@ the graph is regenerated from the live repo each time you preview it.
 - New to the CLI? Open [commands-overview](commands-overview) and pick a verb.
 - Curious how it works? See [cli-router](cli-router) and [libs-overview](libs-overview).
 - Writing content yourself? See [skill-overview](skill-overview).
+- Deriving entities from docs? See [derivation-overview](derivation-overview).
 - Standardizing kbexplorer across an org? Start with [install-modes](install-modes).
 
 ## The two-seam design
