@@ -13,7 +13,7 @@
  */
 
 import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -77,6 +77,10 @@ function printUsage() {
     --refresh, --force         Re-run fuzzy extraction even if a fresh artifact exists
     --dry-run                  Print the assembled copilot command + planned outputs
 
+  dev options:
+    --no-watch                 Don't watch host content for changes (one-shot manifest)
+    (other args forwarded to Vite, e.g. --host, --port)
+
   Examples:
     npx kbexplorer init
     npx kbexplorer init --template https://github.com/my-org/my-template.git
@@ -95,7 +99,8 @@ if (!command || command === '--help' || command === '-h') {
 }
 
 if (command === '--version' || command === '-v') {
-  const pkg = await import(resolve(__dirname, '..', 'package.json'), { with: { type: 'json' } });
+  const pkgUrl = pathToFileURL(resolve(__dirname, '..', 'package.json')).href;
+  const pkg = await import(pkgUrl, { with: { type: 'json' } });
   console.log(pkg.default.version);
   process.exit(0);
 }

@@ -180,7 +180,13 @@ ${clusterYaml}
   for (const node of nodes) {
     const emoji = node.emoji || inferIcon(node.title, node.cluster);
     const connections = (node.connections || [])
-      .map(c => `  - to: "${c.to}"\n    description: "${c.description}"`)
+      .map((c) => {
+        const to = typeof c === 'string' ? c : c?.to;
+        const description = typeof c === 'string' ? '' : c?.description ?? '';
+        if (!to) return null;
+        return `  - to: "${to}"\n    description: "${description}"`;
+      })
+      .filter(Boolean)
       .join('\n');
 
     const frontmatter = [

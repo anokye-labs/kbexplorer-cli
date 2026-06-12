@@ -11,6 +11,7 @@ import { hasSubmodule, isTemplateRepo, isSubmoduleInstall, getSubmoduleUrl } fro
 import { getCurrentTag, getLatestTag, resolveHeadSha, checkoutRef, TEMPLATE_REPO } from '../lib/version.js';
 import { parseUpdateArgs } from '../lib/args.js';
 import { readSourceRecord, writeSourceRecord, classifyRef } from '../lib/source.js';
+import { patchTemplateManifestScript } from './init.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = resolve(__dirname, '..', 'assets');
@@ -124,6 +125,7 @@ async function updateSubmodule(cwd, record, force) {
       checkoutRef(record.ref, cwd);
       execSync('git add .kbexplorer', { cwd, stdio: 'pipe' });
       execSync('npm install --no-audit --no-fund', { cwd: submodulePath, stdio: 'inherit' });
+      patchTemplateManifestScript(submodulePath);
       writeSourceRecord(cwd, { ...record, template: url, resolvedCommit: resolveHeadSha(submodulePath) });
       console.log(`  ✓ Updated to latest ${record.ref}`);
     } catch (err) {
@@ -172,6 +174,7 @@ async function updateSubmodule(cwd, record, force) {
     checkoutRef(latestTag, cwd);
     execSync('git add .kbexplorer', { cwd, stdio: 'pipe' });
     execSync('npm install --no-audit --no-fund', { cwd: submodulePath, stdio: 'inherit' });
+    patchTemplateManifestScript(submodulePath);
     writeSourceRecord(cwd, {
       ...record,
       template: url,
@@ -255,6 +258,7 @@ async function updateVendor(cwd, record, force) {
   } catch {
     console.warn('  ⚠ npm install failed — run manually in .kbexplorer/');
   }
+  patchTemplateManifestScript(resolve(cwd, '.kbexplorer'));
   writeSourceRecord(cwd, {
     ...record,
     template: url,

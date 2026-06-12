@@ -186,9 +186,9 @@ export default async function generate(args = []) {
           if (existsSync(manifestScript)) {
             console.log('📋 Regenerating manifest...');
             execSync(`node "${manifestScript}"`, {
-              cwd,
+              cwd: appRoot,
               stdio: 'inherit',
-              env: { ...process.env, VITE_KB_LOCAL: 'true' },
+              env: { ...process.env, VITE_KB_LOCAL: 'true', VITE_KB_HOST_ROOT: cwd },
             });
           }
         },
