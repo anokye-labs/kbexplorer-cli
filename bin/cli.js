@@ -77,6 +77,10 @@ function printUsage() {
     --refresh, --force         Re-run fuzzy extraction even if a fresh artifact exists
     --dry-run                  Print the assembled copilot command + planned outputs
 
+  dev options:
+    --no-watch                 Don't watch host content for changes (one-shot manifest)
+    (other args forwarded to Vite, e.g. --host, --port)
+
   Examples:
     npx kbexplorer init
     npx kbexplorer init --template https://github.com/my-org/my-template.git
