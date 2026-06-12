@@ -155,6 +155,7 @@ export function buildClaudeArgs(options = {}) {
     allowTools,
     denyTools,
     allowAllTools = false,
+    allowAll = false,
     model,
     addDirs,
     extraArgs,
@@ -166,20 +167,16 @@ export function buildClaudeArgs(options = {}) {
     });
   }
 
-  if (allowAllTools) {
-    throw new RuntimeAdapterError('Claude adapter does not support `allowAllTools`.', {
-      code: RuntimeErrorCode.INVALID_INPUT,
-    });
-  }
-  if (asArray(denyTools).filter(Boolean).length > 0) {
-    throw new RuntimeAdapterError('Claude adapter does not support `denyTools`.', {
-      code: RuntimeErrorCode.INVALID_INPUT,
-    });
-  }
-
   const args = ['-p', prompt, '--output-format', 'json'];
+  // Claude has real equivalents for copilot's permission flags — map rather
+  // than refuse: `--allow-all-tools`/`--allow-all` → --dangerously-skip-permissions,
+  // `--deny-tool` → --disallowedTools. derive's default runtime options set
+  // allowAllTools, so refusing here would make the adapter unusable.
+  if (allowAll || allowAllTools) args.push('--dangerously-skip-permissions');
   const allowedTools = asArray(allowTools).map(normalizeClaudeTool).filter(Boolean);
   if (allowedTools.length > 0) args.push('--allowedTools', allowedTools.join(','));
+  const disallowedTools = asArray(denyTools).map(normalizeClaudeTool).filter(Boolean);
+  if (disallowedTools.length > 0) args.push('--disallowedTools', disallowedTools.join(','));
   if (model) args.push('--model', model);
   for (const dir of asArray(addDirs)) args.push('--add-dir', dir);
   for (const extra of asArray(extraArgs)) args.push(extra);
@@ -197,14 +194,15 @@ export function buildCustomArgs(options = {}) {
     allowTools,
     denyTools,
     allowAllTools = false,
+    allowAll = false,
   } = options;
   if (typeof prompt !== 'string' || prompt.length === 0) {
     throw new RuntimeAdapterError('A non-empty `prompt` is required to build custom runtime args.', {
       code: RuntimeErrorCode.INVALID_INPUT,
     });
   }
-  if (allowAllTools) {
-    throw new RuntimeAdapterError('Custom adapter does not support `allowAllTools`.', {
+  if (allowAllTools || allowAll) {
+    throw new RuntimeAdapterError(`Custom adapter does not support \`${allowAllTools ? 'allowAllTools' : 'allowAll'}\`.`, {
       code: RuntimeErrorCode.INVALID_INPUT,
     });
   }
@@ -315,6 +313,7 @@ export function createCopilotAdapter() {
       toolAllowlist: true,
       toolDenylist: true,
       allowAllTools: true,
+      allowAll: true,
       structuredOutput: true,
       stdinInput: true,
     }),
@@ -335,10 +334,13 @@ export function createClaudeAdapter() {
         envVar: CLAUDE_BIN_ENV,
         defaultBinary: DEFAULT_CLAUDE_BINARY,
       }),
+    // denyTools → --disallowedTools; allowAllTools/allowAll →
+    // --dangerously-skip-permissions (see buildClaudeArgs).
     capabilities: Object.freeze({
       toolAllowlist: true,
-      toolDenylist: false,
-      allowAllTools: false,
+      toolDenylist: true,
+      allowAllTools: true,
+      allowAll: true,
       structuredOutput: true,
       stdinInput: false,
     }),
@@ -364,6 +366,7 @@ export function createCustomAdapter(config = {}) {
       toolAllowlist: false,
       toolDenylist: false,
       allowAllTools: false,
+      allowAll: false,
       structuredOutput: outputFormat === 'jsonl',
       stdinInput: false,
     }),
@@ -616,6 +619,11 @@ function assertTaskCapabilities(adapter, task, errorClass) {
   const capabilities = adapter.capabilities ?? {};
   if (task.allowAllTools && !capabilities.allowAllTools) {
     throw new errorClass(`${titleCase(adapter.name)} adapter does not support \`allowAllTools\`.`, {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+  if (task.allowAll && !capabilities.allowAll) {
+    throw new errorClass(`${titleCase(adapter.name)} adapter does not support \`allowAll\`.`, {
       code: RuntimeErrorCode.INVALID_INPUT,
     });
   }

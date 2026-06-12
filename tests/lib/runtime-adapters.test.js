@@ -87,10 +87,17 @@ describe('claude adapter contract', () => {
     assert.strictEqual(parsed.events.length, 1);
   });
 
-  it('rejects unsupported tool restrictions', () => {
+  it('maps denyTools to --disallowedTools', () => {
     const adapter = createClaudeAdapter();
-    assert.throws(() => adapter.buildArgs({ prompt: 'audit', denyTools: ['shell(rm -rf /)'] }), /denyTools/);
-    assert.throws(() => adapter.buildArgs({ prompt: 'audit', allowAllTools: true }), /allowAllTools/);
+    const args = adapter.buildArgs({ prompt: 'audit', denyTools: ['shell(rm)'] });
+    assert.deepStrictEqual(args, ['-p', 'audit', '--output-format', 'json', '--disallowedTools', 'Bash(rm:*)']);
+  });
+
+  it('maps allowAllTools and allowAll to --dangerously-skip-permissions', () => {
+    const adapter = createClaudeAdapter();
+    for (const task of [{ prompt: 'x', allowAllTools: true }, { prompt: 'x', allowAll: true }]) {
+      assert.deepStrictEqual(adapter.buildArgs(task), ['-p', 'x', '--output-format', 'json', '--dangerously-skip-permissions']);
+    }
   });
 });
 
@@ -113,6 +120,7 @@ describe('custom adapter contract', () => {
     assert.throws(() => adapter.buildArgs({ prompt: 'x', allowTools: ['shell(git)'] }), /allowTools/);
     assert.throws(() => adapter.buildArgs({ prompt: 'x', denyTools: ['shell(rm -rf /)'] }), /denyTools/);
     assert.throws(() => adapter.buildArgs({ prompt: 'x', allowAllTools: true }), /allowAllTools/);
+    assert.throws(() => adapter.buildArgs({ prompt: 'x', allowAll: true }), /allowAll/);
   });
 });
 
