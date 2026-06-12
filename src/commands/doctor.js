@@ -13,17 +13,16 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { homedir } from 'node:os';
+import { resolve, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import { loadRuntimeConfig, resolveRuntime, RUNTIME_ENV, RuntimeConfigError } from '../lib/runtime-config.js';
+import { loadRuntimeConfig, resolveRuntime, RUNTIME_ENV } from '../lib/runtime-config.js';
 import { detectConfiguredMcpServers } from '../lib/mcp-preflight.js';
 import { readSourceRecord, SOURCE_FILE, classifyRef } from '../lib/source.js';
-import { isAdapterAvailable, resolveBinary, COPILOT_BIN_ENV, CLAUDE_BIN_ENV } from '../lib/copilot-runtime.js';
-import { getSubmoduleUrl } from '../lib/detect-repo.js';
+import { isAdapterAvailable, resolveBinary } from '../lib/copilot-runtime.js';
+import { getSubmoduleUrl, getAppRoot } from '../lib/detect-repo.js';
+import { manifestOutPath } from './dev.js';
 import { parseDoctorArgs } from '../lib/args.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -107,11 +106,9 @@ function checkRuntime({ flag, config, env, spawnSync: spawnSyncImpl = spawnSync 
 
   // Resolve the adapter
   let adapter;
-  let resolveError = null;
   try {
     adapter = resolveRuntime({ flag, config, env });
   } catch (err) {
-    resolveError = err;
     checks.push(fail('runtime.resolve', `Failed to resolve runtime adapter: ${err.message}`));
     return { checks, adapter: null, config };
   }
@@ -385,14 +382,16 @@ function checkEnvironment({ cwd, env, spawnSync: spawnSyncImpl = spawnSync }) {
     checks.push(warn('env.content-dir', `content/ directory not found at ${contentDir}`));
   }
 
-  // Manifest freshness: if manifest.json exists, check generatedAt vs HEAD
-  const manifestPath = resolve(cwd, 'content', 'manifest.json');
-  if (existsSync(manifestPath)) {
+  // Manifest freshness: the generated manifest lives in the template app at
+  // <appRoot>/src/generated/repo-manifest.json (see manifestOutPath in dev.js).
+  const appRoot = getAppRoot(cwd);
+  const manifestPath = appRoot ? manifestOutPath(appRoot) : null;
+  if (manifestPath && existsSync(manifestPath)) {
     try {
       const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
       const generatedAt = manifest?.generatedAt;
       if (!generatedAt) {
-        checks.push(warn('env.manifest', 'content/manifest.json present but has no generatedAt field'));
+        checks.push(warn('env.manifest', 'repo-manifest.json present but has no generatedAt field'));
       } else {
         // Try to get the HEAD commit timestamp
         const headTime = getHeadCommitTime(cwd, spawnSyncImpl);
@@ -402,17 +401,17 @@ function checkEnvironment({ cwd, env, spawnSync: spawnSyncImpl = spawnSync }) {
           // If manifest is older than HEAD by more than 5 min, warn
           if (headMs - generatedMs > 5 * 60 * 1000) {
             checks.push(
-              warn('env.manifest', `content/manifest.json may be stale (generated ${generatedAt}, HEAD is newer)`),
+              warn('env.manifest', `repo-manifest.json may be stale (generated ${generatedAt}, HEAD is newer)`),
             );
           } else {
-            checks.push(pass('env.manifest', `content/manifest.json up to date (generated ${generatedAt})`));
+            checks.push(pass('env.manifest', `repo-manifest.json up to date (generated ${generatedAt})`));
           }
         } else {
-          checks.push(pass('env.manifest', `content/manifest.json present (generated ${generatedAt})`));
+          checks.push(pass('env.manifest', `repo-manifest.json present (generated ${generatedAt})`));
         }
       }
     } catch {
-      checks.push(warn('env.manifest', 'content/manifest.json present but could not be parsed'));
+      checks.push(warn('env.manifest', 'repo-manifest.json present but could not be parsed'));
     }
   }
   // If manifest doesn't exist, no check needed (not an error — user may not have run generate yet)

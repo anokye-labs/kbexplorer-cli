@@ -662,11 +662,18 @@ describe('checkEnvironment — content dir', () => {
 });
 
 describe('checkEnvironment — manifest freshness', () => {
+  // The manifest lives in the template app at <appRoot>/src/generated/repo-manifest.json;
+  // getAppRoot(cwd) finds the app via .kbexplorer/package.json.
+  function fixtureManifest(cwd, manifest) {
+    writeJson(join(cwd, '.kbexplorer', 'package.json'), { name: 'kbexplorer' });
+    writeJson(join(cwd, '.kbexplorer', 'src', 'generated', 'repo-manifest.json'), manifest);
+  }
+
   it('emits pass when manifest has recent generatedAt', () => {
     withTempDir((cwd) => {
       mkdirSync(join(cwd, 'content'));
       const now = new Date().toISOString();
-      writeJson(join(cwd, 'content', 'manifest.json'), { generatedAt: now });
+      fixtureManifest(cwd, { generatedAt: now });
       // spawnSync for git log returns a recent timestamp
       const spawnSync = fakeSpawnRouter({
         git: (cmd, args) => {
@@ -689,7 +696,7 @@ describe('checkEnvironment — manifest freshness', () => {
       mkdirSync(join(cwd, 'content'));
       // Manifest generated 1 hour ago
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      writeJson(join(cwd, 'content', 'manifest.json'), { generatedAt: oneHourAgo });
+      fixtureManifest(cwd, { generatedAt: oneHourAgo });
       // HEAD commit is "now"
       const now = new Date().toISOString();
       const spawnSync = fakeSpawnRouter({
