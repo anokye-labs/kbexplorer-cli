@@ -78,6 +78,7 @@ describe('parseGenerateArgs', () => {
       refresh: false,
       dryRun: false,
       runtime: null,
+      skipPreflight: false,
       help: false,
       unknown: [],
     });
@@ -131,6 +132,7 @@ describe('parseDeriveArgs', () => {
       timeout: null,
       dryRun: false,
       runtime: null,
+      skipPreflight: false,
       help: false,
       unknown: [],
     });
@@ -157,5 +159,17 @@ describe('parseDeriveArgs', () => {
     const out = parseDeriveArgs(['--bogus', 'a.docx']);
     assert.deepStrictEqual(out.unknown, ['--bogus']);
     assert.deepStrictEqual(out.sources, ['a.docx']);
+  });
+
+  it('parses --skip-preflight flag', () => {
+    assert.strictEqual(parseDeriveArgs(['--skip-preflight']).skipPreflight, true);
+    assert.strictEqual(parseDeriveArgs([]).skipPreflight, false);
+  });
+});
+
+describe('--skip-preflight in parseGenerateArgs', () => {
+  it('parses --skip-preflight flag', () => {
+    assert.strictEqual(parseGenerateArgs(['--skip-preflight']).skipPreflight, true);
+    assert.strictEqual(parseGenerateArgs([]).skipPreflight, false);
   });
 });

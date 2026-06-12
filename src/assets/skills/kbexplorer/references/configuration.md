@@ -207,3 +207,47 @@ orthogonal to runtime selection:
 |---------|---------|
 | `KBEXPLORER_COPILOT_BIN` | `copilot` |
 | `KBEXPLORER_CLAUDE_BIN` | `claude` |
+
+### MCP Server Requirements (`runtime.mcp`)
+
+Declare which MCP servers the pipeline depends on. The CLI verifies these are
+configured **before** any LLM call or partial write; a missing required server
+exits non-zero with an actionable message. Valid for any agent.
+
+```jsonc
+{
+  "runtime": {
+    "agent": "copilot",
+    "mcp": {
+      "required": ["ado", "sharepoint-docs"],   // preflight fails if missing
+      "optional": ["org-chart"]                  // warning only; never fails
+    }
+  }
+}
+```
+
+Entries must be non-empty strings; duplicates within a list, or the same name
+in both lists, are rejected at config-load time.
+
+#### Detection by adapter (filesystem-only, no process spawning)
+
+| Adapter | Config checked |
+|---------|----------------|
+| `copilot` | `~/.copilot/mcp-config.json` (top-level `mcpServers` keys — the file Copilot CLI reads; no repo-local MCP config exists today) |
+| `claude` | `<repo>/.mcp.json` (`mcpServers` keys), then `~/.claude.json` project entries matching the current directory |
+| `custom` | Not detectable — declared servers are reported as unverifiable (warning, not failure) |
+
+Both adapters' config files use the same entry shape:
+
+```json
+{ "mcpServers": { "ado": { "command": "npx", "args": ["-y", "ado-mcp"] } } }
+```
+
+#### `--skip-preflight`
+
+Development escape hatch for `derive` and `generate`: bypasses the MCP check
+with a warning. Never use in CI or on shared branches.
+
+Preflight never runs on no-LLM paths: `derive --check`, `--dry-run`,
+`generate --no-agent`, or when every derive source is served from a fresh
+committed artifact.

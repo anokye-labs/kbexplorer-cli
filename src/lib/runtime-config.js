@@ -47,12 +47,16 @@ export class RuntimeConfigError extends Error {
  *   "argsTemplate": ["-p", "{prompt}"], // custom only; required when agent=custom; must contain {prompt}
  *   "outputFormat": "text" | "jsonl",   // optional; custom only
  *   "timeoutMs": 600000,                // optional
- *   "binaryEnv": "MY_AGENT_BIN"         // optional; custom only
+ *   "binaryEnv": "MY_AGENT_BIN",        // optional; custom only
+ *   "mcp": {                            // optional; any agent
+ *     "required": ["ado"],              // must be configured; preflight fails if missing
+ *     "optional": ["org-chart"]         // warn when missing, never fail
+ *   }
  * }
  * ```
  *
  * @param {unknown} runtime - The raw runtime block (parsed from JSON).
- * @returns {{ agent: string, command?: string, argsTemplate?: string[], outputFormat?: string, timeoutMs?: number, binaryEnv?: string }}
+ * @returns {{ agent: string, command?: string, argsTemplate?: string[], outputFormat?: string, timeoutMs?: number, binaryEnv?: string, mcp?: { required?: string[], optional?: string[] } }}
  * @throws {RuntimeConfigError} on invalid shape.
  */
 export function validateRuntimeBlock(runtime) {
@@ -62,7 +66,7 @@ export function validateRuntimeBlock(runtime) {
     );
   }
 
-  const { agent, command, argsTemplate, outputFormat, timeoutMs, binaryEnv } = runtime;
+  const { agent, command, argsTemplate, outputFormat, timeoutMs, binaryEnv, mcp } = runtime;
 
   // ── agent field ──────────────────────────────────────────────────────────────
   if (agent == null) {
@@ -168,6 +172,75 @@ export function validateRuntimeBlock(runtime) {
     }
   }
 
+  // ── mcp block ───────────────────────────────────────────────────────────────
+  let validatedMcp;
+  if (mcp != null) {
+    if (typeof mcp !== 'object' || Array.isArray(mcp)) {
+      throw new RuntimeConfigError(
+        'runtime.mcp must be a JSON object with optional "required" and "optional" arrays.',
+      );
+    }
+    const { required: mcpRequired, optional: mcpOptional } = mcp;
+
+    validatedMcp = {};
+
+    if (mcpRequired != null) {
+      if (!Array.isArray(mcpRequired)) {
+        throw new RuntimeConfigError(
+          'runtime.mcp.required must be an array of non-empty strings (e.g. ["ado", "sharepoint-docs"]).',
+        );
+      }
+      for (const entry of mcpRequired) {
+        if (typeof entry !== 'string' || !entry.trim()) {
+          throw new RuntimeConfigError(
+            `runtime.mcp.required entries must be non-empty strings. Got: ${JSON.stringify(entry)}.`,
+          );
+        }
+      }
+      // Check for duplicates within required
+      const reqSet = new Set(mcpRequired);
+      if (reqSet.size !== mcpRequired.length) {
+        throw new RuntimeConfigError(
+          'runtime.mcp.required contains duplicate server names.',
+        );
+      }
+      validatedMcp.required = mcpRequired;
+    }
+
+    if (mcpOptional != null) {
+      if (!Array.isArray(mcpOptional)) {
+        throw new RuntimeConfigError(
+          'runtime.mcp.optional must be an array of non-empty strings (e.g. ["org-chart"]).',
+        );
+      }
+      for (const entry of mcpOptional) {
+        if (typeof entry !== 'string' || !entry.trim()) {
+          throw new RuntimeConfigError(
+            `runtime.mcp.optional entries must be non-empty strings. Got: ${JSON.stringify(entry)}.`,
+          );
+        }
+      }
+      // Check for duplicates within optional
+      const optSet = new Set(mcpOptional);
+      if (optSet.size !== mcpOptional.length) {
+        throw new RuntimeConfigError(
+          'runtime.mcp.optional contains duplicate server names.',
+        );
+      }
+      validatedMcp.optional = mcpOptional;
+    }
+
+    // Check for overlap between required and optional
+    if (validatedMcp.required && validatedMcp.optional) {
+      const overlap = validatedMcp.required.filter((s) => validatedMcp.optional.includes(s));
+      if (overlap.length > 0) {
+        throw new RuntimeConfigError(
+          `runtime.mcp server names must not appear in both "required" and "optional". Duplicates: ${overlap.map((s) => JSON.stringify(s)).join(', ')}.`,
+        );
+      }
+    }
+  }
+
   return {
     agent: agentLower,
     ...(command != null ? { command } : {}),
@@ -175,6 +248,7 @@ export function validateRuntimeBlock(runtime) {
     ...(outputFormat != null ? { outputFormat } : {}),
     ...(timeoutMs != null ? { timeoutMs } : {}),
     ...(binaryEnv != null ? { binaryEnv } : {}),
+    ...(validatedMcp != null ? { mcp: validatedMcp } : {}),
   };
 }
 

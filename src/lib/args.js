@@ -56,13 +56,15 @@ export function parseInitArgs(args = []) {
  *   --refresh, --force         Re-run the agent even if catalogue.json exists.
  *   --dry-run                  Print the assembled `copilot -p` command; do not run.
  *   --runtime <name>           Override runtime adapter: "copilot" | "claude" | "custom".
+ *   --skip-preflight           Skip MCP preflight check (development escape hatch).
  *   --help, -h                 Show help.
  *
  * @param {string[]} args
  * @returns {{
  *   prompt: string|null, model: string|null, allowTools: string[],
  *   allowAllTools: boolean|null, timeout: number|null, noAgent: boolean,
- *   refresh: boolean, dryRun: boolean, runtime: string|null, help: boolean, unknown: string[]
+ *   refresh: boolean, dryRun: boolean, runtime: string|null,
+ *   skipPreflight: boolean, help: boolean, unknown: string[]
  * }}
  */
 export function parseGenerateArgs(args = []) {
@@ -76,6 +78,7 @@ export function parseGenerateArgs(args = []) {
     refresh: false,
     dryRun: false,
     runtime: null,
+    skipPreflight: false,
     help: false,
     unknown: [],
   };
@@ -113,6 +116,9 @@ export function parseGenerateArgs(args = []) {
       case '--runtime':
         out.runtime = args[++i] ?? null;
         break;
+      case '--skip-preflight':
+        out.skipPreflight = true;
+        break;
       case '--help':
       case '-h':
         out.help = true;
@@ -140,13 +146,15 @@ export function parseGenerateArgs(args = []) {
  *   --timeout <ms>             Time budget for the programmatic run.
  *   --dry-run                  Print the assembled copilot command + planned outputs; run nothing.
  *   --runtime <name>           Override runtime adapter: "copilot" | "claude" | "custom".
+ *   --skip-preflight           Skip MCP preflight check (development escape hatch).
  *   --help, -h                 Show help.
  *
  * @param {string[]} args
  * @returns {{
  *   sources: string[], out: string|null, context: string|null, check: boolean,
  *   refresh: boolean, model: string|null, allowTools: string[], allowAllTools: boolean|null,
- *   timeout: number|null, dryRun: boolean, runtime: string|null, help: boolean, unknown: string[]
+ *   timeout: number|null, dryRun: boolean, runtime: string|null,
+ *   skipPreflight: boolean, help: boolean, unknown: string[]
  * }}
  */
 export function parseDeriveArgs(args = []) {
@@ -162,6 +170,7 @@ export function parseDeriveArgs(args = []) {
     timeout: null,
     dryRun: false,
     runtime: null,
+    skipPreflight: false,
     help: false,
     unknown: [],
   };
@@ -201,6 +210,9 @@ export function parseDeriveArgs(args = []) {
         break;
       case '--runtime':
         out.runtime = args[++i] ?? null;
+        break;
+      case '--skip-preflight':
+        out.skipPreflight = true;
         break;
       case '--help':
       case '-h':
