@@ -173,8 +173,8 @@ function pickText(value) {
   if (Array.isArray(value)) return value.map(pickText).filter(Boolean).join('');
   if (value && typeof value === 'object') {
     if (typeof value.text === 'string') return value.text;
-    if (typeof value.content === 'string') return value.content;
     if (typeof value.content?.text === 'string') return value.content.text;
+    if (typeof value.content === 'string') return value.content;
     if (value.content != null) return pickText(value.content);
     if (value.delta != null) return pickText(value.delta);
     if (value.message != null) return pickText(value.message);
@@ -214,6 +214,7 @@ export function createCopilotAdapter() {
     name: 'copilot',
     defaultBinary: DEFAULT_COPILOT_BINARY,
     binaryEnv: COPILOT_BIN_ENV,
+    installUrl: 'https://docs.github.com/copilot/how-tos/copilot-cli',
     buildArgs: (task) => buildCopilotArgs(task),
     parseOutput: (stdout, stderr, task) => defaultParseOutput(stdout, stderr, task),
     isAvailable: (options = {}) =>
@@ -231,6 +232,7 @@ export function createClaudeAdapter() {
     name: 'claude',
     defaultBinary: DEFAULT_CLAUDE_BINARY,
     binaryEnv: CLAUDE_BIN_ENV,
+    installUrl: 'https://claude.ai/code',
     buildArgs: (task) => buildClaudeArgs(task),
     parseOutput: (stdout, stderr, task) => defaultParseOutput(stdout, stderr, { ...task, outputFormat: 'stream-json' }),
     isAvailable: (options = {}) =>
@@ -499,12 +501,7 @@ export function runCopilot(options = {}) {
 
 function toSpawnError(err, { binary, command, adapter, errorClass, envVar }) {
   if (err && err.code === 'ENOENT') {
-    const installHint =
-      adapter?.name === 'copilot'
-        ? 'https://docs.github.com/copilot/how-tos/copilot-cli'
-        : adapter?.name === 'claude'
-          ? 'https://claude.ai/code'
-          : null;
+    const installHint = adapter?.installUrl ?? null;
     const envHint = envVar ? `, or set ${envVar} to its full path.` : '.';
     return new errorClass(
       `${titleCase(adapter?.name ?? 'Runtime')} CLI not found (tried "${binary}").` +
