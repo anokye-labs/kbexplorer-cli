@@ -39,6 +39,7 @@ import {
   isAdapterAvailable,
   resolveBinary,
   RuntimeAdapterError,
+  titleCase,
 } from '../lib/copilot-runtime.js';
 
 const DEFAULT_OUT_DIR = 'content/derived';
@@ -284,14 +285,14 @@ export default async function derive(args = []) {
   // In derive (non-check) mode we may need the LLM — verify availability up front
   // unless every source can be served from a fresh committed artifact.
   if (!opts.check && !isAdapterAvailable(runtimeAdapter) && needsExtraction(opts, cwd, outDir)) {
-    console.error(`✗ ${capitalize(runtimeAdapter.name)} CLI not found on PATH.`);
+    console.error(`✗ ${titleCase(runtimeAdapter.name)} CLI not found on PATH.`);
     if (runtimeAdapter.installUrl) {
       console.error(`  Install it: ${runtimeAdapter.installUrl}`);
     }
     if (runtimeAdapter.binaryEnv) {
       console.error(`  Or set ${runtimeAdapter.binaryEnv} to its full path.`);
     }
-    console.error('  (Already-derived sources with unchanged input do not need Copilot.)');
+    console.error(`  (Already-derived sources with unchanged input do not need ${titleCase(runtimeAdapter.name)}.)`);
     process.exit(1);
   }
 
@@ -373,9 +374,4 @@ function short(hash) {
 
 function toPosix(p) {
   return String(p).split('\\').join('/');
-}
-
-function capitalize(value) {
-  const text = String(value ?? '');
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }

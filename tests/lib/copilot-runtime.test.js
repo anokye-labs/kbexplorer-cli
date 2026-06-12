@@ -58,7 +58,10 @@ describe('resolveBinary', () => {
     assert.strictEqual(resolveBinary({ binary: '/opt/copilot', env: {} }), '/opt/copilot');
   });
   it('honours the env override', () => {
-    assert.strictEqual(resolveBinary({ env: { [COPILOT_BIN_ENV]: '/x/cop' } }), '/x/cop');
+    assert.strictEqual(resolveBinary({ env: { [COPILOT_BIN_ENV]: '/x/cop' }, envVar: COPILOT_BIN_ENV }), '/x/cop');
+  });
+  it('does not read copilot env unless that env var is requested', () => {
+    assert.strictEqual(resolveBinary({ env: { [COPILOT_BIN_ENV]: '/x/cop' }, defaultBinary: 'claude' }), 'claude');
   });
 });
 
@@ -159,6 +162,40 @@ describe('runCopilot (injected spawn)', () => {
     assert.match(res.command, /-p hi/);
     // assembled argv reached spawn
     assert.deepStrictEqual(spawn.calls[0].args, ['-p', 'hi', '-s', '--no-color']);
+  });
+
+  it('keeps backward-compatible copilot argv assembly', async () => {
+    const spawn = fakeSpawn({ stdout: 'ok', code: 0 });
+    await runCopilot({
+      prompt: 'do it',
+      allowTools: ['shell(git)', 'write'],
+      denyTools: ['shell(git push)'],
+      outputFormat: 'json',
+      model: 'gpt-5.2',
+      silent: true,
+      addDirs: ['/tmp/a'],
+      logLevel: 'info',
+      extraArgs: ['--cloud'],
+      spawn,
+    });
+    assert.deepStrictEqual(spawn.calls[0].args, [
+      '-p',
+      'do it',
+      '--allow-tool=shell(git)',
+      '--allow-tool=write',
+      '--deny-tool=shell(git push)',
+      '--model',
+      'gpt-5.2',
+      '--output-format',
+      'json',
+      '-s',
+      '--no-color',
+      '--add-dir',
+      '/tmp/a',
+      '--log-level',
+      'info',
+      '--cloud',
+    ]);
   });
 
   it('parses JSONL events and invokes onEvent in json mode', async () => {

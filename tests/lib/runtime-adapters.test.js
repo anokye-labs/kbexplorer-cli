@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 
 const {
   createCopilotAdapter,
@@ -9,10 +12,17 @@ const {
   runRuntimeTask,
   RuntimeAdapterError,
   RuntimeErrorCode,
+  COPILOT_BIN_ENV,
+  CLAUDE_BIN_ENV,
 } = await import('../../src/lib/copilot-runtime.js');
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const CLAUDE_JSON_FIXTURE = readFileSync(resolve(__dirname, '..', 'fixtures', 'claude-json-result.json'), 'utf8');
+
 function fakeSpawn({ stdout = '', stderr = '', code = 0, signal = null, error = null } = {}) {
-  const fn = () => {
+  const calls = [];
+  const fn = (binary, args) => {
+    calls.push({ binary, args });
     const child = new EventEmitter();
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
@@ -29,7 +39,20 @@ function fakeSpawn({ stdout = '', stderr = '', code = 0, signal = null, error = 
     });
     return child;
   };
+  fn.calls = calls;
   return fn;
+}
+
+function hangingSpawn() {
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.stdin = { end: () => {} };
+  child.kill = () => {
+    setImmediate(() => child.emit('close', null, 'SIGTERM'));
+    return true;
+  };
+  return child;
 }
 
 describe('copilot adapter contract', () => {
@@ -45,17 +68,23 @@ describe('copilot adapter contract', () => {
 });
 
 describe('claude adapter contract', () => {
-  it('maps allow tools and enforces stream-json args', () => {
+  it('maps allow tools and uses json output args', () => {
     const adapter = createClaudeAdapter();
     const args = adapter.buildArgs({ prompt: 'audit', allowTools: ['shell(git status)', 'write'] });
-    assert.deepStrictEqual(args, ['-p', 'audit', '--output-format', 'stream-json', '--allowedTools', 'Bash(git status),Write']);
+    assert.deepStrictEqual(args, ['-p', 'audit', '--output-format', 'json', '--allowedTools', 'Bash(git status:*),Write']);
   });
 
-  it('parses stream-json assistant output', () => {
+  it('parses json output fixture with terminal result event', () => {
     const adapter = createClaudeAdapter();
-    const parsed = adapter.parseOutput('{"type":"assistant","content":"Hello Claude"}\n', '', {});
-    assert.strictEqual(parsed.response, 'Hello Claude');
+    const parsed = adapter.parseOutput(CLAUDE_JSON_FIXTURE, '', {});
+    assert.strictEqual(parsed.response, '{"entities":[{"id":"platform-team"}],"relationships":[]}');
     assert.strictEqual(parsed.events.length, 1);
+  });
+
+  it('rejects unsupported tool restrictions', () => {
+    const adapter = createClaudeAdapter();
+    assert.throws(() => adapter.buildArgs({ prompt: 'audit', denyTools: ['shell(rm -rf /)'] }), /denyTools/);
+    assert.throws(() => adapter.buildArgs({ prompt: 'audit', allowAllTools: true }), /allowAllTools/);
   });
 });
 
@@ -71,6 +100,12 @@ describe('custom adapter contract', () => {
     const parsed = adapter.parseOutput(' plain answer \n', '', {});
     assert.strictEqual(parsed.response, 'plain answer');
     assert.deepStrictEqual(parsed.events, []);
+  });
+
+  it('rejects unsupported tool controls', () => {
+    const adapter = createCustomAdapter({ argsTemplate: ['{prompt}'], outputFormat: 'text' });
+    assert.throws(() => adapter.buildArgs({ prompt: 'x', allowTools: ['shell(git)'] }), /allow\/deny/);
+    assert.throws(() => adapter.buildArgs({ prompt: 'x', allowAllTools: true }), /allowAllTools/);
   });
 });
 
@@ -90,6 +125,43 @@ describe('runRuntimeTask', () => {
     await assert.rejects(
       runRuntimeTask({ adapter, prompt: 'x', spawn }),
       (e) => e instanceof RuntimeAdapterError && e.code === RuntimeErrorCode.BINARY_MISSING,
+    );
+  });
+
+  it('uses adapter-specific binary env precedence', async () => {
+    const env = {
+      [COPILOT_BIN_ENV]: '/bin/copilot-only',
+      [CLAUDE_BIN_ENV]: '/bin/claude-specific',
+      KB_CUSTOM_BIN: '/bin/custom-specific',
+    };
+
+    const copilotSpawn = fakeSpawn({ stdout: 'ok', code: 0 });
+    await runRuntimeTask({ adapter: createCopilotAdapter(), prompt: 'x', env, spawn: copilotSpawn });
+    assert.strictEqual(copilotSpawn.calls[0].binary, '/bin/copilot-only');
+
+    const claudeSpawn = fakeSpawn({ stdout: '{"type":"result","result":"ok"}', code: 0 });
+    await runRuntimeTask({ adapter: createClaudeAdapter(), prompt: 'x', env, spawn: claudeSpawn });
+    assert.strictEqual(claudeSpawn.calls[0].binary, '/bin/claude-specific');
+
+    const customAdapter = createCustomAdapter({ defaultBinary: 'custom', binaryEnv: 'KB_CUSTOM_BIN' });
+    const customSpawn = fakeSpawn({ stdout: 'ok', code: 0 });
+    await runRuntimeTask({ adapter: customAdapter, prompt: 'x', env, spawn: customSpawn });
+    assert.strictEqual(customSpawn.calls[0].binary, '/bin/custom-specific');
+  });
+
+  it('times out through shared runtime path', async () => {
+    const adapter = createCustomAdapter({ defaultBinary: 'custom', argsTemplate: ['{prompt}'] });
+    await assert.rejects(
+      runRuntimeTask({ adapter, prompt: 'wait', spawn: hangingSpawn, timeoutMs: 25 }),
+      (e) => e instanceof RuntimeAdapterError && e.code === RuntimeErrorCode.TIMEOUT,
+    );
+  });
+
+  it('rejects unsupported options via adapter capabilities', async () => {
+    const adapter = createCustomAdapter({ defaultBinary: 'custom', argsTemplate: ['{prompt}'] });
+    assert.throws(
+      () => runRuntimeTask({ adapter, prompt: 'x', allowTools: ['shell(git)'] }),
+      (e) => e instanceof RuntimeAdapterError && e.code === RuntimeErrorCode.INVALID_INPUT,
     );
   });
 });

@@ -1,5 +1,16 @@
 import { spawn as nodeSpawn, spawnSync as nodeSpawnSync } from 'node:child_process';
 
+/**
+ * Programmatic runtime adapters for fuzzy tasks.
+ *
+ * Public API:
+ *   - createCopilotAdapter(), createClaudeAdapter(), createCustomAdapter()
+ *   - runRuntimeTask(options)
+ *   - runCopilot(options) // backward-compatible alias
+ *   - resolveBinary(), isAdapterAvailable(), isCopilotAvailable()
+ *   - RuntimeAdapterError / CopilotRuntimeError / RuntimeErrorCode
+ */
+
 export const DEFAULT_COPILOT_BINARY = 'copilot';
 export const DEFAULT_CLAUDE_BINARY = 'claude';
 
@@ -44,7 +55,6 @@ export function resolveBinary(options = {}) {
   return (
     options.binary ||
     (options.envVar ? env[options.envVar] : undefined) ||
-    env[COPILOT_BIN_ENV] ||
     options.defaultBinary ||
     DEFAULT_COPILOT_BINARY
   );
@@ -55,6 +65,24 @@ function asArray(value) {
   return Array.isArray(value) ? value : [value];
 }
 
+/**
+ * Build argv for `copilot -p`.
+ *
+ * @param {object} [options]
+ * @param {string} options.prompt
+ * @param {string|string[]} [options.allowTools]
+ * @param {string|string[]} [options.denyTools]
+ * @param {boolean} [options.allowAllTools=false]
+ * @param {boolean} [options.allowAll=false]
+ * @param {string} [options.model]
+ * @param {string} [options.outputFormat]
+ * @param {boolean} [options.silent=false]
+ * @param {boolean} [options.noColor=true]
+ * @param {string|string[]} [options.addDirs]
+ * @param {string} [options.logLevel]
+ * @param {string|string[]} [options.extraArgs]
+ * @returns {string[]}
+ */
 export function buildCopilotArgs(options = {}) {
   const {
     prompt,
@@ -112,16 +140,24 @@ function normalizeClaudeTool(spec) {
     websearch: 'WebSearch',
     web_search: 'WebSearch',
   }[kind] ?? kind;
-  return scope ? `${mapped}(${scope})` : mapped;
+  if (!scope) return mapped;
+  if (mapped === 'Bash') {
+   // Copilot scope semantics are prefix-oriented (shell(git)); Claude Bash scopes
+   // are command patterns, so widen to prefix pattern form (Bash(git:*)).
+   return scope.includes(':') ? `${mapped}(${scope})` : `${mapped}(${scope}:*)`;
+  }
+  return `${mapped}(${scope})`;
 }
 
 export function buildClaudeArgs(options = {}) {
   const {
-    prompt,
-    allowTools,
-    model,
-    addDirs,
-    extraArgs,
+   prompt,
+   allowTools,
+   denyTools,
+   allowAllTools = false,
+   model,
+   addDirs,
+   extraArgs,
   } = options;
 
   if (typeof prompt !== 'string' || prompt.length === 0) {
@@ -130,7 +166,18 @@ export function buildClaudeArgs(options = {}) {
     });
   }
 
-  const args = ['-p', prompt, '--output-format', 'stream-json'];
+  if (allowAllTools) {
+    throw new RuntimeAdapterError('Claude adapter does not support `allowAllTools`.', {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+  if (asArray(denyTools).filter(Boolean).length > 0) {
+    throw new RuntimeAdapterError('Claude adapter does not support `denyTools`.', {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+
+  const args = ['-p', prompt, '--output-format', 'json'];
   const allowedTools = asArray(allowTools).map(normalizeClaudeTool).filter(Boolean);
   if (allowedTools.length > 0) args.push('--allowedTools', allowedTools.join(','));
   if (model) args.push('--model', model);
@@ -144,9 +191,25 @@ function interpolateTemplate(token, values) {
 }
 
 export function buildCustomArgs(options = {}) {
-  const { prompt, argsTemplate = ['{prompt}'] } = options;
+  const {
+    prompt,
+    argsTemplate = ['{prompt}'],
+    allowTools,
+    denyTools,
+    allowAllTools = false,
+  } = options;
   if (typeof prompt !== 'string' || prompt.length === 0) {
     throw new RuntimeAdapterError('A non-empty `prompt` is required to build custom runtime args.', {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+  if (allowAllTools) {
+    throw new RuntimeAdapterError('Custom adapter does not support `allowAllTools`.', {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+  if (asArray(allowTools).filter(Boolean).length > 0 || asArray(denyTools).filter(Boolean).length > 0) {
+    throw new RuntimeAdapterError('Custom adapter does not support tool allow/deny lists.', {
       code: RuntimeErrorCode.INVALID_INPUT,
     });
   }
@@ -175,6 +238,7 @@ function pickText(value) {
     if (typeof value.text === 'string') return value.text;
     if (typeof value.content?.text === 'string') return value.content.text;
     if (typeof value.content === 'string') return value.content;
+    if (typeof value.result === 'string') return value.result;
     if (value.content != null) return pickText(value.content);
     if (value.delta != null) return pickText(value.delta);
     if (value.message != null) return pickText(value.message);
@@ -193,9 +257,10 @@ export function extractResponseText(events, rawStdout = '') {
       type.includes('message') ||
       type.includes('completion') ||
       type.includes('text') ||
-      type.includes('delta');
+      type.includes('delta') ||
+      type.includes('result');
     if (!looksAssistant) continue;
-    const text = pickText(ev.text ?? ev.content ?? ev.message ?? ev.delta ?? ev);
+    const text = pickText(ev.text ?? ev.content ?? ev.message ?? ev.delta ?? ev.result ?? ev);
     if (text) parts.push(text);
   }
   const joined = parts.join('').trim();
@@ -207,6 +272,22 @@ function defaultParseOutput(stdout, _stderr, options = {}) {
   const wantsJsonl = format === 'json' || format === 'jsonl' || format === 'stream-json';
   const events = wantsJsonl ? parseJsonl(stdout) : [];
   return { response: extractResponseText(events, stdout), events };
+}
+
+function parseClaudeOutput(stdout, stderr, task = {}) {
+  if (task.outputFormat === 'stream-json') {
+    return defaultParseOutput(stdout, stderr, { ...task, outputFormat: 'stream-json' });
+  }
+
+  const text = String(stdout ?? '').trim();
+  if (!text) return { response: '', events: [] };
+  try {
+    const parsed = JSON.parse(text);
+    const events = Array.isArray(parsed) ? parsed : [parsed];
+    return { response: extractResponseText(events, stdout), events };
+  } catch {
+    return defaultParseOutput(stdout, stderr, { ...task, outputFormat: 'jsonl' });
+  }
 }
 
 export function createCopilotAdapter() {
@@ -223,7 +304,13 @@ export function createCopilotAdapter() {
         envVar: COPILOT_BIN_ENV,
         defaultBinary: DEFAULT_COPILOT_BINARY,
       }),
-    capabilities: Object.freeze({ toolAllowlist: true, structuredOutput: true, stdinInput: true }),
+    capabilities: Object.freeze({
+      toolAllowlist: true,
+      toolDenylist: true,
+      allowAllTools: true,
+      structuredOutput: true,
+      stdinInput: true,
+    }),
   };
 }
 
@@ -234,14 +321,20 @@ export function createClaudeAdapter() {
     binaryEnv: CLAUDE_BIN_ENV,
     installUrl: 'https://claude.ai/code',
     buildArgs: (task) => buildClaudeArgs(task),
-    parseOutput: (stdout, stderr, task) => defaultParseOutput(stdout, stderr, { ...task, outputFormat: 'stream-json' }),
+    parseOutput: (stdout, stderr, task) => parseClaudeOutput(stdout, stderr, { ...task, outputFormat: 'json' }),
     isAvailable: (options = {}) =>
       probeBinary({
         ...options,
         envVar: CLAUDE_BIN_ENV,
         defaultBinary: DEFAULT_CLAUDE_BINARY,
       }),
-    capabilities: Object.freeze({ toolAllowlist: true, structuredOutput: true, stdinInput: false }),
+    capabilities: Object.freeze({
+      toolAllowlist: true,
+      toolDenylist: false,
+      allowAllTools: false,
+      structuredOutput: true,
+      stdinInput: false,
+    }),
   };
 }
 
@@ -262,6 +355,8 @@ export function createCustomAdapter(config = {}) {
       }),
     capabilities: Object.freeze({
       toolAllowlist: false,
+      toolDenylist: false,
+      allowAllTools: false,
       structuredOutput: outputFormat === 'jsonl',
       stdinInput: false,
     }),
@@ -349,6 +444,7 @@ export function runRuntimeTask(options = {}) {
       code: RuntimeErrorCode.INVALID_INPUT,
     });
   }
+  assertTaskCapabilities(adapter, task, errorClass);
 
   const binary = resolveBinary({
     binary: binaryOverride,
@@ -491,12 +587,41 @@ export function runRuntimeTask(options = {}) {
   });
 }
 
+/**
+ * Backward-compatible Copilot entrypoint.
+ *
+ * @param {object} [options]
+ * @returns {Promise<RuntimeResult>}
+ */
 export function runCopilot(options = {}) {
   return runRuntimeTask({
     adapter: copilotAdapter,
     errorClass: CopilotRuntimeError,
     ...options,
   });
+}
+
+function hasNonEmpty(values) {
+  return asArray(values).map((v) => String(v ?? '').trim()).filter(Boolean).length > 0;
+}
+
+function assertTaskCapabilities(adapter, task, errorClass) {
+  const capabilities = adapter.capabilities ?? {};
+  if (task.allowAllTools && !capabilities.allowAllTools) {
+    throw new errorClass(`${titleCase(adapter.name)} adapter does not support \`allowAllTools\`.`, {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+  if (hasNonEmpty(task.allowTools) && !capabilities.toolAllowlist) {
+    throw new errorClass(`${titleCase(adapter.name)} adapter does not support \`allowTools\`.`, {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+  if (hasNonEmpty(task.denyTools) && !capabilities.toolDenylist) {
+    throw new errorClass(`${titleCase(adapter.name)} adapter does not support \`denyTools\`.`, {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
 }
 
 function toSpawnError(err, { binary, command, adapter, errorClass, envVar }) {
@@ -516,7 +641,7 @@ function toSpawnError(err, { binary, command, adapter, errorClass, envVar }) {
   );
 }
 
-function titleCase(s) {
+export function titleCase(s) {
   const text = String(s ?? 'runtime');
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
