@@ -1,0 +1,6 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "duration_ms": 912,
+  "result": "{\"entities\":[{\"id\":\"platform-team\"}],\"relationships\":[]}"
+}

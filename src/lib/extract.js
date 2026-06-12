@@ -20,7 +20,7 @@
  *   ExtractionError                              actionable error with `.code`.
  */
 
-import { runCopilot } from './copilot-runtime.js';
+import { runRuntimeTask, copilotAdapter } from './copilot-runtime.js';
 
 /** The 6-relation taxonomy the model is asked to map relationships onto. */
 export const RELATION_VOCABULARY = Object.freeze([
@@ -188,7 +188,7 @@ function extractJsonObject(text) {
  *
  * @param {object} options
  * @param {object}   options.document               Ingested Document (lib/ingest).
- * @param {Function} [options.run=runCopilot]       Runtime fn returning a RuntimeResult.
+ * @param {Function} [options.run=runRuntimeTask]   Runtime fn returning a RuntimeResult.
  *        Injected in tests to avoid a live LLM.
  * @param {object}   [options.runtimeOptions]       Extra options merged into the run call
  *        (model, timeoutMs, allowTools, cwd, binary/binaryArgs/spawn for tests…).
@@ -196,7 +196,7 @@ function extractJsonObject(text) {
  * @returns {Promise<{ entities: object[], relationships: object[], raw: string }>}
  */
 export async function extractEntities(options = {}) {
-  const { document, run = runCopilot, runtimeOptions = {}, maxChars } = options;
+  const { document, run = runRuntimeTask, runtimeOptions = {}, maxChars } = options;
   if (!document || typeof document.text !== 'string') {
     throw new ExtractionError('extractEntities requires an ingested document with text.', {
       code: ExtractionErrorCode.INVALID_SHAPE,
@@ -204,12 +204,14 @@ export async function extractEntities(options = {}) {
   }
 
   const prompt = buildExtractionPrompt(document, { maxChars });
+  const { adapter = copilotAdapter, ...runtime } = runtimeOptions;
   const result = await run({
+    adapter,
     prompt,
     outputFormat: 'json',
     silent: true,
     noColor: true,
-    ...runtimeOptions,
+    ...runtime,
   });
 
   const responseText = pickResponseText(result);

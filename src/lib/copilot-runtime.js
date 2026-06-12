@@ -1,92 +1,63 @@
-/**
- * Copilot programmatic-mode runtime adapter.
- *
- * A thin, zero-dependency wrapper around GitHub Copilot CLI's non-interactive
- * mode (`copilot -p "<prompt>"`). It is the single substrate through which the
- * kbexplorer CLI runs *fuzzy* (LLM / agentic) work — complementing the
- * deterministic transform path. It assembles a scoped command, spawns the
- * `copilot` binary, captures stdout/stderr/exit code, and turns failures
- * (missing binary, timeout, non-zero exit) into actionable errors.
- *
- * ── Public API (the reusable surface other features, e.g. F8, build on) ──
- *   Constants:
- *     DEFAULT_COPILOT_BINARY  — the binary name resolved by default ("copilot").
- *     COPILOT_BIN_ENV         — env var that overrides the binary path.
- *     RuntimeErrorCode        — frozen map of error codes (see below).
- *   Errors:
- *     CopilotRuntimeError     — Error subclass carrying `.code` (RuntimeErrorCode)
- *                               and, when available, `.exitCode` / `.result`.
- *   Functions:
- *     resolveBinary(opts)        -> string         resolve the binary to invoke.
- *     buildCopilotArgs(opts)     -> string[]       pure argv assembly (no binary).
- *     isCopilotAvailable(opts)   -> boolean        is the binary runnable?
- *     parseJsonl(text)           -> object[]       parse JSONL (--output-format json).
- *     extractResponseText(ev,raw)-> string         best-effort final assistant text.
- *     runCopilot(opts)           -> Promise<Result> spawn + capture + structure.
- *
- * `runCopilot` accepts an injectable `spawn` implementation so the test suite is
- * fully hermetic (no live LLM, no network), and a `binaryArgs` seam so a mock
- * executable can be exercised through the *real* child_process path.
- */
-
 import { spawn as nodeSpawn, spawnSync as nodeSpawnSync } from 'node:child_process';
 
-export const DEFAULT_COPILOT_BINARY = 'copilot';
+/**
+ * Programmatic runtime adapters for fuzzy tasks.
+ *
+ * Public API:
+ *   - createCopilotAdapter(), createClaudeAdapter(), createCustomAdapter()
+ *   - runRuntimeTask(options)
+ *   - runCopilot(options) // backward-compatible alias
+ *   - resolveBinary(), isAdapterAvailable(), isCopilotAvailable()
+ *   - RuntimeAdapterError / CopilotRuntimeError / RuntimeErrorCode
+ */
 
-/** Environment variable that, when set, overrides the resolved binary path. */
+export const DEFAULT_COPILOT_BINARY = 'copilot';
+export const DEFAULT_CLAUDE_BINARY = 'claude';
+
+/** Environment variable that, when set, overrides the resolved Copilot binary path. */
 export const COPILOT_BIN_ENV = 'KBEXPLORER_COPILOT_BIN';
+/** Environment variable that, when set, overrides the resolved Claude binary path. */
+export const CLAUDE_BIN_ENV = 'KBEXPLORER_CLAUDE_BIN';
 
 /** Default time budget for a single programmatic run (10 minutes). */
 export const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
-/** Stable error codes attached to {@link CopilotRuntimeError}. */
+/** Stable error codes attached to runtime errors. */
 export const RuntimeErrorCode = Object.freeze({
-  /** The `copilot` binary could not be found / is not executable. */
   BINARY_MISSING: 'COPILOT_BINARY_MISSING',
-  /** The run exceeded its time budget and was terminated. */
   TIMEOUT: 'COPILOT_TIMEOUT',
-  /** The process exited with a non-zero status code. */
   NONZERO_EXIT: 'COPILOT_NONZERO_EXIT',
-  /** The process failed to spawn for a reason other than a missing binary. */
   SPAWN_FAILED: 'COPILOT_SPAWN_FAILED',
-  /** Required input (e.g. a prompt) was not supplied. */
   INVALID_INPUT: 'COPILOT_INVALID_INPUT',
 });
 
-/**
- * Error thrown by the runtime. Carries a stable `code` plus, where relevant,
- * the `exitCode` and the partial {@link RuntimeResult}.
- */
-export class CopilotRuntimeError extends Error {
-  /**
-   * @param {string} message
-   * @param {object} [info]
-   * @param {string} [info.code]
-   * @param {number|null} [info.exitCode]
-   * @param {object} [info.result]
-   * @param {Error} [info.cause]
-   */
+/** Error thrown by runtime adapters. */
+export class RuntimeAdapterError extends Error {
   constructor(message, { code = RuntimeErrorCode.SPAWN_FAILED, exitCode = null, result = null, cause } = {}) {
     super(message, cause ? { cause } : undefined);
-    this.name = 'CopilotRuntimeError';
+    this.name = 'RuntimeAdapterError';
     this.code = code;
     this.exitCode = exitCode;
     this.result = result;
   }
 }
 
-/**
- * Resolve the binary to invoke. Order of precedence:
- *   1. explicit `options.binary`
- *   2. `KBEXPLORER_COPILOT_BIN` env var
- *   3. {@link DEFAULT_COPILOT_BINARY}
- *
- * @param {{ binary?: string, env?: NodeJS.ProcessEnv }} [options]
- * @returns {string}
- */
+/** Backwards-compatible alias for existing callers/tests. */
+export class CopilotRuntimeError extends RuntimeAdapterError {
+  constructor(message, info) {
+    super(message, info);
+    this.name = 'CopilotRuntimeError';
+  }
+}
+
 export function resolveBinary(options = {}) {
   const env = options.env ?? process.env;
-  return options.binary || env[COPILOT_BIN_ENV] || DEFAULT_COPILOT_BINARY;
+  return (
+    options.binary ||
+    (options.envVar ? env[options.envVar] : undefined) ||
+    options.defaultBinary ||
+    DEFAULT_COPILOT_BINARY
+  );
 }
 
 function asArray(value) {
@@ -95,23 +66,21 @@ function asArray(value) {
 }
 
 /**
- * Assemble the argument vector (excluding the binary) for a `copilot -p` run.
- * Pure and deterministic — the same options always yield the same argv, which
- * makes command assembly trivial to unit-test.
+ * Build argv for `copilot -p`.
  *
- * @param {object} options
- * @param {string}   options.prompt                 Prompt text (required).
- * @param {string[]} [options.allowTools]           Tool specs → `--allow-tool=<spec>` (e.g. 'shell(git)').
- * @param {string[]} [options.denyTools]            Tool specs → `--deny-tool=<spec>`.
- * @param {boolean}  [options.allowAllTools=false]  Add `--allow-all-tools` (required for unattended tool use).
- * @param {boolean}  [options.allowAll=false]       Add `--allow-all` (tools + paths + urls).
- * @param {string}   [options.model]                `--model <model>`.
- * @param {('text'|'json')} [options.outputFormat]  `--output-format <fmt>`.
- * @param {boolean}  [options.silent=false]         `-s` (response only, no stats).
- * @param {boolean}  [options.noColor=true]         `--no-color` (clean capture).
- * @param {string[]} [options.addDirs]              `--add-dir <dir>` (repeatable).
- * @param {string}   [options.logLevel]             `--log-level <level>`.
- * @param {string[]} [options.extraArgs]            Verbatim pass-through (e.g. future flags).
+ * @param {object} [options]
+ * @param {string} options.prompt
+ * @param {string|string[]} [options.allowTools]
+ * @param {string|string[]} [options.denyTools]
+ * @param {boolean} [options.allowAllTools=false]
+ * @param {boolean} [options.allowAll=false]
+ * @param {string} [options.model]
+ * @param {string} [options.outputFormat]
+ * @param {boolean} [options.silent=false]
+ * @param {boolean} [options.noColor=true]
+ * @param {string|string[]} [options.addDirs]
+ * @param {string} [options.logLevel]
+ * @param {string|string[]} [options.extraArgs]
  * @returns {string[]}
  */
 export function buildCopilotArgs(options = {}) {
@@ -137,7 +106,6 @@ export function buildCopilotArgs(options = {}) {
   }
 
   const args = ['-p', prompt];
-
   if (allowAll) args.push('--allow-all');
   if (allowAllTools) args.push('--allow-all-tools');
   for (const spec of asArray(allowTools)) args.push(`--allow-tool=${spec}`);
@@ -149,41 +117,108 @@ export function buildCopilotArgs(options = {}) {
   for (const dir of asArray(addDirs)) args.push('--add-dir', dir);
   if (logLevel) args.push('--log-level', logLevel);
   for (const extra of asArray(extraArgs)) args.push(extra);
-
   return args;
 }
 
-/**
- * Check whether the `copilot` binary is present and runnable by invoking
- * `copilot --version`. Never throws.
- *
- * @param {{ binary?: string, env?: NodeJS.ProcessEnv, spawnSync?: Function, timeoutMs?: number }} [options]
- * @returns {boolean}
- */
-export function isCopilotAvailable(options = {}) {
-  const binary = resolveBinary(options);
-  const spawnSyncImpl = options.spawnSync ?? nodeSpawnSync;
-  try {
-    const res = spawnSyncImpl(binary, ['--version'], {
-      stdio: 'ignore',
-      timeout: options.timeoutMs ?? 10_000,
-      shell: false,
-    });
-    // `error` is set (e.g. ENOENT) when the binary cannot be spawned at all.
-    // A binary that runs but exits non-zero on --version is still "available".
-    return !!res && !res.error;
-  } catch {
-    return false;
+function normalizeClaudeTool(spec) {
+  const text = String(spec ?? '').trim();
+  if (!text) return null;
+  const match = text.match(/^([a-z_]+)(?:\((.*)\))?$/i);
+  const kind = (match?.[1] ?? text).toLowerCase();
+  const scope = match?.[2];
+  const mapped = {
+    shell: 'Bash',
+    write: 'Write',
+    edit: 'Edit',
+    create: 'Write',
+    view: 'Read',
+    read: 'Read',
+    rg: 'Grep',
+    grep: 'Grep',
+    glob: 'Glob',
+    web_fetch: 'WebFetch',
+    websearch: 'WebSearch',
+    web_search: 'WebSearch',
+  }[kind] ?? kind;
+  if (!scope) return mapped;
+  if (mapped === 'Bash') {
+    // Copilot scope semantics are prefix-oriented (shell(git)); Claude Bash scopes
+    // are command patterns, so widen to prefix pattern form (Bash(git:*)).
+    return scope.includes(':') ? `${mapped}(${scope})` : `${mapped}(${scope}:*)`;
   }
+  return `${mapped}(${scope})`;
 }
 
-/**
- * Parse JSONL output (`--output-format json`) into an array of event objects.
- * Lines that are not valid JSON are skipped (defensive — banners, warnings).
- *
- * @param {string} text
- * @returns {object[]}
- */
+export function buildClaudeArgs(options = {}) {
+  const {
+    prompt,
+    allowTools,
+    denyTools,
+    allowAllTools = false,
+    allowAll = false,
+    model,
+    addDirs,
+    extraArgs,
+  } = options;
+
+  if (typeof prompt !== 'string' || prompt.length === 0) {
+    throw new RuntimeAdapterError('A non-empty `prompt` is required to build claude args.', {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+
+  const args = ['-p', prompt, '--output-format', 'json'];
+  // Claude has real equivalents for copilot's permission flags — map rather
+  // than refuse: `--allow-all-tools`/`--allow-all` → --dangerously-skip-permissions,
+  // `--deny-tool` → --disallowedTools. derive's default runtime options set
+  // allowAllTools, so refusing here would make the adapter unusable.
+  if (allowAll || allowAllTools) args.push('--dangerously-skip-permissions');
+  const allowedTools = asArray(allowTools).map(normalizeClaudeTool).filter(Boolean);
+  if (allowedTools.length > 0) args.push('--allowedTools', allowedTools.join(','));
+  const disallowedTools = asArray(denyTools).map(normalizeClaudeTool).filter(Boolean);
+  if (disallowedTools.length > 0) args.push('--disallowedTools', disallowedTools.join(','));
+  if (model) args.push('--model', model);
+  for (const dir of asArray(addDirs)) args.push('--add-dir', dir);
+  for (const extra of asArray(extraArgs)) args.push(extra);
+  return args;
+}
+
+function interpolateTemplate(token, values) {
+  return String(token).replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key) => (values[key] ?? ''));
+}
+
+export function buildCustomArgs(options = {}) {
+  const {
+    prompt,
+    argsTemplate = ['{prompt}'],
+    allowTools,
+    denyTools,
+    allowAllTools = false,
+    allowAll = false,
+  } = options;
+  if (typeof prompt !== 'string' || prompt.length === 0) {
+    throw new RuntimeAdapterError('A non-empty `prompt` is required to build custom runtime args.', {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+  if (allowAllTools || allowAll) {
+    throw new RuntimeAdapterError(`Custom adapter does not support \`${allowAllTools ? 'allowAllTools' : 'allowAll'}\`.`, {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+  if (asArray(allowTools).filter(Boolean).length > 0) {
+    throw new RuntimeAdapterError('Custom adapter does not support `allowTools`.', {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+  if (asArray(denyTools).filter(Boolean).length > 0) {
+    throw new RuntimeAdapterError('Custom adapter does not support `denyTools`.', {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+  return asArray(argsTemplate).map((token) => interpolateTemplate(token, options));
+}
+
 export function parseJsonl(text) {
   if (!text) return [];
   const events = [];
@@ -193,7 +228,7 @@ export function parseJsonl(text) {
     try {
       events.push(JSON.parse(trimmed));
     } catch {
-      /* not a JSON line — ignore */
+      /* ignore non-JSON lines */
     }
   }
   return events;
@@ -201,26 +236,20 @@ export function parseJsonl(text) {
 
 function pickText(value) {
   if (typeof value === 'string') return value;
-  if (Array.isArray(value)) {
-    return value.map(pickText).filter(Boolean).join('');
-  }
+  if (Array.isArray(value)) return value.map(pickText).filter(Boolean).join('');
   if (value && typeof value === 'object') {
     if (typeof value.text === 'string') return value.text;
+    if (typeof value.content?.text === 'string') return value.content.text;
     if (typeof value.content === 'string') return value.content;
+    // Claude `--output-format json` terminal payload includes `type: "result"` + `result`.
+    if (typeof value.result === 'string') return value.result;
     if (value.content != null) return pickText(value.content);
+    if (value.delta != null) return pickText(value.delta);
+    if (value.message != null) return pickText(value.message);
   }
   return '';
 }
 
-/**
- * Best-effort extraction of the final assistant/response text from parsed JSONL
- * events. Falls back to the raw stdout when no structured text is found (e.g.
- * `--output-format text`). Resilient to schema drift across copilot versions.
- *
- * @param {object[]} events
- * @param {string} [rawStdout]
- * @returns {string}
- */
 export function extractResponseText(events, rawStdout = '') {
   const parts = [];
   for (const ev of events ?? []) {
@@ -231,60 +260,182 @@ export function extractResponseText(events, rawStdout = '') {
       type.includes('response') ||
       type.includes('message') ||
       type.includes('completion') ||
-      type.includes('text');
+      type.includes('text') ||
+      type.includes('delta') ||
+      type === 'result';
     if (!looksAssistant) continue;
-    const text = pickText(ev.text ?? ev.content ?? ev.message ?? ev.delta ?? ev);
+    const text = pickText(ev.text ?? ev.content ?? ev.message ?? ev.delta ?? ev.result ?? ev);
     if (text) parts.push(text);
   }
   const joined = parts.join('').trim();
   return joined || String(rawStdout ?? '').trim();
 }
 
-/**
- * @typedef {object} RuntimeResult
- * @property {boolean} ok            True when the process exited 0.
- * @property {number|null} exitCode  Process exit code (null if killed by signal).
- * @property {string|null} signal    Terminating signal, if any.
- * @property {boolean} timedOut      True when the run hit its time budget.
- * @property {string} stdout         Captured stdout.
- * @property {string} stderr         Captured stderr.
- * @property {string} response       Best-effort assistant text (see extractResponseText).
- * @property {object[]} events       Parsed JSONL events (empty unless outputFormat==='json').
- * @property {string} binary         The binary that was invoked.
- * @property {string[]} args         The full argv passed to the binary.
- * @property {string} command        Human-readable command string (for logs).
- * @property {number} durationMs     Wall-clock duration.
- */
+function defaultParseOutput(stdout, _stderr, options = {}) {
+  const format = options.outputFormat;
+  const wantsJsonl = format === 'json' || format === 'jsonl' || format === 'stream-json';
+  const events = wantsJsonl ? parseJsonl(stdout) : [];
+  return { response: extractResponseText(events, stdout), events };
+}
+
+function parseClaudeOutput(stdout, stderr, task = {}) {
+  // Keep stream-json parsing for compatibility with callers that still request it.
+  if (task.outputFormat === 'stream-json') {
+    return defaultParseOutput(stdout, stderr, { ...task, outputFormat: 'stream-json' });
+  }
+
+  const text = String(stdout ?? '').trim();
+  if (!text) return { response: '', events: [] };
+  try {
+    const parsed = JSON.parse(text);
+    const events = Array.isArray(parsed) ? parsed : [parsed];
+    return { response: extractResponseText(events, stdout), events };
+  } catch {
+    return defaultParseOutput(stdout, stderr, { ...task, outputFormat: 'jsonl' });
+  }
+}
+
+export function createCopilotAdapter() {
+  return {
+    name: 'copilot',
+    defaultBinary: DEFAULT_COPILOT_BINARY,
+    binaryEnv: COPILOT_BIN_ENV,
+    installUrl: 'https://docs.github.com/copilot/how-tos/copilot-cli',
+    buildArgs: (task) => buildCopilotArgs(task),
+    parseOutput: (stdout, stderr, task) => defaultParseOutput(stdout, stderr, task),
+    isAvailable: (options = {}) =>
+      probeBinary({
+        ...options,
+        envVar: COPILOT_BIN_ENV,
+        defaultBinary: DEFAULT_COPILOT_BINARY,
+      }),
+    capabilities: Object.freeze({
+      toolAllowlist: true,
+      toolDenylist: true,
+      allowAllTools: true,
+      allowAll: true,
+      structuredOutput: true,
+      stdinInput: true,
+    }),
+  };
+}
+
+export function createClaudeAdapter() {
+  return {
+    name: 'claude',
+    defaultBinary: DEFAULT_CLAUDE_BINARY,
+    binaryEnv: CLAUDE_BIN_ENV,
+    installUrl: 'https://claude.ai/code',
+    buildArgs: (task) => buildClaudeArgs(task),
+    parseOutput: (stdout, stderr, task) => parseClaudeOutput(stdout, stderr, { ...task, outputFormat: 'json' }),
+    isAvailable: (options = {}) =>
+      probeBinary({
+        ...options,
+        envVar: CLAUDE_BIN_ENV,
+        defaultBinary: DEFAULT_CLAUDE_BINARY,
+      }),
+    // denyTools → --disallowedTools; allowAllTools/allowAll →
+    // --dangerously-skip-permissions (see buildClaudeArgs).
+    capabilities: Object.freeze({
+      toolAllowlist: true,
+      toolDenylist: true,
+      allowAllTools: true,
+      allowAll: true,
+      structuredOutput: true,
+      stdinInput: false,
+    }),
+  };
+}
+
+export function createCustomAdapter(config = {}) {
+  const outputFormat = config.outputFormat ?? 'text';
+  return {
+    name: config.name || 'custom',
+    defaultBinary: config.defaultBinary,
+    binaryEnv: config.binaryEnv,
+    buildArgs: (task) => buildCustomArgs({ argsTemplate: config.argsTemplate, ...task }),
+    parseOutput: (stdout, stderr, task) =>
+      defaultParseOutput(stdout, stderr, { ...task, outputFormat: task?.outputFormat ?? outputFormat }),
+    isAvailable: (options = {}) =>
+      probeBinary({
+        ...options,
+        envVar: config.binaryEnv,
+        defaultBinary: config.defaultBinary,
+      }),
+    capabilities: Object.freeze({
+      toolAllowlist: false,
+      toolDenylist: false,
+      allowAllTools: false,
+      allowAll: false,
+      structuredOutput: outputFormat === 'jsonl',
+      stdinInput: false,
+    }),
+  };
+}
+
+export const copilotAdapter = createCopilotAdapter();
+export const claudeAdapter = createClaudeAdapter();
+
+export function isAdapterAvailable(adapter, options = {}) {
+  if (!adapter || typeof adapter !== 'object') return false;
+  if (typeof adapter.isAvailable === 'function') return adapter.isAvailable(options);
+  return probeBinary({
+    ...options,
+    envVar: adapter.binaryEnv,
+    defaultBinary: adapter.defaultBinary || adapter.name,
+  });
+}
+
+export function isCopilotAvailable(options = {}) {
+  return isAdapterAvailable(copilotAdapter, options);
+}
+
+function probeBinary(options = {}) {
+  const spawnSyncImpl = options.spawnSync ?? nodeSpawnSync;
+  const binary = resolveBinary(options);
+  try {
+    const res = spawnSyncImpl(binary, options.probeArgs ?? ['--version'], {
+      stdio: 'ignore',
+      timeout: options.timeoutMs ?? 10_000,
+      shell: false,
+    });
+    return !!res && !res.error;
+  } catch {
+    return false;
+  }
+}
 
 function quoteForDisplay(token) {
   return /[\s"'()]/.test(token) ? JSON.stringify(token) : token;
 }
 
 /**
- * Run Copilot in programmatic mode and capture the result.
+ * @typedef {object} RuntimeResult
+ * @property {boolean} ok
+ * @property {number|null} exitCode
+ * @property {string|null} signal
+ * @property {boolean} timedOut
+ * @property {string} stdout
+ * @property {string} stderr
+ * @property {string} response
+ * @property {object[]} events
+ * @property {string} binary
+ * @property {string[]} args
+ * @property {string} command
+ * @property {number} durationMs
+ * @property {string} adapter
+ */
+
+/**
+ * Shared runtime execution path for all adapters.
  *
- * Resolves to a {@link RuntimeResult}. By default a non-zero exit rejects with a
- * {@link CopilotRuntimeError} (`code === NONZERO_EXIT`); pass `throwOnError:false`
- * to receive the result object instead. A missing binary always rejects with
- * `code === BINARY_MISSING` and an actionable message. A timeout rejects with
- * `code === TIMEOUT`.
- *
- * @param {object} options                       All {@link buildCopilotArgs} options, plus:
- * @param {string}   [options.binary]            Override the binary path.
- * @param {string[]} [options.binaryArgs]        Args inserted *between* the binary and the
- *                                               generated copilot args (e.g. to invoke through
- *                                               a wrapper/runner, or a mock executable in tests).
- * @param {string}   [options.cwd]               Working directory for the run.
- * @param {NodeJS.ProcessEnv} [options.env]      Environment for the child (defaults to process.env).
- * @param {number}   [options.timeoutMs]         Time budget; default {@link DEFAULT_TIMEOUT_MS}.
- * @param {string}   [options.input]             Optional stdin payload.
- * @param {boolean}  [options.throwOnError=true] Reject on non-zero exit when true.
- * @param {Function} [options.spawn]             Injectable spawn (defaults to node:child_process spawn).
- * @param {(event: object) => void} [options.onEvent] Called for each parsed JSONL event (json mode).
+ * @param {object} options
+ * @param {object} options.adapter
  * @returns {Promise<RuntimeResult>}
  */
-export function runCopilot(options = {}) {
+export function runRuntimeTask(options = {}) {
   const {
+    adapter = copilotAdapter,
     binary: binaryOverride,
     binaryArgs = [],
     cwd = process.cwd(),
@@ -294,12 +445,25 @@ export function runCopilot(options = {}) {
     throwOnError = true,
     spawn: spawnImpl = nodeSpawn,
     onEvent,
-    ...argOptions
+    errorClass = RuntimeAdapterError,
+    ...task
   } = options;
 
-  const binary = resolveBinary({ binary: binaryOverride, env });
-  const copilotArgs = buildCopilotArgs(argOptions);
-  const args = [...asArray(binaryArgs), ...copilotArgs];
+  if (!adapter || typeof adapter.buildArgs !== 'function') {
+    throw new RuntimeAdapterError('A valid runtime `adapter` with buildArgs() is required.', {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+  assertTaskCapabilities(adapter, task, errorClass);
+
+  const binary = resolveBinary({
+    binary: binaryOverride,
+    env,
+    envVar: task.binaryEnv ?? adapter.binaryEnv,
+    defaultBinary: task.defaultBinary ?? adapter.defaultBinary ?? adapter.name,
+  });
+  const runtimeArgs = adapter.buildArgs(task);
+  const args = [...asArray(binaryArgs), ...runtimeArgs];
   const command = [binary, ...args].map(quoteForDisplay).join(' ');
   const startedAt = Date.now();
 
@@ -313,7 +477,7 @@ export function runCopilot(options = {}) {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
     } catch (err) {
-      reject(toSpawnError(err, { binary, command }));
+      reject(toSpawnError(err, { binary, command, adapter, errorClass, envVar: task.binaryEnv ?? adapter.binaryEnv }));
       return;
     }
 
@@ -338,12 +502,11 @@ export function runCopilot(options = {}) {
         } catch {
           /* ignore */
         }
-        // Reject immediately rather than waiting for 'close' — a killed child
-        // does emit 'close' on every platform, but we must not depend on it.
+
         finish(
           reject,
-          new CopilotRuntimeError(
-            `Copilot run timed out after ${timeoutMs}ms: ${command}`,
+          new errorClass(
+            `${titleCase(adapter.name)} run timed out after ${timeoutMs}ms: ${command}`,
             {
               code: RuntimeErrorCode.TIMEOUT,
               exitCode: null,
@@ -360,6 +523,7 @@ export function runCopilot(options = {}) {
                 args,
                 command,
                 durationMs: Date.now() - startedAt,
+                adapter: adapter.name,
               },
             },
           ),
@@ -376,47 +540,50 @@ export function runCopilot(options = {}) {
     });
 
     child.on('error', (err) => {
-      finish(reject, toSpawnError(err, { binary, command }));
+      finish(reject, toSpawnError(err, { binary, command, adapter, errorClass, envVar: task.binaryEnv ?? adapter.binaryEnv }));
     });
 
     child.on('close', (code, signal) => {
       if (settled) return;
-      const isJson = argOptions.outputFormat === 'json';
-      const events = isJson ? parseJsonl(stdout) : [];
-      if (isJson && typeof onEvent === 'function') {
+
+      const parsed =
+        typeof adapter.parseOutput === 'function'
+          ? adapter.parseOutput(stdout, stderr, task)
+          : defaultParseOutput(stdout, stderr, task);
+      const events = Array.isArray(parsed?.events) ? parsed.events : [];
+      if (typeof onEvent === 'function') {
         for (const ev of events) {
           try {
             onEvent(ev);
           } catch {
-            /* listener errors must not break the run */
+            /* ignore listener failures */
           }
         }
       }
 
-      const exitCode = code;
-      /** @type {RuntimeResult} */
       const result = {
-        ok: exitCode === 0,
-        exitCode,
+        ok: code === 0,
+        exitCode: code,
         signal: signal ?? null,
         timedOut,
         stdout,
         stderr,
-        response: extractResponseText(events, stdout),
+        response: typeof parsed?.response === 'string' ? parsed.response : extractResponseText(events, stdout),
         events,
         binary,
         args,
         command,
         durationMs: Date.now() - startedAt,
+        adapter: adapter.name,
       };
 
-      if (exitCode !== 0 && throwOnError) {
+      if (code !== 0 && throwOnError) {
         const detail = (stderr || stdout).trim();
         finish(
           reject,
-          new CopilotRuntimeError(
-            `Copilot exited with code ${exitCode}.${detail ? `\n${detail}` : ''}`,
-            { code: RuntimeErrorCode.NONZERO_EXIT, exitCode, result },
+          new errorClass(
+            `${titleCase(adapter.name)} exited with code ${code}.${detail ? `\n${detail}` : ''}`,
+            { code: RuntimeErrorCode.NONZERO_EXIT, exitCode: code, result },
           ),
         );
         return;
@@ -425,25 +592,71 @@ export function runCopilot(options = {}) {
       finish(resolve, result);
     });
 
-    if (input != null && child.stdin) {
-      child.stdin.end(input);
-    } else if (child.stdin) {
-      child.stdin.end();
-    }
+    if (input != null && child.stdin) child.stdin.end(input);
+    else if (child.stdin) child.stdin.end();
   });
 }
 
-function toSpawnError(err, { binary, command }) {
+/**
+ * Backward-compatible Copilot entrypoint.
+ *
+ * @param {object} [options]
+ * @returns {Promise<RuntimeResult>}
+ */
+export function runCopilot(options = {}) {
+  return runRuntimeTask({
+    adapter: copilotAdapter,
+    errorClass: CopilotRuntimeError,
+    ...options,
+  });
+}
+
+function hasNonEmpty(values) {
+  return asArray(values).map((v) => String(v ?? '').trim()).filter(Boolean).length > 0;
+}
+
+function assertTaskCapabilities(adapter, task, errorClass) {
+  const capabilities = adapter.capabilities ?? {};
+  if (task.allowAllTools && !capabilities.allowAllTools) {
+    throw new errorClass(`${titleCase(adapter.name)} adapter does not support \`allowAllTools\`.`, {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+  if (task.allowAll && !capabilities.allowAll) {
+    throw new errorClass(`${titleCase(adapter.name)} adapter does not support \`allowAll\`.`, {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+  if (hasNonEmpty(task.allowTools) && !capabilities.toolAllowlist) {
+    throw new errorClass(`${titleCase(adapter.name)} adapter does not support \`allowTools\`.`, {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+  if (hasNonEmpty(task.denyTools) && !capabilities.toolDenylist) {
+    throw new errorClass(`${titleCase(adapter.name)} adapter does not support \`denyTools\`.`, {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+}
+
+function toSpawnError(err, { binary, command, adapter, errorClass, envVar }) {
   if (err && err.code === 'ENOENT') {
-    return new CopilotRuntimeError(
-      `Copilot CLI not found (tried "${binary}"). Install it from ` +
-        'https://docs.github.com/copilot/how-tos/copilot-cli and ensure it is on your PATH, ' +
-        `or set ${COPILOT_BIN_ENV} to its full path.`,
+    const installHint = adapter?.installUrl ?? null;
+    const envHint = envVar ? `, or set ${envVar} to its full path.` : '.';
+    return new errorClass(
+      `${titleCase(adapter?.name ?? 'Runtime')} CLI not found (tried "${binary}").` +
+        (installHint ? ` Install it from ${installHint}` : '') +
+        ` Ensure it is on your PATH${envHint}`,
       { code: RuntimeErrorCode.BINARY_MISSING, cause: err },
     );
   }
-  return new CopilotRuntimeError(
-    `Failed to start Copilot CLI: ${err?.message ?? err}\n  command: ${command}`,
+  return new errorClass(
+    `Failed to start ${titleCase(adapter?.name ?? 'runtime')} CLI: ${err?.message ?? err}\n  command: ${command}`,
     { code: RuntimeErrorCode.SPAWN_FAILED, cause: err },
   );
+}
+
+export function titleCase(s) {
+  const text = String(s ?? 'runtime');
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

@@ -35,11 +35,11 @@ import {
 } from '../lib/jsonld.js';
 import { routeTask } from '../lib/runtime-router.js';
 import {
-  runCopilot,
-  isCopilotAvailable,
-  buildCopilotArgs,
+  copilotAdapter,
+  isAdapterAvailable,
   resolveBinary,
-  CopilotRuntimeError,
+  RuntimeAdapterError,
+  titleCase,
 } from '../lib/copilot-runtime.js';
 
 const DEFAULT_OUT_DIR = 'content/derived';
@@ -239,10 +239,11 @@ export default async function derive(args = []) {
   const outDir = resolve(cwd, opts.out || DEFAULT_OUT_DIR);
   const context = opts.context || DEFAULT_CONTEXT;
   const runtimeOptions = buildDeriveRuntimeOptions(opts, cwd);
+  const runtimeAdapter = copilotAdapter;
 
   // ── Dry run: show the assembled command + planned outputs, run nothing. ──
   if (opts.dryRun) {
-    const binary = resolveBinary();
+    const binary = resolveBinary({ envVar: runtimeAdapter.binaryEnv, defaultBinary: runtimeAdapter.defaultBinary });
     console.log('Dry run — would derive the following sources:');
     for (const src of opts.sources) {
       let doc;
@@ -254,7 +255,13 @@ export default async function derive(args = []) {
       }
       const outPath = toPosix(relative(cwd, artifactPathFor(src, outDir)));
       const prompt = buildExtractionPrompt(doc);
-      const argv = buildCopilotArgs({ prompt, outputFormat: 'json', silent: true, noColor: true, ...stripCwd(runtimeOptions) });
+      const argv = runtimeAdapter.buildArgs({
+        prompt,
+        outputFormat: 'json',
+        silent: true,
+        noColor: true,
+        ...stripCwd(runtimeOptions),
+      });
       console.log(`  • ${src} → ${outPath}`);
       console.log(`    ${binary} ${argv.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ')}`);
     }
@@ -267,17 +274,25 @@ export default async function derive(args = []) {
       { name: `extract:${document.path}`, kind: 'fuzzy', document },
       {
         logger: console,
-        runFuzzy: (task) => extractEntities({ document: task.document, runtimeOptions }),
+        runFuzzy: (task) =>
+          extractEntities({
+            document: task.document,
+            runtimeOptions: { adapter: runtimeAdapter, ...runtimeOptions },
+          }),
       },
     ).then((r) => r.result);
 
   // In derive (non-check) mode we may need the LLM — verify availability up front
   // unless every source can be served from a fresh committed artifact.
-  if (!opts.check && !isCopilotAvailable() && needsExtraction(opts, cwd, outDir)) {
-    console.error('✗ Copilot CLI not found on PATH.');
-    console.error('  Install it: https://docs.github.com/copilot/how-tos/copilot-cli');
-    console.error('  Or set KBEXPLORER_COPILOT_BIN to its full path.');
-    console.error('  (Already-derived sources with unchanged input do not need Copilot.)');
+  if (!opts.check && !isAdapterAvailable(runtimeAdapter) && needsExtraction(opts, cwd, outDir)) {
+    console.error(`✗ ${titleCase(runtimeAdapter.name)} CLI not found on PATH.`);
+    if (runtimeAdapter.installUrl) {
+      console.error(`  Install it: ${runtimeAdapter.installUrl}`);
+    }
+    if (runtimeAdapter.binaryEnv) {
+      console.error(`  Or set ${runtimeAdapter.binaryEnv} to its full path.`);
+    }
+    console.error(`  (Already-derived sources with unchanged input do not need ${titleCase(runtimeAdapter.name)}.)`);
     process.exit(1);
   }
 
@@ -299,8 +314,8 @@ export default async function derive(args = []) {
       hadError = true;
       if (err instanceof IngestError || err instanceof ExtractionError) {
         console.error(`✗ ${src}: [${err.code}] ${err.message}`);
-      } else if (err instanceof CopilotRuntimeError) {
-        console.error(`✗ ${src}: copilot run failed (${err.code}): ${err.message}`);
+      } else if (err instanceof RuntimeAdapterError) {
+        console.error(`✗ ${src}: ${runtimeAdapter.name} run failed (${err.code}): ${err.message}`);
       } else {
         console.error(`✗ ${src}: ${err.message}`);
       }
