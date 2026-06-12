@@ -433,3 +433,116 @@ describe('applyRuntimeConfigDefaults', () => {
     assert.strictEqual(applyRuntimeConfigDefaults(opts, { agent: 'claude' }), opts);
   });
 });
+
+// ── validateRuntimeBlock — mcp block ─────────────────────────────────────────
+
+describe('validateRuntimeBlock — mcp block (valid shapes)', () => {
+  it('accepts mcp block with required and optional arrays', () => {
+    const out = validateRuntimeBlock({
+      agent: 'copilot',
+      mcp: { required: ['ado', 'sharepoint-docs'], optional: ['org-chart'] },
+    });
+    assert.deepStrictEqual(out.mcp?.required, ['ado', 'sharepoint-docs']);
+    assert.deepStrictEqual(out.mcp?.optional, ['org-chart']);
+  });
+
+  it('accepts mcp block with only required', () => {
+    const out = validateRuntimeBlock({ agent: 'claude', mcp: { required: ['ado'] } });
+    assert.deepStrictEqual(out.mcp?.required, ['ado']);
+    assert.strictEqual(out.mcp?.optional, undefined);
+  });
+
+  it('accepts mcp block with only optional', () => {
+    const out = validateRuntimeBlock({ agent: 'copilot', mcp: { optional: ['org-chart'] } });
+    assert.strictEqual(out.mcp?.required, undefined);
+    assert.deepStrictEqual(out.mcp?.optional, ['org-chart']);
+  });
+
+  it('accepts empty mcp object', () => {
+    const out = validateRuntimeBlock({ agent: 'claude', mcp: {} });
+    assert.ok('mcp' in out);
+  });
+
+  it('mcp block is valid for any agent including custom', () => {
+    const out = validateRuntimeBlock({
+      agent: 'custom',
+      command: 'my-agent',
+      argsTemplate: ['{prompt}'],
+      mcp: { required: ['ado'] },
+    });
+    assert.deepStrictEqual(out.mcp?.required, ['ado']);
+  });
+
+  it('no mcp block → no mcp field in output', () => {
+    const out = validateRuntimeBlock({ agent: 'copilot' });
+    assert.strictEqual(out.mcp, undefined);
+  });
+});
+
+describe('validateRuntimeBlock — mcp block (invalid shapes)', () => {
+  it('throws when mcp block is not an object', () => {
+    assert.throws(
+      () => validateRuntimeBlock({ agent: 'copilot', mcp: 'ado' }),
+      (err) => err instanceof RuntimeConfigError && err.message.includes('runtime.mcp'),
+    );
+  });
+
+  it('throws when mcp block is an array', () => {
+    assert.throws(
+      () => validateRuntimeBlock({ agent: 'copilot', mcp: ['ado'] }),
+      (err) => err instanceof RuntimeConfigError && err.message.includes('runtime.mcp'),
+    );
+  });
+
+  it('throws when required is not an array', () => {
+    assert.throws(
+      () => validateRuntimeBlock({ agent: 'copilot', mcp: { required: 'ado' } }),
+      (err) => err instanceof RuntimeConfigError && err.message.includes('mcp.required'),
+    );
+  });
+
+  it('throws when required contains a non-string', () => {
+    assert.throws(
+      () => validateRuntimeBlock({ agent: 'copilot', mcp: { required: [42] } }),
+      (err) => err instanceof RuntimeConfigError && err.message.includes('non-empty strings'),
+    );
+  });
+
+  it('throws when required contains an empty string', () => {
+    assert.throws(
+      () => validateRuntimeBlock({ agent: 'copilot', mcp: { required: [''] } }),
+      (err) => err instanceof RuntimeConfigError && err.message.includes('non-empty strings'),
+    );
+  });
+
+  it('throws when required contains duplicates', () => {
+    assert.throws(
+      () => validateRuntimeBlock({ agent: 'copilot', mcp: { required: ['ado', 'ado'] } }),
+      (err) => err instanceof RuntimeConfigError && err.message.includes('duplicate'),
+    );
+  });
+
+  it('throws when optional is not an array', () => {
+    assert.throws(
+      () => validateRuntimeBlock({ agent: 'copilot', mcp: { optional: 'org-chart' } }),
+      (err) => err instanceof RuntimeConfigError && err.message.includes('mcp.optional'),
+    );
+  });
+
+  it('throws when optional contains duplicates', () => {
+    assert.throws(
+      () => validateRuntimeBlock({ agent: 'copilot', mcp: { optional: ['org-chart', 'org-chart'] } }),
+      (err) => err instanceof RuntimeConfigError && err.message.includes('duplicate'),
+    );
+  });
+
+  it('throws when a name appears in both required and optional', () => {
+    assert.throws(
+      () => validateRuntimeBlock({
+        agent: 'copilot',
+        mcp: { required: ['ado', 'sharepoint'], optional: ['sharepoint'] },
+      }),
+      (err) => err instanceof RuntimeConfigError && err.message.includes('"sharepoint"'),
+    );
+  });
+});

@@ -245,6 +245,58 @@ For a **custom** CLI (must include `{prompt}` placeholder):
 `kbexplorer init` offers a runtime selection step during interactive setup and
 can write this block automatically.
 
+### MCP server requirements
+
+Fuzzy tasks often depend on local MCP servers. Declare them in the `runtime`
+block so the CLI verifies they are configured **before** any LLM call or
+partial write:
+
+```jsonc
+{
+  "runtime": {
+    "agent": "copilot",
+    "mcp": {
+      "required": ["ado", "sharepoint-docs"],   // preflight fails if missing
+      "optional": ["org-chart"]                  // warning only, never fails
+    }
+  }
+}
+```
+
+On failure the CLI prints the missing server name, the config file it expected
+it in, and a one-line example entry, then exits non-zero. Optional servers that
+are absent produce a warning instead.
+
+#### Detection locations per adapter
+
+| Adapter | Files checked (in order) |
+|---------|--------------------------|
+| `copilot` | `<repo>/.github/copilot/mcp.json` → `~/.copilot/mcp.json` |
+| `claude` | `<repo>/.mcp.json` → `~/.claude.json` (project entries matching cwd) |
+| `custom` | Detection not possible — all declared servers reported as unverifiable (warning, not failure) |
+
+#### Config file shapes
+
+**copilot** (`mcp.json`):
+```json
+{ "servers": { "ado": { "command": "npx", "args": ["-y", "ado-mcp"] } } }
+```
+
+**claude** (`.mcp.json`):
+```json
+{ "mcpServers": { "ado": { "command": "npx", "args": ["-y", "ado-mcp"] } } }
+```
+
+#### `--skip-preflight`
+
+Development escape hatch. Bypasses the MCP check with a warning — never use
+in CI.
+
+```bash
+kbexplorer derive docs/org.docx --skip-preflight
+kbexplorer generate --skip-preflight
+```
+
 ### Binary path overrides
 
 The named adapters honour existing env vars for binary paths:

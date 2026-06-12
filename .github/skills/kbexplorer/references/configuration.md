@@ -131,3 +131,104 @@ These Vite env vars override config values at build/dev time:
 | `VITE_ENV_DIR` | Directory to load .env from | `../../` |
 
 These are typically set in `.env.kbexplorer` by the init script.
+
+## Runtime Configuration (`.kbexplorer.json`)
+
+The `runtime` block in `.kbexplorer.json` controls which agent runtime kbexplorer
+uses for fuzzy (LLM) tasks, and which MCP servers must be configured before any
+LLM call is made.
+
+### Agent selection
+
+```jsonc
+{
+  "runtime": {
+    "agent": "copilot"   // "copilot" (default) | "claude" | "custom"
+  }
+}
+```
+
+For `custom` adapters, also specify:
+```json
+{
+  "runtime": {
+    "agent": "custom",
+    "command": "my-agent",
+    "argsTemplate": ["-p", "{prompt}", "--json"],
+    "outputFormat": "jsonl",
+    "timeoutMs": 600000,
+    "binaryEnv": "MY_AGENT_BIN"
+  }
+}
+```
+
+### MCP server requirements (`runtime.mcp`)
+
+Declare which MCP servers the pipeline depends on. The CLI checks these are
+configured **before** any LLM call or partial write — a failing check exits
+non-zero immediately with an actionable message.
+
+```jsonc
+{
+  "runtime": {
+    "agent": "copilot",
+    "mcp": {
+      "required": ["ado", "sharepoint-docs"],   // must be configured; preflight fails if missing
+      "optional": ["org-chart"]                  // warning only; never causes a failure
+    }
+  }
+}
+```
+
+Both lists accept non-empty strings; duplicates within a list, or the same
+name appearing in both, are rejected at config-load time.
+
+#### Detection by adapter
+
+| Adapter | Config files checked (in order) |
+|---------|---------------------------------|
+| `copilot` | `<repo>/.github/copilot/mcp.json` (`servers` keys) then `~/.copilot/mcp.json` (`servers` keys) |
+| `claude` | `<repo>/.mcp.json` (`mcpServers` keys) then `~/.claude.json` (project entries for the current working directory) |
+| `custom` | Not possible — all declared servers are treated as unverifiable; a warning is printed, not a failure |
+
+**copilot** config shape:
+```json
+{
+  "servers": {
+    "ado": { "command": "npx", "args": ["-y", "ado-mcp"] }
+  }
+}
+```
+
+**claude** config shape (`.mcp.json`):
+```json
+{
+  "mcpServers": {
+    "ado": { "command": "npx", "args": ["-y", "ado-mcp"] }
+  }
+}
+```
+
+### Preflight failure message
+
+When a required server is missing the CLI prints:
+- The server name
+- The config file the adapter expects it in
+- A one-line example entry
+- A reminder about `--skip-preflight`
+
+### `--skip-preflight`
+
+Development escape hatch. Prints a warning and skips the MCP check. Never
+use in CI or on shared branches.
+
+```bash
+kbexplorer derive docs/org.docx --skip-preflight
+kbexplorer generate --skip-preflight
+```
+
+Preflight is **never** run for read-only or no-LLM paths:
+- `kbexplorer derive --check` (drift detection only, no LLM)
+- `kbexplorer derive --dry-run` (prints command, does not run)
+- `kbexplorer generate --no-agent` (skips fuzzy phase)
+- `kbexplorer generate --dry-run`

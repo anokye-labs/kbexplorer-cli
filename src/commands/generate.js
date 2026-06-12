@@ -33,6 +33,10 @@ import {
   applyRuntimeConfigDefaults,
   RuntimeConfigError,
 } from '../lib/runtime-config.js';
+import {
+  runMcpPreflight,
+  formatMcpPreflightErrors,
+} from '../lib/mcp-preflight.js';
 
 const CATALOGUE_FILE = 'catalogue.json';
 
@@ -74,6 +78,7 @@ function printHelp() {
         --dry-run         Print the assembled agent command and exit (no run)
         --runtime <name>  Override runtime adapter: "copilot" | "claude" | "custom"
                           (precedence: flag > .kbexplorer.json > KBEXPLORER_RUNTIME > default)
+        --skip-preflight  Skip MCP preflight check (development escape hatch)
     -h, --help            Show this help
 `);
 }
@@ -136,6 +141,27 @@ export default async function generate(args = []) {
   }
 
   const wantAgent = !opts.noAgent && (!haveCatalogue || opts.refresh);
+
+  // ── MCP preflight: verify required servers are configured before any LLM call ──
+  // Only runs when the runtime config declares an `mcp` block and a fuzzy phase will run.
+  // Skipped for --no-agent (no LLM), --dry-run (no LLM).
+  if (wantAgent && runtimeConfig?.mcp) {
+    if (opts.skipPreflight) {
+      console.warn('⚠ --skip-preflight: skipping MCP server verification (development mode).');
+    } else {
+      const preflight = runMcpPreflight({ adapter: runtimeAdapter, config: runtimeConfig, cwd });
+      for (const w of preflight.warnings) {
+        console.warn(`⚠ ${w}`);
+      }
+      if (!preflight.ok) {
+        const lines = formatMcpPreflightErrors(preflight.missing, runtimeAdapter.name, cwd);
+        for (const line of lines) {
+          console.error(line);
+        }
+        process.exit(1);
+      }
+    }
+  }
 
   // ── Phase 1 (fuzzy): drive the configured agent to produce catalogue.json ──
   if (wantAgent) {
