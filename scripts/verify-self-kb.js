@@ -11,6 +11,7 @@
  *   node scripts/verify-self-kb.js --url http://localhost:5173
  */
 
+import { spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,19 +27,67 @@ function argOf(name, fallback) {
 
 function log(msg) { console.log(`[verify] ${msg}`); }
 
-async function loadChromium() {
+async function tryImportPlaywright() {
   try {
-    const mod = await import('playwright');
-    return mod.chromium;
+    return (await import('playwright')).chromium;
   } catch {}
   try {
-    const mod = await import('@playwright/test');
-    return mod.chromium;
-  } catch (err) {
-    console.error('[verify] Playwright is not installed. Try:');
+    return (await import('@playwright/test')).chromium;
+  } catch {}
+  return null;
+}
+
+function autoInstallPlaywright() {
+  const isWin = process.platform === 'win32';
+  log('Installing Playwright (one-time, --no-save)…');
+  const install = spawnSync('npm', ['install', '--no-save', 'playwright'], {
+    cwd: REPO_ROOT, stdio: 'inherit', shell: isWin,
+  });
+  if (install.status !== 0) {
+    log(`npm install exited with status ${install.status}`);
+    return false;
+  }
+  log('Downloading Chromium browser…');
+  const browsers = spawnSync('npx', ['playwright', 'install', 'chromium'], {
+    cwd: REPO_ROOT, stdio: 'inherit', shell: isWin,
+  });
+  if (browsers.status !== 0) {
+    log(`playwright install chromium exited with status ${browsers.status}`);
+    return false;
+  }
+  return true;
+}
+
+async function loadChromium() {
+  let chromium = await tryImportPlaywright();
+  if (chromium) return chromium;
+
+  if (process.argv.includes('--no-auto-install')) {
+    console.error('[verify] Playwright is not installed and --no-auto-install was set.');
+    console.error('  Install manually: npm install --no-save playwright && npx playwright install chromium');
+    process.exit(2);
+  }
+
+  if (process.env.KBEXPLORER_VERIFY_REEXECED === '1') {
+    console.error('[verify] Playwright still not importable after auto-install. Install manually:');
     console.error('  npm install --no-save playwright && npx playwright install chromium');
     process.exit(2);
   }
+
+  if (!autoInstallPlaywright()) {
+    console.error('[verify] Auto-install failed. Install manually:');
+    console.error('  npm install --no-save playwright && npx playwright install chromium');
+    process.exit(2);
+  }
+
+  // Node's ESM loader caches failed imports, so re-exec ourselves with a fresh
+  // module cache now that playwright is on disk.
+  log('Re-executing with fresh module cache…');
+  const child = spawnSync(process.execPath, [fileURLToPath(import.meta.url), ...process.argv.slice(2)], {
+    stdio: 'inherit',
+    env: { ...process.env, KBEXPLORER_VERIFY_REEXECED: '1' },
+  });
+  process.exit(child.status ?? 1);
 }
 
 const url = argOf('--url', DEFAULT_URL);
