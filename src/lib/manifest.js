@@ -9,6 +9,26 @@
  * - issues: from `gh` CLI (best-effort)
  * - pullRequests: from `gh` CLI (best-effort)
  * - commits: from git log (best-effort)
+ * - releases: from `gh` CLI (best-effort); drafts excluded; capped at 30 newest
+ *
+ * Manifest shape — top-level keys:
+ *   configRaw        string | null      Raw config.yaml content
+ *   authoredContent  Record<string,string>  Markdown files keyed by relative path
+ *   tree             GHTreeItem[]       File-system tree entries
+ *   readme           string | null      README.md content
+ *   issues           GHIssue[]          GitHub issues (all states, limit 200)
+ *   pullRequests     GHPullRequest[]    GitHub PRs (all states, limit 200)
+ *   commits          GHCommit[]         Recent commits (limit 50)
+ *   releases         GHRelease[]        GitHub releases (non-draft, limit 30, newest first)
+ *   generatedAt      ISO-8601 string    Generation timestamp
+ *
+ * GHRelease shape:
+ *   tag_name         string             Git tag associated with the release
+ *   name             string             Release title (falls back to tag_name)
+ *   body             string             Release notes markdown
+ *   html_url         string             URL to the release page
+ *   published_at     string             ISO-8601 publish timestamp
+ *   prerelease       boolean            True for pre-release (alpha/beta/rc)
  *
  * Zero external dependencies — uses only node: built-ins + gh CLI.
  */
@@ -246,6 +266,52 @@ export function fetchLocalPullRequests(cwd) {
   }
 }
 
+/** Maximum number of releases to include in the manifest. */
+const RELEASES_LIMIT = 30;
+
+/**
+ * Fetch GitHub releases via gh CLI.
+ * Drafts are excluded; results are sorted newest-first and capped at RELEASES_LIMIT.
+ * Tolerates gh absence or non-zero exit — returns empty array and emits a warning.
+ *
+ * @param {string} [cwd] - Working directory for the gh invocation
+ * @param {Function} [_exec] - Injected execSync replacement (for testing)
+ * @returns {Array<{tag_name:string,name:string,body:string,html_url:string,published_at:string,prerelease:boolean}>}
+ */
+export function fetchLocalReleases(cwd, _exec = execSync) {
+  try {
+    _exec('gh --version', { stdio: 'ignore' });
+  } catch {
+    console.warn('[generate-manifest] gh CLI not found — skipping releases');
+    return [];
+  }
+  try {
+    // The endpoint must be quoted: execSync goes through a shell where an
+    // unquoted `?`/`&` is parsed as shell syntax (`&` splits commands on both
+    // cmd.exe and POSIX shells).
+    const json = _exec(
+      `gh api "repos/{owner}/{repo}/releases?per_page=${RELEASES_LIMIT}"`,
+      { cwd, encoding: 'utf-8', timeout: 30000 },
+    );
+    const releases = JSON.parse(json);
+    return releases
+      .filter((r) => !r.draft)
+      .sort((a, b) => new Date(b.published_at ?? 0) - new Date(a.published_at ?? 0))
+      .slice(0, RELEASES_LIMIT)
+      .map((r) => ({
+        tag_name: r.tag_name ?? '',
+        name: r.name ?? r.tag_name ?? '',
+        body: r.body ?? '',
+        html_url: r.html_url ?? '',
+        published_at: r.published_at ?? '',
+        prerelease: r.prerelease ?? false,
+      }));
+  } catch (err) {
+    console.warn('[generate-manifest] Failed to fetch releases:', err.message);
+    return [];
+  }
+}
+
 /**
  * Fetch recent commits via git log.
  * @returns {Array}
@@ -301,6 +367,7 @@ export function generateManifest(root) {
     issues: fetchLocalIssues(hostRoot),
     pullRequests: fetchLocalPullRequests(hostRoot),
     commits: fetchLocalCommits(hostRoot),
+    releases: fetchLocalReleases(hostRoot),
     generatedAt: new Date().toISOString(),
   };
 
@@ -309,6 +376,7 @@ export function generateManifest(root) {
   console.log(`[generate-manifest] Issues: ${manifest.issues.length}`);
   console.log(`[generate-manifest] PRs: ${manifest.pullRequests.length}`);
   console.log(`[generate-manifest] Commits: ${manifest.commits.length}`);
+  console.log(`[generate-manifest] Releases: ${manifest.releases.length}`);
 
   return manifest;
 }
