@@ -20,6 +20,7 @@ import { detectGitRemote, detectBranch, isTemplateRepo, hasSubmodule } from '../
 import { getLatestTag, checkoutTag, checkoutRef, resolveHeadSha, TEMPLATE_REPO } from '../lib/version.js';
 import { parseInitArgs } from '../lib/args.js';
 import { writeSourceRecord, readSourceRecord, classifyRef, SOURCE_FILE } from '../lib/source.js';
+import { validateRuntimeBlock, RuntimeConfigError } from '../lib/runtime-config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = resolve(__dirname, '..', 'assets');
@@ -286,6 +287,30 @@ export default async function init(args) {
   const themes = ['dark', 'light', 'sepia'];
   const themeIdx = await prompt.choose('Default theme:', themes, 0);
 
+  // Step 3b: Optional runtime block
+  const runtimeAgentIdx = await prompt.choose(
+    'Agent runtime for derive/generate fuzzy steps:',
+    ['copilot (default)', 'claude', 'custom (provide command + argsTemplate)', 'skip (use default)'],
+    0,
+  );
+  let runtimeBlock = null;
+  const runtimeAgentName = ['copilot', 'claude', 'custom', null][runtimeAgentIdx];
+  if (runtimeAgentName === 'custom') {
+    const command = await prompt.ask('Custom agent command', 'my-agent');
+    const argsTemplateRaw = await prompt.ask('Args template (space-separated, use {prompt})', '-p {prompt}');
+    const argsTemplate = argsTemplateRaw.trim().split(/\s+/).filter(Boolean);
+    const outputFormat = await prompt.ask('Output format (text|jsonl)', 'text');
+    runtimeBlock = {
+      agent: 'custom',
+      command,
+      argsTemplate,
+      ...(outputFormat && outputFormat !== 'text' ? { outputFormat } : {}),
+    };
+  } else if (runtimeAgentName != null && runtimeAgentName !== 'copilot') {
+    // Only write the block when it differs from the default to keep .kbexplorer.json minimal
+    runtimeBlock = { agent: runtimeAgentName };
+  }
+
   // Step 4: Write config files
   const envLines = [
     `VITE_KB_OWNER=${owner}`,
@@ -297,6 +322,21 @@ export default async function init(args) {
 
   writeFileSync(resolve(cwd, '.env.kbexplorer'), envLines.join('\n') + '\n', 'utf-8');
   console.log('✓ Created .env.kbexplorer');
+
+  // Write runtime block into .kbexplorer.json (merge with existing record).
+  // Validate first — never persist a block derive/generate would reject.
+  if (runtimeBlock != null) {
+    try {
+      const validated = validateRuntimeBlock(runtimeBlock);
+      const existingRecord = readSourceRecord(cwd) ?? {};
+      writeSourceRecord(cwd, { ...existingRecord, runtime: validated });
+      console.log(`✓ Added runtime block (agent: ${validated.agent}) to ${SOURCE_FILE}`);
+    } catch (err) {
+      if (!(err instanceof RuntimeConfigError)) throw err;
+      console.warn(`⚠ Runtime block not written — ${err.message}`);
+      console.warn(`  Add a valid runtime block to ${SOURCE_FILE} manually, or re-run init.`);
+    }
+  }
 
   // Update .gitignore
   const gitignorePath = resolve(cwd, '.gitignore');

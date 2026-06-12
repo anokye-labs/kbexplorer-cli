@@ -55,13 +55,14 @@ export function parseInitArgs(args = []) {
  *   --no-agent                 Skip the fuzzy (copilot) step; deterministic only.
  *   --refresh, --force         Re-run the agent even if catalogue.json exists.
  *   --dry-run                  Print the assembled `copilot -p` command; do not run.
+ *   --runtime <name>           Override runtime adapter: "copilot" | "claude" | "custom".
  *   --help, -h                 Show help.
  *
  * @param {string[]} args
  * @returns {{
  *   prompt: string|null, model: string|null, allowTools: string[],
  *   allowAllTools: boolean|null, timeout: number|null, noAgent: boolean,
- *   refresh: boolean, dryRun: boolean, help: boolean, unknown: string[]
+ *   refresh: boolean, dryRun: boolean, runtime: string|null, help: boolean, unknown: string[]
  * }}
  */
 export function parseGenerateArgs(args = []) {
@@ -74,6 +75,7 @@ export function parseGenerateArgs(args = []) {
     noAgent: false,
     refresh: false,
     dryRun: false,
+    runtime: null,
     help: false,
     unknown: [],
   };
@@ -108,6 +110,9 @@ export function parseGenerateArgs(args = []) {
       case '--dry-run':
         out.dryRun = true;
         break;
+      case '--runtime':
+        out.runtime = args[++i] ?? null;
+        break;
       case '--help':
       case '-h':
         out.help = true;
@@ -134,13 +139,14 @@ export function parseGenerateArgs(args = []) {
  *   --allow-all-tools          Allow all tools (default for the extraction step).
  *   --timeout <ms>             Time budget for the programmatic run.
  *   --dry-run                  Print the assembled copilot command + planned outputs; run nothing.
+ *   --runtime <name>           Override runtime adapter: "copilot" | "claude" | "custom".
  *   --help, -h                 Show help.
  *
  * @param {string[]} args
  * @returns {{
  *   sources: string[], out: string|null, context: string|null, check: boolean,
  *   refresh: boolean, model: string|null, allowTools: string[], allowAllTools: boolean|null,
- *   timeout: number|null, dryRun: boolean, help: boolean, unknown: string[]
+ *   timeout: number|null, dryRun: boolean, runtime: string|null, help: boolean, unknown: string[]
  * }}
  */
 export function parseDeriveArgs(args = []) {
@@ -155,6 +161,7 @@ export function parseDeriveArgs(args = []) {
     allowAllTools: null,
     timeout: null,
     dryRun: false,
+    runtime: null,
     help: false,
     unknown: [],
   };
@@ -191,6 +198,9 @@ export function parseDeriveArgs(args = []) {
       }
       case '--dry-run':
         out.dryRun = true;
+        break;
+      case '--runtime':
+        out.runtime = args[++i] ?? null;
         break;
       case '--help':
       case '-h':

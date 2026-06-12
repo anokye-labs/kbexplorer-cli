@@ -20,13 +20,19 @@ import { transformCatalogue } from '../lib/transform.js';
 import { parseGenerateArgs } from '../lib/args.js';
 import { routeTask } from '../lib/runtime-router.js';
 import {
-  runCopilot,
-  isCopilotAvailable,
-  buildCopilotArgs,
+  runRuntimeTask,
+  isAdapterAvailable,
   resolveBinary,
-  CopilotRuntimeError,
+  titleCase,
+  RuntimeAdapterError,
   RuntimeErrorCode,
 } from '../lib/copilot-runtime.js';
+import {
+  loadRuntimeConfig,
+  resolveRuntime,
+  applyRuntimeConfigDefaults,
+  RuntimeConfigError,
+} from '../lib/runtime-config.js';
 
 const CATALOGUE_FILE = 'catalogue.json';
 
@@ -65,7 +71,9 @@ function printHelp() {
         --timeout <ms>    Time budget for the programmatic run (default 600000)
         --no-agent        Skip the fuzzy step; only transform an existing catalogue
         --refresh,--force Re-run the agent even if catalogue.json already exists
-        --dry-run         Print the assembled copilot command and exit (no run)
+        --dry-run         Print the assembled agent command and exit (no run)
+        --runtime <name>  Override runtime adapter: "copilot" | "claude" | "custom"
+                          (precedence: flag > .kbexplorer.json > KBEXPLORER_RUNTIME > default)
     -h, --help            Show this help
 `);
 }
@@ -101,43 +109,62 @@ export default async function generate(args = []) {
   const appRoot = getAppRoot(cwd);
   const cataloguePath = resolve(cwd, CATALOGUE_FILE);
   const haveCatalogue = existsSync(cataloguePath);
-  const runtimeOptions = buildArchitectRuntimeOptions(opts, cwd);
+
+  // ── Resolve runtime adapter (precedence: --runtime flag > .kbexplorer.json > env > default) ──
+  let runtimeConfig;
+  let runtimeAdapter;
+  try {
+    runtimeConfig = loadRuntimeConfig(cwd);
+    runtimeAdapter = resolveRuntime({ flag: opts.runtime, config: runtimeConfig });
+  } catch (err) {
+    if (err instanceof RuntimeConfigError) {
+      console.error(`✗ ${err.message}`);
+      process.exit(1);
+    }
+    throw err;
+  }
+  // CLI --timeout wins; config timeoutMs fills the gap.
+  const runtimeOptions = applyRuntimeConfigDefaults(buildArchitectRuntimeOptions(opts, cwd), runtimeConfig);
 
   // ── Dry run: show exactly what would be invoked, then stop. ──
   if (opts.dryRun) {
-    const binary = resolveBinary();
-    const argv = buildCopilotArgs(runtimeOptions);
-    console.log('Dry run — would invoke Copilot programmatic mode:');
+    const binary = resolveBinary({ envVar: runtimeAdapter.binaryEnv, defaultBinary: runtimeAdapter.defaultBinary });
+    const argv = runtimeAdapter.buildArgs(runtimeOptions);
+    console.log(`Dry run — would invoke ${titleCase(runtimeAdapter.name)} programmatic mode:`);
     console.log(`  ${binary} ${argv.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ')}`);
     return;
   }
 
   const wantAgent = !opts.noAgent && (!haveCatalogue || opts.refresh);
 
-  // ── Phase 1 (fuzzy): drive copilot to produce catalogue.json ──
+  // ── Phase 1 (fuzzy): drive the configured agent to produce catalogue.json ──
   if (wantAgent) {
-    if (!isCopilotAvailable()) {
-      console.error('✗ Copilot CLI not found on PATH.');
-      console.error('  Install it: https://docs.github.com/copilot/how-tos/copilot-cli');
-      console.error('  Or set KBEXPLORER_COPILOT_BIN to its full path.');
+    if (!isAdapterAvailable(runtimeAdapter)) {
+      console.error(`✗ ${titleCase(runtimeAdapter.name)} CLI not found on PATH.`);
+      if (runtimeAdapter.installUrl) {
+        console.error(`  Install it: ${runtimeAdapter.installUrl}`);
+      }
+      if (runtimeAdapter.binaryEnv) {
+        console.error(`  Or set ${runtimeAdapter.binaryEnv} to its full path.`);
+      }
       if (!haveCatalogue) {
         console.error('  Alternatively, produce catalogue.json another way and re-run with --no-agent.');
         process.exit(1);
       }
       console.warn('⚠ Continuing with the existing catalogue.json (deterministic transform only).');
     } else {
-      console.log('🤖 Running Copilot programmatic mode (architect)...');
+      console.log(`🤖 Running ${titleCase(runtimeAdapter.name)} programmatic mode (architect)...`);
       try {
         const { result } = await routeTask(
           { name: 'architect', kind: 'fuzzy', prompt: runtimeOptions.prompt, ...runtimeOptions },
-          { logger: console, runFuzzy: (task) => runCopilot(task) },
+          { logger: console, runFuzzy: (task) => runRuntimeTask({ adapter: runtimeAdapter, ...task }) },
         );
         if (result.response) {
           console.log(result.response.trim());
         }
       } catch (err) {
-        if (err instanceof CopilotRuntimeError) {
-          console.error(`✗ Copilot run failed (${err.code}): ${err.message}`);
+        if (err instanceof RuntimeAdapterError) {
+          console.error(`✗ ${titleCase(runtimeAdapter.name)} run failed (${err.code}): ${err.message}`);
           if (err.code === RuntimeErrorCode.BINARY_MISSING && !haveCatalogue) {
             process.exit(1);
           }

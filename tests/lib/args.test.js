@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { parseInitArgs, parseUpdateArgs, parseGenerateArgs } = await import('../../src/lib/args.js');
+const { parseInitArgs, parseUpdateArgs, parseGenerateArgs, parseDeriveArgs } = await import('../../src/lib/args.js');
 
 describe('parseInitArgs', () => {
   it('returns defaults for no args', () => {
@@ -77,6 +77,7 @@ describe('parseGenerateArgs', () => {
       noAgent: false,
       refresh: false,
       dryRun: false,
+      runtime: null,
       help: false,
       unknown: [],
     });
@@ -108,5 +109,53 @@ describe('parseGenerateArgs', () => {
 
   it('collects unknown args', () => {
     assert.deepStrictEqual(parseGenerateArgs(['--bogus']).unknown, ['--bogus']);
+  });
+
+  it('parses --runtime flag', () => {
+    assert.strictEqual(parseGenerateArgs(['--runtime', 'claude']).runtime, 'claude');
+    assert.strictEqual(parseGenerateArgs(['--runtime', 'copilot']).runtime, 'copilot');
+  });
+});
+
+describe('parseDeriveArgs', () => {
+  it('returns defaults for no args', () => {
+    assert.deepStrictEqual(parseDeriveArgs([]), {
+      sources: [],
+      out: null,
+      context: null,
+      check: false,
+      refresh: false,
+      model: null,
+      allowTools: [],
+      allowAllTools: null,
+      timeout: null,
+      dryRun: false,
+      runtime: null,
+      help: false,
+      unknown: [],
+    });
+  });
+
+  it('collects positional sources', () => {
+    const out = parseDeriveArgs(['a.docx', 'b.md', '--check']);
+    assert.deepStrictEqual(out.sources, ['a.docx', 'b.md']);
+    assert.strictEqual(out.check, true);
+  });
+
+  it('parses --out / -o', () => {
+    assert.strictEqual(parseDeriveArgs(['--out', 'dist/derived']).out, 'dist/derived');
+    assert.strictEqual(parseDeriveArgs(['-o', 'other']).out, 'other');
+  });
+
+  it('parses --runtime flag', () => {
+    assert.strictEqual(parseDeriveArgs(['--runtime', 'claude']).runtime, 'claude');
+    assert.strictEqual(parseDeriveArgs(['--runtime', 'copilot']).runtime, 'copilot');
+    assert.strictEqual(parseDeriveArgs(['--runtime', 'custom']).runtime, 'custom');
+  });
+
+  it('collects unknown flags (not positionals)', () => {
+    const out = parseDeriveArgs(['--bogus', 'a.docx']);
+    assert.deepStrictEqual(out.unknown, ['--bogus']);
+    assert.deepStrictEqual(out.sources, ['a.docx']);
   });
 });
