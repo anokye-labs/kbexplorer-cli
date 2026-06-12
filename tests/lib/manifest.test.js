@@ -25,7 +25,7 @@ before(() => {
 
 after(() => { rmSync(FIXTURES, { recursive: true, force: true }); });
 
-const { walkFileSystem, readAuthoredContent, readConfig, readReadme, fetchLocalCommits } = await import('../../src/lib/manifest.js');
+const { walkFileSystem, readAuthoredContent, readConfig, readReadme, fetchLocalCommits, fetchLocalReleases } = await import('../../src/lib/manifest.js');
 
 describe('walkFileSystem', () => {
   it('produces entries for files and directories', () => {
@@ -99,5 +99,203 @@ describe('readReadme', () => {
 describe('fetchLocalCommits', () => {
   it('returns an array', () => {
     assert.ok(Array.isArray(fetchLocalCommits()));
+  });
+});
+
+// ── fetchLocalReleases ────────────────────────────────────────────────────────
+
+// Fake gh API response representing published releases (including a draft)
+const MOCK_GH_RELEASES = [
+  {
+    tag_name: 'v1.2.0',
+    name: 'Version 1.2.0',
+    body: '## What\'s new\n- Feature A',
+    html_url: 'https://github.com/org/repo/releases/tag/v1.2.0',
+    published_at: '2024-03-01T12:00:00Z',
+    prerelease: false,
+    draft: false,
+  },
+  {
+    tag_name: 'v1.1.0',
+    name: 'Version 1.1.0',
+    body: 'Bug fixes.',
+    html_url: 'https://github.com/org/repo/releases/tag/v1.1.0',
+    published_at: '2024-02-01T12:00:00Z',
+    prerelease: false,
+    draft: false,
+  },
+  {
+    tag_name: 'v1.0.0-beta.1',
+    name: 'Beta 1',
+    body: 'Pre-release.',
+    html_url: 'https://github.com/org/repo/releases/tag/v1.0.0-beta.1',
+    published_at: '2024-01-15T09:00:00Z',
+    prerelease: true,
+    draft: false,
+  },
+  {
+    tag_name: 'v1.0.0-draft',
+    name: 'Draft release',
+    body: 'Not published yet.',
+    html_url: 'https://github.com/org/repo/releases/tag/v1.0.0-draft',
+    published_at: '2024-01-10T09:00:00Z',
+    prerelease: false,
+    draft: true,
+  },
+];
+
+/**
+ * Build a minimal fake execSync that:
+ * - succeeds for `gh --version`
+ * - returns mock JSON for `gh api repos/{owner}/{repo}/releases`
+ */
+function makeGhExec(releases = MOCK_GH_RELEASES) {
+  return (cmd, _opts) => {
+    if (cmd.startsWith('gh --version')) return '';
+    if (cmd.includes('gh api') && cmd.includes('/releases')) {
+      return JSON.stringify(releases);
+    }
+    throw new Error(`Unexpected command: ${cmd}`);
+  };
+}
+
+/**
+ * Fake execSync that throws ENOENT on `gh --version` (simulates gh missing).
+ */
+function makeGhMissingExec() {
+  return (_cmd, _opts) => { throw new Error('spawn gh ENOENT'); };
+}
+
+describe('fetchLocalReleases — happy path', () => {
+  it('returns an array of releases', () => {
+    const releases = fetchLocalReleases(undefined, makeGhExec());
+    assert.ok(Array.isArray(releases));
+    assert.ok(releases.length > 0);
+  });
+
+  it('maps fields to GHRelease shape', () => {
+    const releases = fetchLocalReleases(undefined, makeGhExec());
+    const first = releases[0];
+    assert.ok('tag_name' in first);
+    assert.ok('name' in first);
+    assert.ok('body' in first);
+    assert.ok('html_url' in first);
+    assert.ok('published_at' in first);
+    assert.ok('prerelease' in first);
+  });
+
+  it('sorts newest-first by published_at', () => {
+    const releases = fetchLocalReleases(undefined, makeGhExec());
+    for (let i = 1; i < releases.length; i++) {
+      const prev = new Date(releases[i - 1].published_at);
+      const curr = new Date(releases[i].published_at);
+      assert.ok(prev >= curr, `releases not in descending order at index ${i}`);
+    }
+  });
+
+  it('excludes draft releases', () => {
+    const releases = fetchLocalReleases(undefined, makeGhExec());
+    assert.ok(
+      releases.every((r) => r.tag_name !== 'v1.0.0-draft'),
+      'draft release should not appear in results',
+    );
+  });
+
+  it('includes pre-releases (prerelease=true)', () => {
+    const releases = fetchLocalReleases(undefined, makeGhExec());
+    assert.ok(
+      releases.some((r) => r.prerelease === true),
+      'pre-releases should be included',
+    );
+  });
+
+  it('tag_name and name are strings', () => {
+    const releases = fetchLocalReleases(undefined, makeGhExec());
+    for (const r of releases) {
+      assert.strictEqual(typeof r.tag_name, 'string');
+      assert.strictEqual(typeof r.name, 'string');
+    }
+  });
+});
+
+describe('fetchLocalReleases — cap at 30', () => {
+  it('returns at most 30 releases regardless of how many gh returns', () => {
+    // Build 50 synthetic releases
+    const many = Array.from({ length: 50 }, (_, i) => ({
+      tag_name: `v${50 - i}.0.0`,
+      name: `Release ${50 - i}`,
+      body: '',
+      html_url: '',
+      published_at: new Date(Date.now() - i * 86400000).toISOString(),
+      prerelease: false,
+      draft: false,
+    }));
+    const releases = fetchLocalReleases(undefined, makeGhExec(many));
+    assert.ok(releases.length <= 30, `Expected <= 30, got ${releases.length}`);
+  });
+});
+
+describe('fetchLocalReleases — gh missing (degradation)', () => {
+  it('returns an empty array when gh is not available', () => {
+    const warns = [];
+    const origWarn = console.warn;
+    console.warn = (...a) => warns.push(a.join(' '));
+    let releases;
+    try {
+      releases = fetchLocalReleases(undefined, makeGhMissingExec());
+    } finally {
+      console.warn = origWarn;
+    }
+    assert.deepStrictEqual(releases, []);
+  });
+
+  it('emits a warning when gh is not available', () => {
+    const warns = [];
+    const origWarn = console.warn;
+    console.warn = (...a) => warns.push(a.join(' '));
+    try {
+      fetchLocalReleases(undefined, makeGhMissingExec());
+    } finally {
+      console.warn = origWarn;
+    }
+    assert.ok(
+      warns.some((w) => w.includes('gh CLI not found') || w.includes('skipping releases') || w.includes('releases')),
+      'Expected a warning about gh not being available',
+    );
+  });
+});
+
+describe('fetchLocalReleases — gh non-zero exit (degradation)', () => {
+  it('returns empty array on gh api error', () => {
+    const exec = (cmd, _opts) => {
+      if (cmd.startsWith('gh --version')) return '';
+      throw new Error('gh: Not Found (HTTP 404)');
+    };
+    const warns = [];
+    const origWarn = console.warn;
+    console.warn = (...a) => warns.push(a.join(' '));
+    let releases;
+    try {
+      releases = fetchLocalReleases(undefined, exec);
+    } finally {
+      console.warn = origWarn;
+    }
+    assert.deepStrictEqual(releases, []);
+  });
+
+  it('emits a warning on gh api error', () => {
+    const exec = (cmd, _opts) => {
+      if (cmd.startsWith('gh --version')) return '';
+      throw new Error('gh: Not Found (HTTP 404)');
+    };
+    const warns = [];
+    const origWarn = console.warn;
+    console.warn = (...a) => warns.push(a.join(' '));
+    try {
+      fetchLocalReleases(undefined, exec);
+    } finally {
+      console.warn = origWarn;
+    }
+    assert.ok(warns.length > 0, 'Expected at least one warning');
   });
 });
