@@ -286,8 +286,11 @@ export function fetchLocalReleases(cwd, _exec = execSync) {
     return [];
   }
   try {
+    // The endpoint must be quoted: execSync goes through a shell where an
+    // unquoted `?`/`&` is parsed as shell syntax (`&` splits commands on both
+    // cmd.exe and POSIX shells).
     const json = _exec(
-      `gh api repos/{owner}/{repo}/releases?per_page=${RELEASES_LIMIT}&page=1`,
+      `gh api "repos/{owner}/{repo}/releases?per_page=${RELEASES_LIMIT}"`,
       { cwd, encoding: 'utf-8', timeout: 30000 },
     );
     const releases = JSON.parse(json);

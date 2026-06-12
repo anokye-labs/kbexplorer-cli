@@ -218,6 +218,21 @@ describe('fetchLocalReleases — happy path', () => {
   });
 });
 
+describe('fetchLocalReleases — shell safety', () => {
+  it('quotes the api endpoint so ? and & survive the shell (cmd.exe splits on unquoted &)', () => {
+    const cmds = [];
+    const exec = (cmd, _opts) => {
+      cmds.push(cmd);
+      if (cmd.startsWith('gh --version')) return '';
+      return JSON.stringify([]);
+    };
+    fetchLocalReleases(undefined, exec);
+    const apiCmd = cmds.find((c) => c.includes('gh api'));
+    assert.ok(apiCmd, 'expected a gh api invocation');
+    assert.match(apiCmd, /gh api "[^"]+"$/, 'endpoint must be wrapped in double quotes');
+  });
+});
+
 describe('fetchLocalReleases — cap at 30', () => {
   it('returns at most 30 releases regardless of how many gh returns', () => {
     // Build 50 synthetic releases
