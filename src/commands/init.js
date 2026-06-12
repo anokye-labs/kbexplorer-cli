@@ -20,7 +20,7 @@ import { detectGitRemote, detectBranch, isTemplateRepo, hasSubmodule } from '../
 import { getLatestTag, checkoutTag, checkoutRef, resolveHeadSha, TEMPLATE_REPO } from '../lib/version.js';
 import { parseInitArgs } from '../lib/args.js';
 import { writeSourceRecord, readSourceRecord, classifyRef, SOURCE_FILE } from '../lib/source.js';
-import { KNOWN_AGENTS } from '../lib/runtime-config.js';
+import { validateRuntimeBlock, RuntimeConfigError } from '../lib/runtime-config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = resolve(__dirname, '..', 'assets');
@@ -323,11 +323,19 @@ export default async function init(args) {
   writeFileSync(resolve(cwd, '.env.kbexplorer'), envLines.join('\n') + '\n', 'utf-8');
   console.log('✓ Created .env.kbexplorer');
 
-  // Write runtime block into .kbexplorer.json (merge with existing record)
+  // Write runtime block into .kbexplorer.json (merge with existing record).
+  // Validate first — never persist a block derive/generate would reject.
   if (runtimeBlock != null) {
-    const existingRecord = readSourceRecord(cwd) ?? {};
-    writeSourceRecord(cwd, { ...existingRecord, runtime: runtimeBlock });
-    console.log(`✓ Added runtime block (agent: ${runtimeBlock.agent}) to ${SOURCE_FILE}`);
+    try {
+      const validated = validateRuntimeBlock(runtimeBlock);
+      const existingRecord = readSourceRecord(cwd) ?? {};
+      writeSourceRecord(cwd, { ...existingRecord, runtime: validated });
+      console.log(`✓ Added runtime block (agent: ${validated.agent}) to ${SOURCE_FILE}`);
+    } catch (err) {
+      if (!(err instanceof RuntimeConfigError)) throw err;
+      console.warn(`⚠ Runtime block not written — ${err.message}`);
+      console.warn(`  Add a valid runtime block to ${SOURCE_FILE} manually, or re-run init.`);
+    }
   }
 
   // Update .gitignore

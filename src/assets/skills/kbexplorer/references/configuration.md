@@ -196,7 +196,7 @@ The CLI validates the block on load and emits an actionable error for:
 - Non-string entries in `argsTemplate`
 - `outputFormat` not `"text"` or `"jsonl"`
 - `timeoutMs` not a positive number
-- `command`, `argsTemplate`, or `binaryEnv` specified for a non-custom agent
+- `command`, `argsTemplate`, `outputFormat`, or `binaryEnv` specified for a non-custom agent
 
 ### Binary Path Overrides
 

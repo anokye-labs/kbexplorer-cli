@@ -131,8 +131,13 @@ export function validateRuntimeBlock(runtime) {
     }
   }
 
-  // ── outputFormat ────────────────────────────────────────────────────────────
+  // ── outputFormat (custom only — named adapters own their output parsing) ───
   if (outputFormat != null) {
+    if (agentLower !== 'custom') {
+      throw new RuntimeConfigError(
+        `runtime.outputFormat is only valid when runtime.agent is "custom" (got agent "${agent}") — named adapters parse their own output.`,
+      );
+    }
     if (typeof outputFormat !== 'string' || !['text', 'jsonl'].includes(outputFormat)) {
       throw new RuntimeConfigError(
         `runtime.outputFormat must be "text" or "jsonl". Got: ${JSON.stringify(outputFormat)}.`,
@@ -234,8 +239,13 @@ export function adapterFromConfig(config) {
 export function resolveRuntime({ flag, config, env } = {}) {
   const envMap = env ?? process.env;
 
-  // 1. Explicit --runtime flag
+  // 1. Explicit --runtime flag. `--runtime custom` is a valid way to select
+  // the repo's configured custom runtime — it is only an error when no
+  // custom config block exists to satisfy it.
   if (flag != null && flag !== '') {
+    if (String(flag).toLowerCase() === 'custom' && config?.agent === 'custom') {
+      return adapterFromConfig(config);
+    }
     return adapterFromName(flag, 'CLI --runtime flag');
   }
 
@@ -244,7 +254,8 @@ export function resolveRuntime({ flag, config, env } = {}) {
     return adapterFromConfig(config);
   }
 
-  // 3. KBEXPLORER_RUNTIME env var
+  // 3. KBEXPLORER_RUNTIME env var (only reachable with no config block, so
+  // "custom" here is always an error — there is no config to satisfy it).
   const envVal = envMap[RUNTIME_ENV];
   if (envVal != null && envVal !== '') {
     return adapterFromName(envVal, `${RUNTIME_ENV} env var`);
@@ -252,6 +263,22 @@ export function resolveRuntime({ flag, config, env } = {}) {
 
   // 4. Default: copilot
   return copilotAdapter;
+}
+
+/**
+ * Apply runtime-config defaults onto already-built runtime options.
+ * CLI flags win; config fills gaps. Currently threads `timeoutMs` — a
+ * validated-but-unapplied config field would otherwise be silently ignored.
+ *
+ * @param {object} runtimeOptions  Options built from CLI args.
+ * @param {object|null} config     Validated runtime block (or null).
+ * @returns {object} runtimeOptions with config-supplied defaults applied.
+ */
+export function applyRuntimeConfigDefaults(runtimeOptions = {}, config = null) {
+  if (config?.timeoutMs != null && runtimeOptions.timeoutMs == null) {
+    return { ...runtimeOptions, timeoutMs: config.timeoutMs };
+  }
+  return runtimeOptions;
 }
 
 /**

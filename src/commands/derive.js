@@ -40,7 +40,12 @@ import {
   RuntimeAdapterError,
   titleCase,
 } from '../lib/copilot-runtime.js';
-import { loadRuntimeConfig, resolveRuntime } from '../lib/runtime-config.js';
+import {
+  loadRuntimeConfig,
+  resolveRuntime,
+  applyRuntimeConfigDefaults,
+  RuntimeConfigError,
+} from '../lib/runtime-config.js';
 
 const DEFAULT_OUT_DIR = 'content/derived';
 
@@ -240,11 +245,22 @@ export default async function derive(args = []) {
   const cwd = process.cwd();
   const outDir = resolve(cwd, opts.out || DEFAULT_OUT_DIR);
   const context = opts.context || DEFAULT_CONTEXT;
-  const runtimeOptions = buildDeriveRuntimeOptions(opts, cwd);
 
   // ── Resolve runtime adapter (precedence: --runtime flag > .kbexplorer.json > env > default) ──
-  const runtimeConfig = loadRuntimeConfig(cwd);
-  const runtimeAdapter = resolveRuntime({ flag: opts.runtime, config: runtimeConfig });
+  let runtimeConfig;
+  let runtimeAdapter;
+  try {
+    runtimeConfig = loadRuntimeConfig(cwd);
+    runtimeAdapter = resolveRuntime({ flag: opts.runtime, config: runtimeConfig });
+  } catch (err) {
+    if (err instanceof RuntimeConfigError) {
+      console.error(`✗ ${err.message}`);
+      process.exit(1);
+    }
+    throw err;
+  }
+  // CLI --timeout wins; config timeoutMs fills the gap.
+  const runtimeOptions = applyRuntimeConfigDefaults(buildDeriveRuntimeOptions(opts, cwd), runtimeConfig);
 
   // ── Dry run: show the assembled command + planned outputs, run nothing. ──
   if (opts.dryRun) {

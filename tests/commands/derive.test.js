@@ -187,17 +187,12 @@ describe('derive runtime config integration', () => {
   });
 
   it('custom adapter built from config passes prompt through argsTemplate', () => {
-    const { adapterFromConfig } = (() => {
-      // adapterFromConfig is already imported at the top of this file
-      // via the runtime-config import
-      return { adapterFromConfig: (cfg) => resolveRuntime({ flag: null, config: cfg, env: {} }) };
-    })();
     const config = validateRuntimeBlock({
       agent: 'custom',
       command: 'my-agent',
       argsTemplate: ['--ask', '{prompt}', '--out', 'result.json'],
     });
-    const adapter = adapterFromConfig(config);
+    const adapter = resolveRuntime({ flag: null, config, env: {} });
     const args = adapter.buildArgs({ prompt: 'Extract entities' });
     assert.deepStrictEqual(args, ['--ask', 'Extract entities', '--out', 'result.json']);
   });

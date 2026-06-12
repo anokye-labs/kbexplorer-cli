@@ -9,6 +9,7 @@ const {
   loadRuntimeConfig,
   resolveRuntime,
   adapterFromConfig,
+  applyRuntimeConfigDefaults,
   RuntimeConfigError,
   RUNTIME_ENV,
   KNOWN_AGENTS,
@@ -84,9 +85,11 @@ describe('validateRuntimeBlock — valid shapes', () => {
     assert.strictEqual(out.timeoutMs, 30000);
   });
 
-  it('accepts optional outputFormat on copilot agent', () => {
-    const out = validateRuntimeBlock({ agent: 'copilot', outputFormat: 'text' });
-    assert.strictEqual(out.outputFormat, 'text');
+  it('rejects outputFormat on non-custom agents (named adapters parse their own output)', () => {
+    assert.throws(
+      () => validateRuntimeBlock({ agent: 'copilot', outputFormat: 'text' }),
+      (err) => err instanceof RuntimeConfigError && err.message.includes('outputFormat'),
+    );
   });
 });
 
@@ -363,6 +366,21 @@ describe('resolveRuntime — precedence chain', () => {
     );
   });
 
+  it('--runtime custom resolves the configured custom adapter when a custom config exists', () => {
+    const config = { agent: 'custom', command: 'my-agent', argsTemplate: ['-p', '{prompt}'] };
+    const adapter = resolveRuntime({ flag: 'custom', config, env: {} });
+    assert.strictEqual(adapter.name, 'custom');
+    assert.strictEqual(adapter.defaultBinary, 'my-agent');
+  });
+
+  it('--runtime custom still errors when the config block is for a named agent', () => {
+    const config = { agent: 'claude' };
+    assert.throws(
+      () => resolveRuntime({ flag: 'custom', config, env: {} }),
+      RuntimeConfigError,
+    );
+  });
+
   it('resolves custom adapter from config', () => {
     const config = {
       agent: 'custom',
@@ -392,5 +410,26 @@ describe('KNOWN_AGENTS', () => {
   it('is frozen and contains the three adapters', () => {
     assert.deepStrictEqual([...KNOWN_AGENTS].sort(), ['claude', 'copilot', 'custom']);
     assert.ok(Object.isFrozen(KNOWN_AGENTS));
+  });
+});
+
+// ── applyRuntimeConfigDefaults ────────────────────────────────────────────────
+
+describe('applyRuntimeConfigDefaults', () => {
+  it('threads config timeoutMs when the CLI did not set one', () => {
+    const out = applyRuntimeConfigDefaults({ timeoutMs: undefined, silent: true }, { agent: 'copilot', timeoutMs: 120000 });
+    assert.strictEqual(out.timeoutMs, 120000);
+    assert.strictEqual(out.silent, true);
+  });
+
+  it('CLI timeout wins over config timeoutMs', () => {
+    const out = applyRuntimeConfigDefaults({ timeoutMs: 5000 }, { agent: 'copilot', timeoutMs: 120000 });
+    assert.strictEqual(out.timeoutMs, 5000);
+  });
+
+  it('is a no-op without a config or without config timeoutMs', () => {
+    const opts = { silent: true };
+    assert.strictEqual(applyRuntimeConfigDefaults(opts, null), opts);
+    assert.strictEqual(applyRuntimeConfigDefaults(opts, { agent: 'claude' }), opts);
   });
 });
