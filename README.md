@@ -271,18 +271,15 @@ are absent produce a warning instead.
 
 | Adapter | Files checked (in order) |
 |---------|--------------------------|
-| `copilot` | `<repo>/.github/copilot/mcp.json` → `~/.copilot/mcp.json` |
+| `copilot` | `~/.copilot/mcp-config.json` (the file Copilot CLI reads; it has no repo-local MCP config today) |
 | `claude` | `<repo>/.mcp.json` → `~/.claude.json` (project entries matching cwd) |
 | `custom` | Detection not possible — all declared servers reported as unverifiable (warning, not failure) |
 
-#### Config file shapes
+#### Config file shape
 
-**copilot** (`mcp.json`):
-```json
-{ "servers": { "ado": { "command": "npx", "args": ["-y", "ado-mcp"] } } }
-```
+Both adapters' files use the same entry shape (`~/.copilot/mcp-config.json`
+for copilot, `.mcp.json` for claude):
 
-**claude** (`.mcp.json`):
 ```json
 { "mcpServers": { "ado": { "command": "npx", "args": ["-y", "ado-mcp"] } } }
 ```

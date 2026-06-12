@@ -168,11 +168,11 @@ describe('detectConfiguredMcpServers — copilot adapter', () => {
     });
   });
 
-  it('reads servers keys from .github/copilot/mcp.json', () => {
+  it('reads mcpServers keys from ~/.copilot/mcp-config.json (the file Copilot CLI reads)', () => {
     withTempDir((cwd) => {
       withTempDir((home) => {
-        writeJson(join(cwd, '.github', 'copilot', 'mcp.json'), {
-          servers: {
+        writeJson(join(home, '.copilot', 'mcp-config.json'), {
+          mcpServers: {
             ado: { command: 'npx', args: ['-y', 'ado-mcp'] },
             sharepoint: { command: 'npx', args: ['-y', 'sharepoint-mcp'] },
           },
@@ -183,50 +183,44 @@ describe('detectConfiguredMcpServers — copilot adapter', () => {
         assert.ok(servers.has('ado'));
         assert.ok(servers.has('sharepoint'));
         assert.strictEqual(servers.size, 2);
-        assert.ok(sources.some((s) => s.includes('mcp.json')));
+        assert.ok(sources.some((s) => s.includes('mcp-config.json')));
       });
     });
   });
 
-  it('reads servers keys from ~/.copilot/mcp.json', () => {
+  it('accepts a legacy "servers" key as schema-drift fallback', () => {
     withTempDir((cwd) => {
       withTempDir((home) => {
-        writeJson(join(home, '.copilot', 'mcp.json'), {
-          servers: { 'org-chart': { command: 'npx', args: [] } },
-        });
-        const { servers, sources } = detectConfiguredMcpServers(
-          copilotAdapter, cwd, { env: { HOME: home, USERPROFILE: home } },
-        );
-        assert.ok(servers.has('org-chart'));
-        assert.ok(sources.some((s) => s.includes('.copilot')));
-      });
-    });
-  });
-
-  it('merges servers from both repo-local and user-level config', () => {
-    withTempDir((cwd) => {
-      withTempDir((home) => {
-        writeJson(join(cwd, '.github', 'copilot', 'mcp.json'), {
-          servers: { ado: { command: 'npx', args: [] } },
-        });
-        writeJson(join(home, '.copilot', 'mcp.json'), {
+        writeJson(join(home, '.copilot', 'mcp-config.json'), {
           servers: { 'org-chart': { command: 'npx', args: [] } },
         });
         const { servers } = detectConfiguredMcpServers(
           copilotAdapter, cwd, { env: { HOME: home, USERPROFILE: home } },
         );
-        assert.ok(servers.has('ado'));
         assert.ok(servers.has('org-chart'));
-        assert.strictEqual(servers.size, 2);
       });
     });
   });
 
-  it('ignores malformed repo-local mcp.json gracefully', () => {
+  it('does not read repo-local files — Copilot CLI has no repo-local MCP config', () => {
     withTempDir((cwd) => {
       withTempDir((home) => {
-        mkdirSync(join(cwd, '.github', 'copilot'), { recursive: true });
-        writeFileSync(join(cwd, '.github', 'copilot', 'mcp.json'), '{ bad json', 'utf-8');
+        writeJson(join(cwd, '.github', 'copilot', 'mcp.json'), {
+          servers: { ado: { command: 'npx', args: [] } },
+        });
+        const { servers } = detectConfiguredMcpServers(
+          copilotAdapter, cwd, { env: { HOME: home, USERPROFILE: home } },
+        );
+        assert.strictEqual(servers.size, 0);
+      });
+    });
+  });
+
+  it('ignores malformed mcp-config.json gracefully', () => {
+    withTempDir((cwd) => {
+      withTempDir((home) => {
+        mkdirSync(join(home, '.copilot'), { recursive: true });
+        writeFileSync(join(home, '.copilot', 'mcp-config.json'), '{ bad json', 'utf-8');
         const { servers } = detectConfiguredMcpServers(
           copilotAdapter, cwd, { env: { HOME: home, USERPROFILE: home } },
         );
@@ -470,8 +464,8 @@ describe('formatMcpPreflightErrors', () => {
     withTempDir((cwd) => {
       const lines = formatMcpPreflightErrors(['sharepoint-docs'], 'copilot', cwd);
       assert.ok(lines.some((l) => l.includes('sharepoint-docs')));
-      assert.ok(lines.some((l) => l.includes('.github/copilot/mcp.json') || l.includes('mcp.json')));
-      assert.ok(lines.some((l) => l.includes('"servers"')));
+      assert.ok(lines.some((l) => l.includes('mcp-config.json')));
+      assert.ok(lines.some((l) => l.includes('"mcpServers"')));
     });
   });
 

@@ -323,9 +323,11 @@ export default async function derive(args = []) {
   }
 
   // ── MCP preflight: verify required servers are configured before any LLM call ──
-  // Only runs when the runtime config declares an `mcp` block.
-  // Skipped for --check (no LLM) and --dry-run (no LLM).
-  if (!opts.check && !opts.dryRun && runtimeConfig?.mcp) {
+  // Only runs when the runtime config declares an `mcp` block AND a fuzzy
+  // extraction will actually run — like the availability check above, sources
+  // served from fresh committed artifacts need no LLM and no MCP servers.
+  // (--check and --dry-run never reach here with LLM work either.)
+  if (!opts.check && !opts.dryRun && runtimeConfig?.mcp && needsExtraction(opts, cwd, outDir)) {
     if (opts.skipPreflight) {
       console.warn('⚠ --skip-preflight: skipping MCP server verification (development mode).');
     } else {

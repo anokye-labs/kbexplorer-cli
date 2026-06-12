@@ -16,11 +16,11 @@
  *        `claude mcp add --scope project`.
  *
  *   copilot:
- *     1. <cwd>/.github/copilot/mcp.json — repo-local Copilot CLI MCP config
- *        Reads the top-level "servers" object; keys are server names.
- *        (Spec: https://docs.github.com/en/copilot/how-tos/copilot-extensions/mcp)
- *     2. ~/.copilot/mcp.json           — user-level Copilot MCP config
- *        Same "servers" object shape as the repo-local file.
+ *     ~/.copilot/mcp-config.json       — Copilot CLI's MCP config (the file
+ *        `copilot` actually reads; verified against a live install). Reads the
+ *        top-level "mcpServers" object; keys are server names. A "servers" key
+ *        is accepted as a fallback for schema drift. Copilot CLI has no
+ *        repo-local MCP config file today, so none is checked.
  *
  *   custom:
  *     Detection is not possible — the CLI has no knowledge of how a custom
@@ -111,28 +111,30 @@ function detectCopilotServers(cwd, { env } = {}) {
   const servers = new Set();
   const sources = [];
 
-  // 1. Repo-local .github/copilot/mcp.json
-  const repoMcpPath = join(cwd, '.github', 'copilot', 'mcp.json');
-  const repoMcp = tryReadJson(repoMcpPath);
-  if (repoMcp && typeof repoMcp.servers === 'object' && repoMcp.servers !== null && !Array.isArray(repoMcp.servers)) {
-    for (const key of Object.keys(repoMcp.servers)) {
-      servers.add(key);
-    }
-    sources.push(repoMcpPath);
-  }
-
-  // 2. User-level ~/.copilot/mcp.json
+  // Copilot CLI reads ~/.copilot/mcp-config.json (top-level "mcpServers",
+  // verified against a live install). It has no repo-local MCP config file
+  // today. Accept a "servers" key as a fallback for schema drift.
   const home = (env && (env.HOME || env.USERPROFILE)) || homedir();
-  const userMcpPath = join(home, '.copilot', 'mcp.json');
+  const userMcpPath = join(home, '.copilot', 'mcp-config.json');
   const userMcp = tryReadJson(userMcpPath);
-  if (userMcp && typeof userMcp.servers === 'object' && userMcp.servers !== null && !Array.isArray(userMcp.servers)) {
-    for (const key of Object.keys(userMcp.servers)) {
+  const serverMap = pickServerMap(userMcp);
+  if (serverMap) {
+    for (const key of Object.keys(serverMap)) {
       servers.add(key);
     }
     sources.push(userMcpPath);
   }
 
   return { servers, sources };
+}
+
+/** Return the first of obj.mcpServers / obj.servers that is a plain object. */
+function pickServerMap(obj) {
+  for (const key of ['mcpServers', 'servers']) {
+    const value = obj?.[key];
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  }
+  return null;
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -252,12 +254,8 @@ export function formatMcpPreflightErrors(missing, adapterName, cwd, env) {
   for (const server of missing) {
     lines.push(`  Missing: "${server}"`);
     lines.push(`  Expected in: ${files.primary}`);
-    lines.push(`  Example entry (${adapterName === 'claude' ? '.mcp.json' : '.github/copilot/mcp.json'}):`);
-    if (adapterName === 'claude') {
-      lines.push(`    { "mcpServers": { "${server}": { "command": "npx", "args": ["-y", "${server}-mcp"] } } }`);
-    } else {
-      lines.push(`    { "servers": { "${server}": { "command": "npx", "args": ["-y", "${server}-mcp"] } } }`);
-    }
+    lines.push(`  Example entry:`);
+    lines.push(`    { "mcpServers": { "${server}": { "command": "npx", "args": ["-y", "${server}-mcp"] } } }`);
   }
 
   lines.push(`  Run with --skip-preflight to bypass this check (development only).`);
@@ -283,9 +281,10 @@ function _expectedConfigFiles(adapterName, cwd, env) {
     };
   }
   if (adapterName === 'copilot') {
+    const userConfig = join(home, '.copilot', 'mcp-config.json');
     return {
-      primary: join(cwd, '.github', 'copilot', 'mcp.json'),
-      secondary: join(home, '.copilot', 'mcp.json'),
+      primary: userConfig,
+      secondary: userConfig,
     };
   }
   return {
