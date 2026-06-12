@@ -9,6 +9,10 @@ const { deriveSource, artifactPathFor, buildDeriveRuntimeOptions } = await impor
 );
 const { validateArtifact } = await import('../../src/lib/jsonld.js');
 const { makeDocx } = await import('../fixtures/make-docx.mjs');
+const { resolveRuntime, loadRuntimeConfig, validateRuntimeBlock } = await import(
+  '../../src/lib/runtime-config.js'
+);
+const { copilotAdapter, claudeAdapter } = await import('../../src/lib/copilot-runtime.js');
 
 async function withTempDir(fn) {
   const dir = mkdtempSync(join(tmpdir(), 'kb-derive-'));
@@ -148,6 +152,68 @@ describe('deriveSource (--check drift)', () => {
       const res = await deriveSource(src, { outDir, cwd: dir, check: true, runExtraction: run });
       assert.strictEqual(res.drift, true);
       assert.match(res.reason, /source changed/);
+    });
+  });
+});
+
+// ── Runtime config integration: adapter flows into extraction path ────────────
+
+describe('derive runtime config integration', () => {
+  it('resolveRuntime defaults to copilot when no flag/config/env', () => {
+    const adapter = resolveRuntime({ env: {} });
+    assert.strictEqual(adapter, copilotAdapter);
+    assert.strictEqual(adapter.name, 'copilot');
+  });
+
+  it('resolveRuntime picks up claude from .kbexplorer.json config', () => {
+    const config = validateRuntimeBlock({ agent: 'claude' });
+    const adapter = resolveRuntime({ flag: null, config, env: {} });
+    assert.strictEqual(adapter.name, 'claude');
+  });
+
+  it('resolveRuntime --runtime flag overrides .kbexplorer.json', () => {
+    const config = validateRuntimeBlock({ agent: 'claude' });
+    const adapter = resolveRuntime({ flag: 'copilot', config, env: {} });
+    assert.strictEqual(adapter, copilotAdapter);
+  });
+
+  it('loadRuntimeConfig returns null in a dir with no .kbexplorer.json', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kb-drt-'));
+    try {
+      assert.strictEqual(loadRuntimeConfig(dir), null);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('custom adapter built from config passes prompt through argsTemplate', () => {
+    const { adapterFromConfig } = (() => {
+      // adapterFromConfig is already imported at the top of this file
+      // via the runtime-config import
+      return { adapterFromConfig: (cfg) => resolveRuntime({ flag: null, config: cfg, env: {} }) };
+    })();
+    const config = validateRuntimeBlock({
+      agent: 'custom',
+      command: 'my-agent',
+      argsTemplate: ['--ask', '{prompt}', '--out', 'result.json'],
+    });
+    const adapter = adapterFromConfig(config);
+    const args = adapter.buildArgs({ prompt: 'Extract entities' });
+    assert.deepStrictEqual(args, ['--ask', 'Extract entities', '--out', 'result.json']);
+  });
+
+  it('deriveSource uses injected extractor regardless of runtime config (pure function)', async () => {
+    await withTempDir(async (dir) => {
+      const src = join(dir, 'org.docx');
+      writeFileSync(src, makeDocx(['Acme Corp strategy.']));
+      const outDir = join(dir, 'out');
+      const { run, calls } = fakeExtractor();
+
+      // deriveSource is pure — runtime adapter is a concern of the CLI layer
+      const res = await deriveSource(src, { outDir, cwd: dir, runExtraction: run });
+      assert.strictEqual(res.status, 'created');
+      assert.strictEqual(calls.n, 1);
+      assert.ok(res.validation.ok);
     });
   });
 });

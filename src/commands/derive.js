@@ -35,12 +35,12 @@ import {
 } from '../lib/jsonld.js';
 import { routeTask } from '../lib/runtime-router.js';
 import {
-  copilotAdapter,
   isAdapterAvailable,
   resolveBinary,
   RuntimeAdapterError,
   titleCase,
 } from '../lib/copilot-runtime.js';
+import { loadRuntimeConfig, resolveRuntime } from '../lib/runtime-config.js';
 
 const DEFAULT_OUT_DIR = 'content/derived';
 
@@ -50,8 +50,8 @@ function printHelp() {
 
   Usage: kbexplorer derive <source...> [options]
 
-  Reads unstructured sources (.docx, prose .md/.markdown, .txt), uses Copilot
-  programmatic mode (copilot -p) to extract entities/relationships, then emits
+  Reads unstructured sources (.docx, prose .md/.markdown, .txt), uses the
+  configured runtime agent to extract entities/relationships, then emits
   committed *.jsonld conforming to the engine's node-type contract.
 
   Arguments:
@@ -67,7 +67,9 @@ function printHelp() {
         --allow-tool <s>  Scoped tool permission, repeatable (disables implicit allow-all)
         --allow-all-tools Allow all tools without confirmation (default for extraction)
         --timeout <ms>    Time budget for the programmatic run (default 600000)
-        --dry-run         Print the assembled copilot command + planned outputs; run nothing
+        --dry-run         Print the assembled agent command + planned outputs; run nothing
+        --runtime <name>  Override runtime adapter: "copilot" | "claude" | "custom"
+                          (precedence: flag > .kbexplorer.json > KBEXPLORER_RUNTIME > default)
     -h, --help            Show this help
 `);
 }
@@ -239,12 +241,15 @@ export default async function derive(args = []) {
   const outDir = resolve(cwd, opts.out || DEFAULT_OUT_DIR);
   const context = opts.context || DEFAULT_CONTEXT;
   const runtimeOptions = buildDeriveRuntimeOptions(opts, cwd);
-  const runtimeAdapter = copilotAdapter;
+
+  // ── Resolve runtime adapter (precedence: --runtime flag > .kbexplorer.json > env > default) ──
+  const runtimeConfig = loadRuntimeConfig(cwd);
+  const runtimeAdapter = resolveRuntime({ flag: opts.runtime, config: runtimeConfig });
 
   // ── Dry run: show the assembled command + planned outputs, run nothing. ──
   if (opts.dryRun) {
     const binary = resolveBinary({ envVar: runtimeAdapter.binaryEnv, defaultBinary: runtimeAdapter.defaultBinary });
-    console.log('Dry run — would derive the following sources:');
+    console.log(`Dry run — would derive the following sources (runtime: ${runtimeAdapter.name}):`);
     for (const src of opts.sources) {
       let doc;
       try {
