@@ -131,3 +131,79 @@ These Vite env vars override config values at build/dev time:
 | `VITE_ENV_DIR` | Directory to load .env from | `../../` |
 
 These are typically set in `.env.kbexplorer` by the init script.
+
+## Runtime Block (`.kbexplorer.json`)
+
+The optional `runtime` block in `.kbexplorer.json` sets a repo-local default
+for which agent runtime to use in fuzzy (LLM) steps (`generate`, `derive`).
+It travels with the repo so a team's tooling choice is version-controlled.
+
+### Selection Precedence
+
+| Priority | Source | Example |
+|----------|--------|---------|
+| 1 | `--runtime <name>` CLI flag | `kbexplorer derive --runtime claude` |
+| 2 | `runtime` block in `.kbexplorer.json` | (this section) |
+| 3 | `KBEXPLORER_RUNTIME` env var | `KBEXPLORER_RUNTIME=claude …` |
+| 4 | Default | `copilot` |
+
+### Shape
+
+```jsonc
+{
+  // …existing template-source fields…
+  "runtime": {
+    // Required. Named adapter: "copilot" | "claude" | "custom"
+    "agent": "copilot",
+
+    // The fields below are ONLY valid when agent = "custom"
+    "command": "my-agent",                    // Required for custom
+    "argsTemplate": ["-p", "{prompt}"],       // Required for custom; must contain {prompt}
+    "outputFormat": "text",                   // "text" | "jsonl"  (optional, default "text")
+    "timeoutMs": 600000,                      // Positive number, ms (optional)
+    "binaryEnv": "MY_AGENT_BIN"              // Env var for binary override (optional)
+  }
+}
+```
+
+### Examples
+
+**Use Claude instead of Copilot:**
+```json
+{ "runtime": { "agent": "claude" } }
+```
+
+**Custom agent with JSONL output:**
+```json
+{
+  "runtime": {
+    "agent": "custom",
+    "command": "my-llm",
+    "argsTemplate": ["--prompt", "{prompt}", "--output-format", "jsonl"],
+    "outputFormat": "jsonl",
+    "timeoutMs": 300000
+  }
+}
+```
+
+### Validation
+
+The CLI validates the block on load and emits an actionable error for:
+
+- Unknown `agent` value (valid: `"copilot"`, `"claude"`, `"custom"`)
+- `agent: "custom"` without `command` or `argsTemplate`
+- `argsTemplate` not containing the `{prompt}` placeholder
+- Non-string entries in `argsTemplate`
+- `outputFormat` not `"text"` or `"jsonl"`
+- `timeoutMs` not a positive number
+- `command`, `argsTemplate`, or `binaryEnv` specified for a non-custom agent
+
+### Binary Path Overrides
+
+These env vars override the binary path for the named adapters and are
+orthogonal to runtime selection:
+
+| Env var | Adapter |
+|---------|---------|
+| `KBEXPLORER_COPILOT_BIN` | `copilot` |
+| `KBEXPLORER_CLAUDE_BIN` | `claude` |

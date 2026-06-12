@@ -194,6 +194,68 @@ Like `generate`, the fuzzy phase requires the
 input do not need it. Both phases flow through the same **runtime router** — see
 [`docs/copilot-runtime.md`](docs/copilot-runtime.md).
 
+## Runtime Configuration
+
+kbexplorer supports three agent runtimes for fuzzy (LLM) steps: **copilot**
+(default), **claude**, and **custom** (any CLI). The active runtime is resolved
+using the following precedence, from highest to lowest:
+
+| Priority | Source | How |
+|----------|--------|-----|
+| 1 | `--runtime <name>` flag | `kbexplorer derive --runtime claude` |
+| 2 | `runtime` block in `.kbexplorer.json` | Set once; travels with the repo |
+| 3 | `KBEXPLORER_RUNTIME` env var | `KBEXPLORER_RUNTIME=claude kbexplorer derive …` |
+| 4 | Default | `copilot` |
+
+### Repo-local config (`.kbexplorer.json`)
+
+Add a `runtime` block alongside the existing template-source fields:
+
+```jsonc
+{
+  "template": "https://github.com/anokye-labs/kbexplorer-template.git",
+  "mode": "submodule",
+  // …
+  "runtime": {
+    "agent": "copilot"   // "copilot" | "claude" | "custom"
+  }
+}
+```
+
+For `claude`:
+```json
+{
+  "runtime": { "agent": "claude" }
+}
+```
+
+For a **custom** CLI (must include `{prompt}` placeholder):
+```json
+{
+  "runtime": {
+    "agent": "custom",
+    "command": "my-agent",
+    "argsTemplate": ["-p", "{prompt}", "--json"],
+    "outputFormat": "jsonl",
+    "timeoutMs": 600000
+  }
+}
+```
+
+`kbexplorer init` offers a runtime selection step during interactive setup and
+can write this block automatically.
+
+### Binary path overrides
+
+The named adapters honour existing env vars for binary paths:
+
+| Env var | Purpose |
+|---------|---------|
+| `KBEXPLORER_COPILOT_BIN` | Full path to the `copilot` binary |
+| `KBEXPLORER_CLAUDE_BIN` | Full path to the `claude` binary |
+
+These work alongside (not instead of) the runtime selection above.
+
 ## Agents
 
 | Agent | Description |
