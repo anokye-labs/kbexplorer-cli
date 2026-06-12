@@ -251,3 +251,23 @@ with a warning. Never use in CI or on shared branches.
 Preflight never runs on no-LLM paths: `derive --check`, `--dry-run`,
 `generate --no-agent`, or when every derive source is served from a fresh
 committed artifact.
+
+### Diagnosing local setup (`kbexplorer doctor`)
+
+When regeneration fails, run `kbexplorer doctor` before filing a bug. It
+checks all four layers in one command and tells you exactly what is wrong:
+
+```bash
+kbexplorer doctor                   # full diagnosis against the repo's config
+kbexplorer doctor --runtime claude  # check a specific adapter
+kbexplorer doctor --json            # machine-readable output for tooling
+kbexplorer doctor --offline         # skip the latest-tag network call
+```
+
+Sections reported: **Runtime** (adapter selected, why, binary, version),
+**MCP** (per-server check for each required/optional server),
+**Template** (`.kbexplorer.json` vs `.gitmodules`, pinned ref vs latest tag),
+**Environment** (node version, `git`/`gh` on PATH, content dir, manifest freshness).
+
+Exit code `0` means all checks passed or warned. Exit code `1` means at least
+one check failed — safe to use as a CI gate.

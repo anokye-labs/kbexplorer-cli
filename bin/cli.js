@@ -10,6 +10,7 @@
  *   build      Production build
  *   manifest   Regenerate repo manifest
  *   update     Pull latest template + refresh agents/skills
+ *   doctor     Diagnose local runtime, MCP, and template setup
  */
 
 import { resolve, dirname } from 'node:path';
@@ -31,6 +32,7 @@ const COMMANDS = {
   affected: '../src/commands/affected.js',
   scaffold: '../src/commands/scaffold.js',
   derive: '../src/commands/derive.js',
+  doctor: '../src/commands/doctor.js',
 };
 
 function printUsage() {
@@ -51,6 +53,7 @@ function printUsage() {
     scaffold    Create a new content/<slug>.md skeleton with valid frontmatter
     derive      Extract entities from .docx/prose into committed *.jsonld (F8)
     update      Pull latest template + refresh agents/skills
+    doctor      Diagnose local runtime, MCP, and template setup
 
   Options:
     --help      Show this help message
@@ -81,6 +84,11 @@ function printUsage() {
     --no-watch                 Don't watch host content for changes (one-shot manifest)
     (other args forwarded to Vite, e.g. --host, --port)
 
+  doctor options:
+    --runtime <name>           Check a specific adapter ("copilot" | "claude" | "custom")
+    --json                     Emit machine-readable JSON
+    --offline                  Skip network-dependent checks (latest tag lookup)
+
   Examples:
     npx kbexplorer init
     npx kbexplorer init --template https://github.com/my-org/my-template.git
@@ -90,6 +98,9 @@ function printUsage() {
     npx kbexplorer derive docs/*.md --check
     npx kbexplorer dev
     npx kbexplorer build --base /docs/
+    npx kbexplorer doctor
+    npx kbexplorer doctor --runtime claude
+    npx kbexplorer doctor --json
 `);
 }
 

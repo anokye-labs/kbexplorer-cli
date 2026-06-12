@@ -255,3 +255,40 @@ export function parseUpdateArgs(args = []) {
   }
   return out;
 }
+
+/**
+ * Parse `doctor` arguments.
+ *
+ * Supported flags:
+ *   --runtime <name>   Force a specific adapter for the diagnosis.
+ *   --json             Emit machine-readable JSON output.
+ *   --offline          Skip network-dependent checks (latest tag lookup).
+ *   --help, -h         Show help.
+ *
+ * @param {string[]} args
+ * @returns {{ runtime: string|null, json: boolean, offline: boolean, help: boolean, unknown: string[] }}
+ */
+export function parseDoctorArgs(args = []) {
+  const out = { runtime: null, json: false, offline: false, help: false, unknown: [] };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    switch (a) {
+      case '--runtime':
+        out.runtime = args[++i] ?? null;
+        break;
+      case '--json':
+        out.json = true;
+        break;
+      case '--offline':
+        out.offline = true;
+        break;
+      case '--help':
+      case '-h':
+        out.help = true;
+        break;
+      default:
+        out.unknown.push(a);
+    }
+  }
+  return out;
+}

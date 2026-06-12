@@ -27,6 +27,7 @@ npm install -D @anokye-labs/kbexplorer
 | `kbexplorer build` | Production build |
 | `kbexplorer manifest` | Regenerate repo manifest from local data |
 | `kbexplorer update` | Pull latest template + refresh agents/skills |
+| `kbexplorer doctor` | Diagnose local runtime, MCP, and template setup |
 
 ## Quick Start
 
@@ -304,6 +305,44 @@ The named adapters honour existing env vars for binary paths:
 | `KBEXPLORER_CLAUDE_BIN` | Full path to the `claude` binary |
 
 These work alongside (not instead of) the runtime selection above.
+
+## Doctor
+
+`kbexplorer doctor` is the first thing to run when regeneration fails on a teammate's machine. It diagnoses the full local setup in four sections:
+
+```
+Runtime
+───────
+  ✅ Adapter: copilot (source: default)
+  ✅ Binary: copilot
+  ✅ Binary available: copilot version 1.2.3
+
+MCP
+───
+  ✅ No MCP servers declared in runtime config
+
+Template
+────────
+  ✅ .kbexplorer.json present (mode: submodule, template: …)
+  ✅ .gitmodules url agrees with .kbexplorer.json
+  ⚠️  A newer release tag exists: v1.0.0 → v1.1.0 (run kbexplorer update)
+
+Environment
+───────────
+  ✅ Node v22.1.0 (requires >=22)
+  ✅ git available: git version 2.44.0
+  ✅ gh (GitHub CLI) available: gh version 2.40.0
+  ⚠️  content/ directory not found
+```
+
+```bash
+kbexplorer doctor                 # full diagnosis
+kbexplorer doctor --runtime claude  # diagnose a specific adapter
+kbexplorer doctor --json          # machine-readable output for scripts
+kbexplorer doctor --offline       # skip the latest-tag network check
+```
+
+**Exit codes:** `0` when all checks pass or produce warnings; `1` when any check fails. Suitable as a CI gate (`kbexplorer doctor --offline || exit 1`).
 
 ## Agents
 
