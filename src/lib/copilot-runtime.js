@@ -142,22 +142,22 @@ function normalizeClaudeTool(spec) {
   }[kind] ?? kind;
   if (!scope) return mapped;
   if (mapped === 'Bash') {
-   // Copilot scope semantics are prefix-oriented (shell(git)); Claude Bash scopes
-   // are command patterns, so widen to prefix pattern form (Bash(git:*)).
-   return scope.includes(':') ? `${mapped}(${scope})` : `${mapped}(${scope}:*)`;
+    // Copilot scope semantics are prefix-oriented (shell(git)); Claude Bash scopes
+    // are command patterns, so widen to prefix pattern form (Bash(git:*)).
+    return scope.includes(':') ? `${mapped}(${scope})` : `${mapped}(${scope}:*)`;
   }
   return `${mapped}(${scope})`;
 }
 
 export function buildClaudeArgs(options = {}) {
   const {
-   prompt,
-   allowTools,
-   denyTools,
-   allowAllTools = false,
-   model,
-   addDirs,
-   extraArgs,
+    prompt,
+    allowTools,
+    denyTools,
+    allowAllTools = false,
+    model,
+    addDirs,
+    extraArgs,
   } = options;
 
   if (typeof prompt !== 'string' || prompt.length === 0) {
@@ -208,8 +208,13 @@ export function buildCustomArgs(options = {}) {
       code: RuntimeErrorCode.INVALID_INPUT,
     });
   }
-  if (asArray(allowTools).filter(Boolean).length > 0 || asArray(denyTools).filter(Boolean).length > 0) {
-    throw new RuntimeAdapterError('Custom adapter does not support tool allow/deny lists.', {
+  if (asArray(allowTools).filter(Boolean).length > 0) {
+    throw new RuntimeAdapterError('Custom adapter does not support `allowTools`.', {
+      code: RuntimeErrorCode.INVALID_INPUT,
+    });
+  }
+  if (asArray(denyTools).filter(Boolean).length > 0) {
+    throw new RuntimeAdapterError('Custom adapter does not support `denyTools`.', {
       code: RuntimeErrorCode.INVALID_INPUT,
     });
   }
@@ -238,6 +243,7 @@ function pickText(value) {
     if (typeof value.text === 'string') return value.text;
     if (typeof value.content?.text === 'string') return value.content.text;
     if (typeof value.content === 'string') return value.content;
+    // Claude `--output-format json` terminal payload includes `type: "result"` + `result`.
     if (typeof value.result === 'string') return value.result;
     if (value.content != null) return pickText(value.content);
     if (value.delta != null) return pickText(value.delta);
@@ -258,7 +264,7 @@ export function extractResponseText(events, rawStdout = '') {
       type.includes('completion') ||
       type.includes('text') ||
       type.includes('delta') ||
-      type.includes('result');
+      type === 'result';
     if (!looksAssistant) continue;
     const text = pickText(ev.text ?? ev.content ?? ev.message ?? ev.delta ?? ev.result ?? ev);
     if (text) parts.push(text);
@@ -275,6 +281,7 @@ function defaultParseOutput(stdout, _stderr, options = {}) {
 }
 
 function parseClaudeOutput(stdout, stderr, task = {}) {
+  // Keep stream-json parsing for compatibility with callers that still request it.
   if (task.outputFormat === 'stream-json') {
     return defaultParseOutput(stdout, stderr, { ...task, outputFormat: 'stream-json' });
   }

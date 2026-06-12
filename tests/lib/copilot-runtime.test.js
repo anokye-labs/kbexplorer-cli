@@ -7,6 +7,7 @@ import { dirname, resolve } from 'node:path';
 const {
   DEFAULT_COPILOT_BINARY,
   COPILOT_BIN_ENV,
+  CLAUDE_BIN_ENV,
   RuntimeErrorCode,
   CopilotRuntimeError,
   resolveBinary,
@@ -60,8 +61,15 @@ describe('resolveBinary', () => {
   it('honours the env override', () => {
     assert.strictEqual(resolveBinary({ env: { [COPILOT_BIN_ENV]: '/x/cop' }, envVar: COPILOT_BIN_ENV }), '/x/cop');
   });
-  it('does not read copilot env unless that env var is requested', () => {
-    assert.strictEqual(resolveBinary({ env: { [COPILOT_BIN_ENV]: '/x/cop' }, defaultBinary: 'claude' }), 'claude');
+  it('honours only the requested env var', () => {
+    assert.strictEqual(
+      resolveBinary({
+        env: { [COPILOT_BIN_ENV]: '/x/cop', [CLAUDE_BIN_ENV]: '/x/claude' },
+        envVar: CLAUDE_BIN_ENV,
+        defaultBinary: 'claude',
+      }),
+      '/x/claude',
+    );
   });
 });
 

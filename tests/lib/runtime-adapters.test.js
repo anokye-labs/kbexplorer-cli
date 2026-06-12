@@ -74,6 +74,12 @@ describe('claude adapter contract', () => {
     assert.deepStrictEqual(args, ['-p', 'audit', '--output-format', 'json', '--allowedTools', 'Bash(git status:*),Write']);
   });
 
+  it('preserves explicit claude bash scope patterns', () => {
+    const adapter = createClaudeAdapter();
+    const args = adapter.buildArgs({ prompt: 'audit', allowTools: ['shell(git:log)'] });
+    assert.deepStrictEqual(args, ['-p', 'audit', '--output-format', 'json', '--allowedTools', 'Bash(git:log)']);
+  });
+
   it('parses json output fixture with terminal result event', () => {
     const adapter = createClaudeAdapter();
     const parsed = adapter.parseOutput(CLAUDE_JSON_FIXTURE, '', {});
@@ -104,7 +110,8 @@ describe('custom adapter contract', () => {
 
   it('rejects unsupported tool controls', () => {
     const adapter = createCustomAdapter({ argsTemplate: ['{prompt}'], outputFormat: 'text' });
-    assert.throws(() => adapter.buildArgs({ prompt: 'x', allowTools: ['shell(git)'] }), /allow\/deny/);
+    assert.throws(() => adapter.buildArgs({ prompt: 'x', allowTools: ['shell(git)'] }), /allowTools/);
+    assert.throws(() => adapter.buildArgs({ prompt: 'x', denyTools: ['shell(rm -rf /)'] }), /denyTools/);
     assert.throws(() => adapter.buildArgs({ prompt: 'x', allowAllTools: true }), /allowAllTools/);
   });
 });
