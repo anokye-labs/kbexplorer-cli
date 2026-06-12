@@ -314,7 +314,7 @@ export default async function derive(args = []) {
       if (err instanceof IngestError || err instanceof ExtractionError) {
         console.error(`✗ ${src}: [${err.code}] ${err.message}`);
       } else if (err instanceof RuntimeAdapterError) {
-        console.error(`✗ ${src}: copilot run failed (${err.code}): ${err.message}`);
+        console.error(`✗ ${src}: ${runtimeAdapter.name} run failed (${err.code}): ${err.message}`);
       } else {
         console.error(`✗ ${src}: ${err.message}`);
       }
