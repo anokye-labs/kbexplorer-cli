@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { parseInitArgs, parseUpdateArgs, parseGenerateArgs, parseDeriveArgs } = await import('../../src/lib/args.js');
+const { parseInitArgs, parseUpdateArgs, parseGenerateArgs, parseDeriveArgs, parseDoctorArgs } = await import('../../src/lib/args.js');
 
 describe('parseInitArgs', () => {
   it('returns defaults for no args', () => {
@@ -171,5 +171,44 @@ describe('--skip-preflight in parseGenerateArgs', () => {
   it('parses --skip-preflight flag', () => {
     assert.strictEqual(parseGenerateArgs(['--skip-preflight']).skipPreflight, true);
     assert.strictEqual(parseGenerateArgs([]).skipPreflight, false);
+  });
+});
+
+describe('parseDoctorArgs', () => {
+  it('returns defaults for no args', () => {
+    assert.deepStrictEqual(parseDoctorArgs([]), {
+      runtime: null, json: false, offline: false, help: false, unknown: [],
+    });
+  });
+
+  it('parses --runtime', () => {
+    assert.strictEqual(parseDoctorArgs(['--runtime', 'claude']).runtime, 'claude');
+    assert.strictEqual(parseDoctorArgs(['--runtime', 'copilot']).runtime, 'copilot');
+  });
+
+  it('parses --json', () => {
+    assert.strictEqual(parseDoctorArgs(['--json']).json, true);
+    assert.strictEqual(parseDoctorArgs([]).json, false);
+  });
+
+  it('parses --offline', () => {
+    assert.strictEqual(parseDoctorArgs(['--offline']).offline, true);
+    assert.strictEqual(parseDoctorArgs([]).offline, false);
+  });
+
+  it('parses --help / -h', () => {
+    assert.strictEqual(parseDoctorArgs(['--help']).help, true);
+    assert.strictEqual(parseDoctorArgs(['-h']).help, true);
+  });
+
+  it('collects unknown flags', () => {
+    assert.deepStrictEqual(parseDoctorArgs(['--bogus']).unknown, ['--bogus']);
+  });
+
+  it('combines multiple flags', () => {
+    const opts = parseDoctorArgs(['--runtime', 'claude', '--json', '--offline']);
+    assert.strictEqual(opts.runtime, 'claude');
+    assert.strictEqual(opts.json, true);
+    assert.strictEqual(opts.offline, true);
   });
 });
