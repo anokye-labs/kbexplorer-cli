@@ -1,0 +1,47 @@
+# content-model/systems-of-record/<id>.yaml
+#
+# A "system-of-record" (SoR) descriptor represents a canonical tracking system
+# where a workstream's work items live — e.g. a GitHub repo, an ADO board, a
+# Jira project, or a Confluence space. SoRs are durable (no cycle field) and
+# stored one file per system under content-model/systems-of-record/.
+#
+# Workstreams reference SoRs in their `systems-of-record` array by id. The engine
+# resolves each id to a system-of-record node and emits a "tracked-in" edge.
+# Unresolved ids become stub nodes with a warn-level unresolved-ref diagnostic.
+#
+# Field contract: docs/work-graph-vocabulary.md §2.5
+# Required: @type, id, name
+# Optional: url, description
+#
+# Note on inline vs. standalone SoRs:
+#   Standalone files (this template) are the canonical form — they let multiple
+#   workstreams share the same SoR node and keep the graph connected. An inline
+#   SoR object in workstream.systems-of-record (e.g. { id: ado-board, name: ... })
+#   resolves the same way but the extra fields are ignored for edge purposes.
+#   Prefer standalone files for any SoR referenced by more than one workstream.
+
+"@type": system-of-record
+
+# Unique machine-readable identifier for this system.
+# Use a short, descriptive lowercase-kebab-case key.
+# This id is the FK target for workstream.systems-of-record.
+# It must be unique across all system-of-record files.
+id: ado-board
+
+# Human-readable display name shown in the graph.
+name: ADO Board
+
+# Optional: URL to the tracking system's home page or query view.
+# Rendered as a clickable link in the node detail panel.
+url: "https://dev.azure.com/my-org/my-project/_boards"
+
+# Optional: free-text description of what this system tracks.
+description: >
+  Primary planning and tracking board for in-flight work items.
+  Contains sprint backlogs, bug queues, and the roadmap epics.
+
+# --- Additional fields ---
+# Any extra YAML fields are passed through verbatim (passthrough mode).
+#
+# provider: azure-devops     # azure-devops | github | jira | confluence | custom
+# team: graph-platform       # which team primarily manages this system
