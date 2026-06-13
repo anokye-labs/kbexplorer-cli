@@ -1,0 +1,40 @@
+{
+  "_comment": "Canned Azure DevOps work items returned by the fake `ado` MCP twin. Fixtures only — assertions live in the tests, never here (holdout rule).",
+  "workItems": [
+    {
+      "id": 1042,
+      "type": "Epic",
+      "title": "Local-first knowledge-base regeneration",
+      "state": "Active",
+      "assignedTo": "henry@somuah.com",
+      "areaPath": "KBExplorer\\Platform",
+      "tags": ["kbexplorer", "epic"],
+      "description": "Umbrella epic for the work-repo deployment backbone.",
+      "url": "https://dev.azure.com/anokye/KBExplorer/_workitems/edit/1042"
+    },
+    {
+      "id": 1057,
+      "type": "User Story",
+      "title": "Derive graph nodes from ADO work items",
+      "state": "Active",
+      "assignedTo": "henry@somuah.com",
+      "areaPath": "KBExplorer\\Platform",
+      "parent": 1042,
+      "tags": ["derive", "ado"],
+      "description": "As a maintainer I want work items mapped to graph nodes so the board is navigable.",
+      "url": "https://dev.azure.com/anokye/KBExplorer/_workitems/edit/1057"
+    },
+    {
+      "id": 1063,
+      "type": "Bug",
+      "title": "Preflight misses optional MCP servers",
+      "state": "New",
+      "assignedTo": null,
+      "areaPath": "KBExplorer\\Platform",
+      "parent": 1057,
+      "tags": ["bug", "mcp", "preflight"],
+      "description": "Optional servers should warn, not fail.",
+      "url": "https://dev.azure.com/anokye/KBExplorer/_workitems/edit/1063"
+    }
+  ]
+}

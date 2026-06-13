@@ -1,0 +1,35 @@
+{
+  "_comment": "Canned SharePoint documents returned by the fake `sharepoint-docs` MCP twin. Fixtures only — assertions live in the tests, never here (holdout rule).",
+  "documents": [
+    {
+      "id": "doc-architecture-overview",
+      "title": "KBExplorer Architecture Overview",
+      "path": "/sites/KBExplorer/Shared Documents/Architecture Overview.docx",
+      "author": "henry@somuah.com",
+      "modified": "2026-05-30T14:12:00Z",
+      "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "summary": "How the CLI, app, and twins fit together.",
+      "url": "https://anokye.sharepoint.com/sites/KBExplorer/Shared%20Documents/Architecture%20Overview.docx"
+    },
+    {
+      "id": "doc-onboarding-runbook",
+      "title": "Work-Repo Onboarding Runbook",
+      "path": "/sites/KBExplorer/Shared Documents/Onboarding Runbook.md",
+      "author": "henry@somuah.com",
+      "modified": "2026-06-02T09:45:00Z",
+      "contentType": "text/markdown",
+      "summary": "Step-by-step for pointing a work repo at the deployment.",
+      "url": "https://anokye.sharepoint.com/sites/KBExplorer/Shared%20Documents/Onboarding%20Runbook.md"
+    },
+    {
+      "id": "doc-mcp-twins-spec",
+      "title": "MCP Twins Hermetic Test Spec",
+      "path": "/sites/KBExplorer/Shared Documents/MCP Twins Spec.md",
+      "author": "henry@somuah.com",
+      "modified": "2026-06-10T17:20:00Z",
+      "contentType": "text/markdown",
+      "summary": "Why every external service gets a behavioral clone.",
+      "url": "https://anokye.sharepoint.com/sites/KBExplorer/Shared%20Documents/MCP%20Twins%20Spec.md"
+    }
+  ]
+}
