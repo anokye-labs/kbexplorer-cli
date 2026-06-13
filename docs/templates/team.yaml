@@ -1,0 +1,57 @@
+# content-model/teams/<id>.yaml
+#
+# A "team" descriptor represents a persistent organizational unit — a squad, guild,
+# or cross-functional group. Teams are durable (no cycle field) and are stored one
+# file per team under content-model/teams/.
+#
+# Field contract: docs/work-graph-vocabulary.md §2.1
+# Required: @type, id, name
+# Optional: description, members, workstreams, lead
+#
+# Derived edges emitted by the engine (do NOT add these manually):
+#   team.lead       → "leads" edge to person (alias FK)
+#   team.members    → "staffs" edges to people (array of id FKs)
+#   team.workstreams → "owns" edges to workstreams (array of id FKs)
+
+"@type": team
+
+# Unique machine-readable identifier for this team.
+# Use lowercase-kebab-case. This id is used as the FK target in workstream.team
+# and as the source of "owns" edges. It must be unique across all team files.
+id: graph-platform
+
+# Human-readable display name shown in the graph.
+name: Graph Platform
+
+# Optional free-text description. Appears in the node detail panel.
+description: >
+  Owns the KB Explorer content-model pipeline and graph rendering.
+  Responsible for data-layer integrity, graph schema evolution, and
+  the organizational-layer descriptor kinds.
+
+# Optional: list of person ids who are members of this team.
+# Each entry produces a "staffs" edge from this team to the person.
+# Values must match the `id` field of a person file in content-model/people/.
+# Unresolved ids become stub nodes with a warn-level unresolved-ref diagnostic.
+members:
+  - adwoa       # person id — must match content-model/people/adwoa.yaml
+  - kwame       # person id — must match content-model/people/kwame.yaml
+
+# Optional: list of workstream ids this team owns.
+# Each entry produces an "owns" edge from this team to the workstream.
+# Values must match the `id` field of a workstream file in content-model/workstreams/.
+workstreams:
+  - kb-explorer # workstream id — must match content-model/workstreams/kb-explorer.yaml
+
+# Optional: the team lead's person id (or alias, if different from id).
+# Produces a single "leads" edge. The engine resolves this via alias first,
+# then falls back to id. For simplicity, keep id === alias in person files.
+lead: adwoa   # must match person.id or person.alias in content-model/people/
+
+# --- Additional fields ---
+# Any extra YAML fields are passed through verbatim into node data (passthrough mode).
+# You can add org-specific metadata here without editing the engine:
+#
+# org: my-org                # which org this team belongs to (multi-org repos)
+# slack-channel: "#gp-team"  # team Slack channel
+# oncall-rotation: true      # whether the team runs an on-call rotation

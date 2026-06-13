@@ -37,6 +37,13 @@ npx kbexplorer init    # Interactive setup wizard
 npx kbexplorer dev     # Launch the explorer
 ```
 
+For a full enterprise deployment walkthrough — prerequisites, work-graph YAML
+authoring, the local regeneration loop, and hosting options — see
+**[docs/deploy-to-a-work-repo.md](docs/deploy-to-a-work-repo.md)**.
+
+Copy-paste YAML starters for the five organizational-layer descriptor kinds are in
+**[docs/templates/](docs/templates/)**.
+
 ## Dogfood: build a KB over this repo
 
 The authored content in [`content/`](content/) describes kbexplorer-cli

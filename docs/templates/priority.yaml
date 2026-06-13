@@ -1,0 +1,43 @@
+# content-model/priorities/<id>.yaml
+#
+# A "priority" descriptor represents a named priority level for the organization.
+# Priorities are durable (no cycle field) and stored one file per priority level
+# under content-model/priorities/.
+#
+# They form the backbone of the organizational layer: workstreams reference a
+# priority via the `priority` field, which the engine resolves into a
+# "has-priority" edge.
+#
+# Field contract: docs/work-graph-vocabulary.md §2.3
+# Required: @type, id, name
+# Optional: description, rank
+
+"@type": priority
+
+# Unique machine-readable identifier for this priority level.
+# Use a short lowercase key (e.g. p1, p2, critical, high).
+# This id is the FK target for workstream.priority.
+# It must be unique across all priority files.
+id: p1
+
+# Human-readable display name shown in the graph.
+# Convention: include the level in the name so it is self-describing.
+name: "P1 — Explorer Completeness"
+
+# Optional free-text description explaining what this priority level means
+# in your organization.
+description: >
+  Make KB Explorer the canonical lens for work-graph sensemaking across
+  all product and engineering teams. Features in this tier are funded and
+  staffed for the current planning period.
+
+# Optional integer rank — lower value means higher priority.
+# Used by views that sort priorities. If omitted, the engine treats all
+# priorities as equal-rank.
+rank: 1
+
+# --- Additional fields ---
+# Any extra YAML fields are passed through verbatim (passthrough mode).
+#
+# color: "#E8A838"        # override the cluster color for this node
+# okr-ref: "OKR-2026-Q2" # link to an external OKR tracker entry
