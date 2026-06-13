@@ -33,7 +33,7 @@ export function manifestOutPath(appRoot) {
  * Falls back to the in-CLI generator if the template script is missing or
  * exits non-zero — better a partial manifest than a blank UI.
  */
-export function writeHostManifest(cwd, appRoot) {
+export async function writeHostManifest(cwd, appRoot) {
   const script = resolve(appRoot, 'scripts', 'generate-manifest.js');
   if (existsSync(script)) {
     const r = spawnSync('node', [script], {
@@ -44,7 +44,7 @@ export function writeHostManifest(cwd, appRoot) {
     if (r.status === 0) return { outPath: manifestOutPath(appRoot), via: 'template-script' };
     console.warn(`⚠ Template manifest script exited ${r.status}; falling back. stderr: ${r.stderr?.slice(0, 200)}`);
   }
-  const manifest = generateManifest(cwd);
+  const manifest = await generateManifest(cwd);
   const outPath = manifestOutPath(appRoot);
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, JSON.stringify(manifest, null, 2), 'utf-8');
@@ -75,7 +75,7 @@ export default async function dev(args) {
   // 1. Initial manifest write via patched template script.
   console.log('📋 Generating host manifest...');
   try {
-    const r = writeHostManifest(cwd, appRoot);
+    const r = await writeHostManifest(cwd, appRoot);
     if (r.via === 'cli-fallback') {
       console.warn('⚠ Used CLI fallback generator — UI may be missing template-derived fields');
     }
@@ -104,9 +104,9 @@ export default async function dev(args) {
     let debounceTimer = null;
     const onChange = (label) => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
+      debounceTimer = setTimeout(async () => {
         try {
-          writeHostManifest(cwd, appRoot);
+          await writeHostManifest(cwd, appRoot);
           const ts = new Date().toLocaleTimeString();
           console.log(`[${ts}] 🔄 manifest regenerated (${label})`);
         } catch (err) {

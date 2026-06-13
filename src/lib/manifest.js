@@ -6,10 +6,10 @@
  * - authoredContent: raw markdown strings keyed by path
  * - tree: GHTreeItem-compatible file tree from local FS
  * - readme: README.md content
- * - issues: from `gh` CLI (best-effort)
- * - pullRequests: from `gh` CLI (best-effort)
+ * - issues: from `gh` CLI or direct HTTP (best-effort)
+ * - pullRequests: from `gh` CLI or direct HTTP (best-effort)
  * - commits: from git log (best-effort)
- * - releases: from `gh` CLI (best-effort); drafts excluded; capped at 30 newest
+ * - releases: from `gh` CLI or direct HTTP (best-effort); drafts excluded; capped at 30 newest
  *
  * Manifest shape — top-level keys:
  *   configRaw        string | null      Raw config.yaml content
@@ -30,6 +30,21 @@
  *   published_at     string             ISO-8601 publish timestamp
  *   prerelease       boolean            True for pre-release (alpha/beta/rc)
  *
+ * # GitHub API base configuration
+ *
+ * By default all GitHub data is fetched via the `gh` CLI (byte-identical to
+ * previous behaviour). Set an API base to switch to direct HTTP:
+ *
+ *   ## Gitea DTU adapter (hermetic / local testing)
+ *   KBEXPLORER_GH_API_BASE=http://localhost:3456 KBEXPLORER_GH_TOKEN=test-token kbexplorer manifest
+ *
+ *   ## GitHub Enterprise (GHE / EMU)
+ *   KBEXPLORER_GH_API_BASE=https://github.example.com/api/v3 KBEXPLORER_GH_TOKEN=<pat> kbexplorer manifest
+ *   # Or, when using the gh CLI authenticated against your GHE host (no base override needed):
+ *   GH_HOST=github.example.com kbexplorer manifest
+ *
+ * See src/lib/gh-fetch.js for the full precedence chain and auth details.
+ *
  * Zero external dependencies — uses only node: built-ins + gh CLI.
  */
 
@@ -42,6 +57,8 @@ import {
   existsSync,
 } from 'node:fs';
 import { execSync } from 'node:child_process';
+
+import { resolveGhApiBase, resolveGhToken, createFetcher } from './gh-fetch.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -183,11 +200,11 @@ export function readReadme(root) {
   return null;
 }
 
-// ── GitHub Data (via gh CLI) ───────────────────────────────
+// ── GitHub Data ────────────────────────────────────────────
 
-function isGhAvailable() {
+function isGhAvailable(_exec = execSync) {
   try {
-    execSync('gh --version', { stdio: 'ignore' });
+    _exec('gh --version', { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -195,16 +212,91 @@ function isGhAvailable() {
 }
 
 /**
- * Fetch issues via gh CLI.
- * @returns {Array}
+ * Resolve owner/repo for direct-HTTP paths.
+ *
+ * When a base override is active the `{owner}/{repo}` placeholders that `gh api`
+ * resolves automatically must be supplied explicitly.  We derive them from the
+ * git remote, falling back to empty strings so callers can still make their
+ * best effort.
+ *
+ * @param {string} [cwd]
+ * @param {Function} [_exec] - Injected execSync (for testing)
+ * @returns {{ owner: string, repo: string }}
  */
-export function fetchLocalIssues(cwd) {
-  if (!isGhAvailable()) {
+export function resolveOwnerRepo(cwd, _exec = execSync) {
+  try {
+    const remote = _exec('git remote get-url origin', {
+      cwd,
+      encoding: 'utf-8',
+      timeout: 10000,
+    }).trim();
+
+    // SSH remote: git@github.com:owner/repo.git
+    let m = remote.match(/git@[^:]+:([^/]+)\/([^/.]+)/);
+    if (m) return { owner: m[1], repo: m[2] };
+
+    // HTTPS remote: https://<host>/owner/repo[.git]
+    m = remote.match(/https?:\/\/[^/]+\/([^/]+)\/([^/.]+)/);
+    if (m) return { owner: m[1], repo: m[2] };
+  } catch { /* not a git repo or no remote */ }
+  return { owner: '', repo: '' };
+}
+
+/**
+ * Fetch issues.
+ *
+ * Default path  → `gh issue list --json …` (unchanged behaviour)
+ * Override path → GET /repos/{owner}/{repo}/issues?state=all&per_page=200
+ *
+ * @param {string}        [cwd]
+ * @param {object}        [_overrides] - Injected dependencies (for testing)
+ * @param {string|null}   [_overrides.base]   - API base override (null → gh CLI)
+ * @param {string}        [_overrides.token]  - Auth token for direct HTTP
+ * @param {Function}      [_overrides._exec]  - Injected execSync
+ * @param {Function}      [_overrides._fetch] - Injected fetch
+ * @returns {Array|Promise<Array>}
+ */
+export function fetchLocalIssues(cwd, _overrides = {}) {
+  const { base, token, _exec: injectedExec, _fetch } = _overrides;
+  const exec = injectedExec ?? execSync;
+
+  // ── Direct-HTTP path ──────────────────────────────────────────────────────
+  if (base != null) {
+    const { owner, repo } = resolveOwnerRepo(cwd, exec);
+    const fetcher = createFetcher({ base, token, execOpts: { cwd }, _exec: injectedExec, _fetch });
+    return fetcher(`/repos/${owner}/${repo}/issues?state=all&per_page=200`)
+      .then((data) => {
+        const issues = Array.isArray(data) ? data : [];
+        return issues.map((i) => ({
+          number: i.number,
+          title: i.title ?? '',
+          body: i.body ?? '',
+          state: (i.state ?? 'open').toLowerCase(),
+          labels: (i.labels ?? []).map((l) => ({
+            name: typeof l === 'string' ? l : (l.name ?? ''),
+            color: typeof l === 'string' ? '' : (l.color ?? ''),
+          })),
+          assignees: (i.assignees ?? []).map((a) => ({
+            login: typeof a === 'string' ? a : (a.login ?? ''),
+          })),
+          html_url: i.html_url ?? '',
+          created_at: i.created_at ?? '',
+          updated_at: i.updated_at ?? '',
+        }));
+      })
+      .catch((err) => {
+        console.warn('[generate-manifest] Failed to fetch issues (HTTP):', err.message);
+        return [];
+      });
+  }
+
+  // ── Default path: gh CLI ──────────────────────────────────────────────────
+  if (!isGhAvailable(exec)) {
     console.warn('[generate-manifest] gh CLI not found — skipping issues');
     return [];
   }
   try {
-    const json = execSync(
+    const json = exec(
       'gh issue list --json number,title,body,state,labels,assignees,url,createdAt,updatedAt --state all --limit 200',
       { cwd, encoding: 'utf-8', timeout: 30000 },
     );
@@ -233,16 +325,57 @@ export function fetchLocalIssues(cwd) {
 }
 
 /**
- * Fetch pull requests via gh CLI.
- * @returns {Array}
+ * Fetch pull requests.
+ *
+ * Default path  → `gh pr list --json …` (unchanged behaviour)
+ * Override path → GET /repos/{owner}/{repo}/pulls?state=all&per_page=200
+ *
+ * @param {string}        [cwd]
+ * @param {object}        [_overrides] - Injected dependencies (for testing)
+ * @param {string|null}   [_overrides.base]   - API base override (null → gh CLI)
+ * @param {string}        [_overrides.token]  - Auth token for direct HTTP
+ * @param {Function}      [_overrides._exec]  - Injected execSync
+ * @param {Function}      [_overrides._fetch] - Injected fetch
+ * @returns {Array|Promise<Array>}
  */
-export function fetchLocalPullRequests(cwd) {
-  if (!isGhAvailable()) {
+export function fetchLocalPullRequests(cwd, _overrides = {}) {
+  const { base, token, _exec: injectedExec, _fetch } = _overrides;
+  const exec = injectedExec ?? execSync;
+
+  // ── Direct-HTTP path ──────────────────────────────────────────────────────
+  if (base != null) {
+    const { owner, repo } = resolveOwnerRepo(cwd, exec);
+    const fetcher = createFetcher({ base, token, execOpts: { cwd }, _exec: injectedExec, _fetch });
+    return fetcher(`/repos/${owner}/${repo}/pulls?state=all&per_page=200`)
+      .then((data) => {
+        const prs = Array.isArray(data) ? data : [];
+        return prs.map((pr) => ({
+          number: pr.number,
+          title: pr.title ?? '',
+          body: pr.body ?? '',
+          state: (pr.state ?? 'open').toLowerCase(),
+          labels: (pr.labels ?? []).map((l) => ({
+            name: typeof l === 'string' ? l : (l.name ?? ''),
+            color: typeof l === 'string' ? '' : (l.color ?? ''),
+          })),
+          html_url: pr.html_url ?? '',
+          created_at: pr.created_at ?? '',
+          updated_at: pr.updated_at ?? '',
+        }));
+      })
+      .catch((err) => {
+        console.warn('[generate-manifest] Failed to fetch PRs (HTTP):', err.message);
+        return [];
+      });
+  }
+
+  // ── Default path: gh CLI ──────────────────────────────────────────────────
+  if (!isGhAvailable(exec)) {
     console.warn('[generate-manifest] gh CLI not found — skipping PRs');
     return [];
   }
   try {
-    const json = execSync(
+    const json = exec(
       'gh pr list --json number,title,body,state,labels,url,createdAt,updatedAt --state all --limit 200',
       { cwd, encoding: 'utf-8', timeout: 30000 },
     );
@@ -270,30 +403,30 @@ export function fetchLocalPullRequests(cwd) {
 const RELEASES_LIMIT = 30;
 
 /**
- * Fetch GitHub releases via gh CLI.
+ * Fetch GitHub releases.
+ *
+ * Default path  → `gh api "repos/{owner}/{repo}/releases?per_page=30"` (unchanged)
+ * Override path → GET /repos/{owner}/{repo}/releases?per_page=30 (direct HTTP)
+ *
  * Drafts are excluded; results are sorted newest-first and capped at RELEASES_LIMIT.
  * Tolerates gh absence or non-zero exit — returns empty array and emits a warning.
  *
- * @param {string} [cwd] - Working directory for the gh invocation
- * @param {Function} [_exec] - Injected execSync replacement (for testing)
- * @returns {Array<{tag_name:string,name:string,body:string,html_url:string,published_at:string,prerelease:boolean}>}
+ * @param {string}   [cwd] - Working directory for the gh invocation
+ * @param {Function} [_exec] - Injected execSync replacement (for testing; default path only)
+ * @param {object}   [_overrides] - Injected dependencies (for testing; override path)
+ * @param {string|null}  [_overrides.base]   - API base override (null → gh CLI)
+ * @param {string}       [_overrides.token]  - Auth token for direct HTTP
+ * @param {Function}     [_overrides._exec]  - Injected execSync (for both paths)
+ * @param {Function}     [_overrides._fetch] - Injected fetch (override path only)
+ * @returns {Array<{tag_name:string,name:string,body:string,html_url:string,published_at:string,prerelease:boolean}>|Promise}
  */
-export function fetchLocalReleases(cwd, _exec = execSync) {
-  try {
-    _exec('gh --version', { stdio: 'ignore' });
-  } catch {
-    console.warn('[generate-manifest] gh CLI not found — skipping releases');
-    return [];
-  }
-  try {
-    // The endpoint must be quoted: execSync goes through a shell where an
-    // unquoted `?`/`&` is parsed as shell syntax (`&` splits commands on both
-    // cmd.exe and POSIX shells).
-    const json = _exec(
-      `gh api "repos/{owner}/{repo}/releases?per_page=${RELEASES_LIMIT}"`,
-      { cwd, encoding: 'utf-8', timeout: 30000 },
-    );
-    const releases = JSON.parse(json);
+export function fetchLocalReleases(cwd, _exec = execSync, _overrides = {}) {
+  const base = _overrides.base ?? null;
+  const token = _overrides.token;
+  const injectedExec = _overrides._exec ?? _exec;
+  const _fetch = _overrides._fetch;
+
+  function shapeReleases(releases) {
     return releases
       .filter((r) => !r.draft)
       .sort((a, b) => new Date(b.published_at ?? 0) - new Date(a.published_at ?? 0))
@@ -306,6 +439,36 @@ export function fetchLocalReleases(cwd, _exec = execSync) {
         published_at: r.published_at ?? '',
         prerelease: r.prerelease ?? false,
       }));
+  }
+
+  // ── Direct-HTTP path ──────────────────────────────────────────────────────
+  if (base != null) {
+    const { owner, repo } = resolveOwnerRepo(cwd, injectedExec);
+    const fetcher = createFetcher({ base, token, execOpts: { cwd }, _exec: injectedExec, _fetch });
+    return fetcher(`/repos/${owner}/${repo}/releases?per_page=${RELEASES_LIMIT}`)
+      .then((data) => shapeReleases(Array.isArray(data) ? data : []))
+      .catch((err) => {
+        console.warn('[generate-manifest] Failed to fetch releases (HTTP):', err.message);
+        return [];
+      });
+  }
+
+  // ── Default path: gh CLI ──────────────────────────────────────────────────
+  try {
+    injectedExec('gh --version', { stdio: 'ignore' });
+  } catch {
+    console.warn('[generate-manifest] gh CLI not found — skipping releases');
+    return [];
+  }
+  try {
+    // The endpoint must be quoted: execSync goes through a shell where an
+    // unquoted `?`/`&` is parsed as shell syntax (`&` splits commands on both
+    // cmd.exe and POSIX shells).
+    const json = injectedExec(
+      `gh api "repos/{owner}/{repo}/releases?per_page=${RELEASES_LIMIT}"`,
+      { cwd, encoding: 'utf-8', timeout: 30000 },
+    );
+    return shapeReleases(JSON.parse(json));
   } catch (err) {
     console.warn('[generate-manifest] Failed to fetch releases:', err.message);
     return [];
@@ -344,30 +507,51 @@ export function fetchLocalCommits(cwd) {
 
 /**
  * Generate manifest for a given root directory.
+ *
+ * When `KBEXPLORER_GH_API_BASE` is set (or `ghApiBase` is in `.kbexplorer.json`),
+ * GitHub data is fetched via direct HTTP to that base (DTU / GHE path).
+ * Otherwise the `gh` CLI is used — behaviour is byte-identical to before.
+ *
  * @param {string} root - Project root directory
- * @returns {Object} Manifest object
+ * @returns {Promise<Object>} Manifest object
  */
-export function generateManifest(root) {
+export async function generateManifest(root) {
   const hostRoot = detectHostRoot(root);
   const isSubmodule = hostRoot !== root;
-  
+
   console.log(`[generate-manifest] Root: ${root}`);
   console.log(`[generate-manifest] Host root: ${hostRoot}`);
   console.log(`[generate-manifest] Submodule mode: ${isSubmodule}`);
 
+  // Resolve GitHub API base + token once per run
+  const ghApiBase = resolveGhApiBase(hostRoot);
+  const ghToken = ghApiBase ? resolveGhToken() : undefined;
+
+  if (ghApiBase) {
+    console.log(`[generate-manifest] GitHub API base: ${ghApiBase} (direct HTTP)`);
+  }
+
+  const overrides = ghApiBase != null ? { base: ghApiBase, token: ghToken } : {};
+
   // Determine content path from env or default
   const contentPath = process.env.VITE_KB_PATH || 'content';
   const contentDir = resolve(root, contentPath);
+
+  const [issues, pullRequests, releases] = await Promise.all([
+    Promise.resolve(fetchLocalIssues(hostRoot, overrides)),
+    Promise.resolve(fetchLocalPullRequests(hostRoot, overrides)),
+    Promise.resolve(fetchLocalReleases(hostRoot, execSync, overrides)),
+  ]);
 
   const manifest = {
     configRaw: readConfig(root, contentPath),
     authoredContent: readAuthoredContent(contentDir, contentPath),
     tree: walkFileSystem(root),
     readme: readReadme(root),
-    issues: fetchLocalIssues(hostRoot),
-    pullRequests: fetchLocalPullRequests(hostRoot),
+    issues,
+    pullRequests,
     commits: fetchLocalCommits(hostRoot),
-    releases: fetchLocalReleases(hostRoot),
+    releases,
     generatedAt: new Date().toISOString(),
   };
 
