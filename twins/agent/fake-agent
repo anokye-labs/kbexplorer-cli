@@ -1,0 +1,7 @@
+#!/bin/sh
+# POSIX launcher for the deterministic agent-runtime twin (issue #59).
+# Lets KBEXPLORER_COPILOT_BIN / KBEXPLORER_CLAUDE_BIN point straight at a single
+# executable path that the runtime can spawn with shell:false. Forwards argv to
+# the .mjs and exits with its code.
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec node "$DIR/fake-agent.mjs" "$@"
