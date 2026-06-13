@@ -1,0 +1,2 @@
+# The POSIX launcher must keep LF endings or its shebang breaks on macOS/Linux.
+fake-agent text eol=lf
