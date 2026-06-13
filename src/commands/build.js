@@ -51,7 +51,7 @@ export default async function build(args) {
     },
   });
 
-  child.on('exit', (code) => {
+  child.on('exit', async (code) => {
     if (code === 0) {
       // Copy index.html to 404.html for SPA routing
       try {

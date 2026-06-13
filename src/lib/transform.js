@@ -10,12 +10,12 @@ import { fileURLToPath } from 'node:url';
 import {
   readFileSync,
   writeFileSync,
+  readdirSync,
   mkdirSync,
   existsSync,
 } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = resolve(__dirname, '..', '..');
 
 // ── Emoji Defaults ─────────────────────────────────────────
 
@@ -116,15 +116,18 @@ const CLUSTER_COLORS = [
 
 /**
  * Find an existing content file by node ID and extract its body (everything after frontmatter).
- * Searches content/ and content/wiki/ directories.
+ * Searches the outputDir (content/) and outputDir/wiki/ sub-directories.
+ *
+ * @param {string} nodeId - Node ID / file stem
+ * @param {string} outputDir - Absolute path to the content output directory
  */
-function findExistingBody(nodeId, root) {
+function findExistingBody(nodeId, outputDir) {
   const searchPaths = [
-    resolve(root, 'content', `${nodeId}.md`),
-    resolve(root, 'content', 'wiki', `${nodeId}.md`),
+    resolve(outputDir, `${nodeId}.md`),
+    resolve(outputDir, 'wiki', `${nodeId}.md`),
     // Also check with wiki- prefix stripped (wiki-overview → content/wiki/overview.md)
     ...(nodeId.startsWith('wiki-')
-      ? [resolve(root, 'content', 'wiki', `${nodeId.replace(/^wiki-/, '')}.md`)]
+      ? [resolve(outputDir, 'wiki', `${nodeId.replace(/^wiki-/, '')}.md`)]
       : []),
   ];
 
@@ -142,14 +145,101 @@ function findExistingBody(nodeId, root) {
   return null;
 }
 
+// ── Cluster guard (fix #41) ────────────────────────────────
+
+/**
+ * Scan the output directory for existing .md files and collect every cluster
+ * ID they reference in their frontmatter.
+ *
+ * This is used to detect clusters that are already in use by existing content
+ * so we can carry them forward when the new catalogue introduces different
+ * cluster IDs (i.e. prevent `generate --refresh` from orphaning existing nodes).
+ *
+ * @param {string} outputDir - Absolute path to the content output directory
+ * @returns {Map<string, {nodeId: string, filePath: string}>} clusterId → sample usage
+ */
+export function collectExistingClusters(outputDir) {
+  const used = new Map(); // clusterId → { nodeId, filePath }
+  if (!existsSync(outputDir)) return used;
+
+  let entries;
+  try {
+    entries = readdirSync(outputDir, { withFileTypes: true });
+  } catch {
+    return used;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+    const filePath = resolve(outputDir, entry.name);
+    try {
+      const raw = readFileSync(filePath, 'utf-8');
+      // Extract frontmatter cluster field
+      const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      if (!fm) continue;
+      const clusterLine = fm[1].split(/\r?\n/).find((l) => /^cluster\s*:/.test(l));
+      if (!clusterLine) continue;
+      const clusterId = clusterLine.replace(/^cluster\s*:\s*/, '').replace(/["']/g, '').trim();
+      if (clusterId && !used.has(clusterId)) {
+        used.set(clusterId, { nodeId: entry.name.replace(/\.md$/, ''), filePath });
+      }
+    } catch { /* skip unreadable files */ }
+  }
+
+  return used;
+}
+
 // ── Transform ──────────────────────────────────────────────
 
-export function transformCatalogue(catalogue, outputDir = resolve(projectRoot, 'content')) {
+/**
+ * Transform a kb-architect JSON catalogue into kbexplorer content files.
+ *
+ * Fixes applied:
+ *   #40 — connections accepts both string IDs and {to, description} objects
+ *   #41 — existing content clusters are preserved when the new catalogue uses
+ *          different cluster IDs (orphaned clusters become "legacy" rather than
+ *          being silently dropped)
+ *   findExistingBody — uses outputDir, not the CLI source root
+ *
+ * @param {object} catalogue
+ * @param {string} [outputDir]
+ * @param {object} [opts]
+ * @param {boolean} [opts.preserveOrphanedClusters=true]  Add a "legacy" bucket
+ *   carrying any existing cluster IDs that are no longer in the new catalogue.
+ *   Set to false to disable (only do so with --force-clusters intent).
+ * @returns {{ configPath, filesWritten, filesImported, totalNodes, orphanedClusters }}
+ */
+export function transformCatalogue(catalogue, outputDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'content'), opts = {}) {
+  const { preserveOrphanedClusters = true } = opts;
   const { clusters = {}, nodes = [] } = catalogue;
+
+  // ── Merge orphaned clusters (fix #41) ────────────────────────────────────
+  // Collect cluster IDs already in use by existing .md files in the output dir.
+  // Any that the new catalogue doesn't declare are carried forward so no
+  // existing file ends up with an undeclared cluster.
+  const existingClusters = collectExistingClusters(outputDir);
+  const orphanedClusters = [];
+
+  if (preserveOrphanedClusters) {
+    for (const [id] of existingClusters) {
+      if (!clusters[id]) {
+        orphanedClusters.push(id);
+        // Carry the cluster forward as a "legacy" entry so audit doesn't fail.
+        clusters[id] = {
+          name: id.charAt(0).toUpperCase() + id.slice(1) + ' (legacy)',
+        };
+      }
+    }
+    if (orphanedClusters.length > 0) {
+      console.warn(
+        `⚠ ${orphanedClusters.length} existing cluster(s) not in new catalogue — preserved as legacy: ${orphanedClusters.join(', ')}`,
+      );
+    }
+  }
 
   // Assign colors to clusters if not present
   let colorIdx = 0;
-  for (const [id, cluster] of Object.entries(clusters)) {
+  for (const [, cluster] of Object.entries(clusters)) {
     if (!cluster.color) {
       cluster.color = CLUSTER_COLORS[colorIdx % CLUSTER_COLORS.length];
       colorIdx++;
@@ -179,6 +269,7 @@ ${clusterYaml}
   let filesImported = 0;
   for (const node of nodes) {
     const emoji = node.emoji || inferIcon(node.title, node.cluster);
+    // Fix #40: accept both string IDs and {to, description} connection objects
     const connections = (node.connections || [])
       .map((c) => {
         const to = typeof c === 'string' ? c : c?.to;
@@ -206,10 +297,11 @@ ${clusterYaml}
     }
     frontmatter.push('---');
 
-    // For existing nodes: import content body from the existing file, apply new frontmatter
+    // For existing nodes: import content body from the existing file, apply new frontmatter.
+    // Fix: use outputDir (the content directory) — not the CLI source root.
     let body;
     if (node.existing) {
-      const existingBody = findExistingBody(node.id, projectRoot);
+      const existingBody = findExistingBody(node.id, outputDir);
       if (existingBody) {
         body = '\n' + existingBody;
         filesImported++;
@@ -237,5 +329,5 @@ ${clusterYaml}
   }
 
   console.log(`✓ Generated ${filesWritten} files (${filesImported} imported from existing content) in ${outputDir}`);
-  return { configPath, filesWritten, filesImported, totalNodes: nodes.length };
+  return { configPath, filesWritten, filesImported, totalNodes: nodes.length, orphanedClusters };
 }
