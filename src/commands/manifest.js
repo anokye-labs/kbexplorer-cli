@@ -1,12 +1,25 @@
 /**
  * kbexplorer manifest — Regenerate repo manifest from local data.
+ *
+ * Primary path: invoke the template's own generate-manifest.js (with
+ * VITE_KB_HOST_ROOT pointing at the host repo). This preserves the
+ * full enriched schema the template script may add (themeFileRaw, nodemap*, …).
+ *
+ * Fallback path: when the template script is absent or exits non-zero, the
+ * CLI's own generateManifest() is used and the result is written to
+ * <appRoot>/src/generated/repo-manifest.json — exactly the same location the
+ * template script writes to, so `dev` and `build` find it without changes.
+ *
+ * KBEXPLORER_GH_API_BASE / KBEXPLORER_GH_TOKEN are already in process.env and
+ * are inherited by both paths — no extra wiring needed.
  */
 
-import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { getAppRoot } from '../lib/detect-repo.js';
 import { generateManifest } from '../lib/manifest.js';
+import { manifestOutPath } from './dev.js';
 
 export default async function manifest(args) {
   const cwd = process.cwd();
@@ -27,5 +40,11 @@ export default async function manifest(args) {
     if (r.status === 0) return;
     console.warn(`⚠ Template manifest script exited ${r.status}; falling back to CLI generator`);
   }
-  await generateManifest(cwd);
+
+  // Fallback: generate via CLI and write to the standard output path.
+  const manifestData = await generateManifest(cwd);
+  const outPath = manifestOutPath(appRoot);
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(outPath, JSON.stringify(manifestData, null, 2), 'utf-8');
+  console.log(`✓ Manifest written to ${outPath}`);
 }

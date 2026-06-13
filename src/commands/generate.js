@@ -14,7 +14,7 @@
 
 import { resolve } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import { getAppRoot } from '../lib/detect-repo.js';
 import { transformCatalogue } from '../lib/transform.js';
 import { parseGenerateArgs } from '../lib/args.js';
@@ -238,11 +238,17 @@ export default async function generate(args = []) {
           const manifestScript = resolve(appRoot, 'scripts', 'generate-manifest.js');
           if (existsSync(manifestScript)) {
             console.log('📋 Regenerating manifest...');
-            execSync(`node "${manifestScript}"`, {
+            // Use spawnSync (not execSync) so a non-zero exit is logged, not thrown.
+            // This prevents the template script failing (e.g. missing node_modules in
+            // a vendored install) from crashing the whole generate pipeline.
+            const r = spawnSync('node', [manifestScript], {
               cwd: appRoot,
               stdio: 'inherit',
               env: { ...process.env, VITE_KB_LOCAL: 'true', VITE_KB_HOST_ROOT: cwd },
             });
+            if (r.status !== 0) {
+              console.warn(`⚠ Manifest script exited ${r.status} — manifest may be stale. Run kbexplorer manifest separately.`);
+            }
           }
         },
       },
