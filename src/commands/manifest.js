@@ -27,5 +27,5 @@ export default async function manifest(args) {
     if (r.status === 0) return;
     console.warn(`⚠ Template manifest script exited ${r.status}; falling back to CLI generator`);
   }
-  generateManifest(cwd);
+  await generateManifest(cwd);
 }

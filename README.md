@@ -195,6 +195,67 @@ Like `generate`, the fuzzy phase requires the
 input do not need it. Both phases flow through the same **runtime router** — see
 [`docs/copilot-runtime.md`](docs/copilot-runtime.md).
 
+## GitHub API Base Configuration
+
+By default the CLI fetches GitHub data (issues, PRs, releases) via the `gh` CLI — behaviour identical to previous releases. You can override this to point the CLI at a **Gitea DTU adapter** (for hermetic testing) or a **GitHub Enterprise / EMU host** (real deployment).
+
+### Precedence
+
+| Priority | Source | How |
+|----------|--------|-----|
+| 1 | `ghApiBase` in `.kbexplorer.json` | Set once; travels with the repo |
+| 2 | `KBEXPLORER_GH_API_BASE` env var | Runtime override |
+| 3 | Default | `gh` CLI (github.com) |
+
+### Gitea DTU adapter (hermetic testing)
+
+When the DTU adapter is running on `TWIN_PORT` (default 3456), point the CLI at it:
+
+```bash
+KBEXPLORER_GH_API_BASE=http://localhost:3456 \
+KBEXPLORER_GH_TOKEN=<gitea-token> \
+kbexplorer manifest
+```
+
+The adapter translates GitHub REST v3 requests to the Gitea API — the CLI needs no other changes.
+
+### GitHub Enterprise / EMU
+
+Two options:
+
+```bash
+# Option A — direct HTTP (works without a gh auth handshake)
+KBEXPLORER_GH_API_BASE=https://github.example.com/api/v3 \
+KBEXPLORER_GH_TOKEN=<personal-access-token> \
+kbexplorer manifest
+
+# Option B — gh CLI with GH_HOST (no base override needed)
+GH_HOST=github.example.com kbexplorer manifest
+```
+
+### Auth
+
+When a base is set the CLI sends `Authorization: token <token>` where `<token>` is:
+
+| Priority | Source |
+|----------|--------|
+| 1 | `KBEXPLORER_GH_TOKEN` env var |
+| 2 | `GH_TOKEN` env var |
+| 3 | Anonymous (no header sent) |
+
+### Repo-local config
+
+Add `ghApiBase` alongside the existing template-source fields in `.kbexplorer.json`:
+
+```jsonc
+{
+  "template": "https://github.com/anokye-labs/kbexplorer-template.git",
+  "mode": "submodule",
+  // …
+  "ghApiBase": "http://localhost:3456"
+}
+```
+
 ## Runtime Configuration
 
 kbexplorer supports three agent runtimes for fuzzy (LLM) steps: **copilot**

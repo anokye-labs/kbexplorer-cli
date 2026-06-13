@@ -34,13 +34,13 @@ describe('dev command helpers', () => {
     }
   });
 
-  it('writeHostManifest writes host content into the template manifest path', () => {
+  it('writeHostManifest writes host content into the template manifest path', async () => {
     const { host, app } = makeHostWithVendoredTemplate();
     try {
       const origCwd = process.cwd();
       process.chdir(host);
       try {
-        const { outPath, manifest } = writeHostManifest(process.cwd(), app);
+        const { outPath, manifest } = await writeHostManifest(process.cwd(), app);
         assert.ok(existsSync(outPath));
         const onDisk = JSON.parse(readFileSync(outPath, 'utf-8'));
         assert.equal(typeof onDisk.authoredContent, 'object');
