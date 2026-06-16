@@ -1,0 +1,7 @@
+{
+  "template": "https://github.com/anokye-labs/kbexplorer-template.git",
+  "ref": "main",
+  "refType": "branch",
+  "resolvedCommit": "1a4f0744829b4fc24b0e1ff1b75fc4d7cbec26f6",
+  "mode": "vendor"
+}

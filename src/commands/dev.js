@@ -1,32 +1,92 @@
 /**
  * kbexplorer dev — Start dev server in local mode.
+ *
+ * Pipeline:
+ *   1. Run the template's (CLI-patched, see init.js patchTemplateManifestScript)
+ *      generate-manifest.js with VITE_KB_HOST_ROOT pointed at the host repo to
+ *      seed an initial, schema-complete manifest before Vite spins up.
+ *   2. Spawn Vite in the template directory. The template's vite plugin re-runs
+ *      the same patched script at buildStart, so the in-server manifest is
+ *      already host-correct (no post-spawn overwrite needed).
+ *   3. Unless --no-watch is set, watch host content/README/config and re-run
+ *      the patched template script on change. Vite HMRs the JSON.
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { watch as fsWatch, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
 import { getAppRoot, isTemplateRepo } from '../lib/detect-repo.js';
 import { generateManifest } from '../lib/manifest.js';
+
+const DEBOUNCE_MS = 200;
+
+export function manifestOutPath(appRoot) {
+  return resolve(appRoot, 'src', 'generated', 'repo-manifest.json');
+}
+
+/**
+ * Regenerate the manifest by invoking the template's own (CLI-patched)
+ * generate-manifest.js with VITE_KB_HOST_ROOT pointing at the host repo. This
+ * preserves the template's full enriched schema (themeFileRaw, nodemap*, etc.)
+ * which our in-CLI generateManifest() doesn't know about.
+ *
+ * Falls back to the in-CLI generator if the template script is missing or
+ * exits non-zero — better a partial manifest than a blank UI.
+ */
+export async function writeHostManifest(cwd, appRoot) {
+  const script = resolve(appRoot, 'scripts', 'generate-manifest.js');
+  if (existsSync(script)) {
+    const r = spawnSync('node', [script], {
+      cwd: appRoot,
+      env: { ...process.env, VITE_KB_HOST_ROOT: cwd, VITE_KB_LOCAL: 'true' },
+      encoding: 'utf-8',
+    });
+    if (r.status === 0) return { outPath: manifestOutPath(appRoot), via: 'template-script' };
+    console.warn(`⚠ Template manifest script exited ${r.status}; falling back. stderr: ${r.stderr?.slice(0, 200)}`);
+  }
+  const manifest = await generateManifest(cwd);
+  const outPath = manifestOutPath(appRoot);
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(outPath, JSON.stringify(manifest, null, 2), 'utf-8');
+  return { outPath, via: 'cli-fallback', manifest };
+}
+
+export function watchPaths(cwd, contentDir = 'content') {
+  return [
+    resolve(cwd, contentDir),
+    resolve(cwd, 'README.md'),
+    resolve(cwd, 'config.yaml'),
+    resolve(cwd, contentDir, 'config.yaml'),
+    resolve(cwd, '.kbexplorer.json'),
+  ].filter((p) => existsSync(p));
+}
 
 export default async function dev(args) {
   const cwd = process.cwd();
   const appRoot = getAppRoot(cwd);
+  const noWatch = args.includes('--no-watch');
+  const viteArgs = args.filter((a) => a !== '--no-watch');
 
   if (!appRoot) {
     console.error('✗ kbexplorer not found. Run `kbexplorer init` first.');
     process.exit(1);
   }
 
-  // Generate manifest
-  console.log('📋 Generating manifest...');
+  // 1. Initial manifest write via patched template script.
+  console.log('📋 Generating host manifest...');
   try {
-    generateManifest(cwd);
-  } catch {
-    console.warn('⚠ Manifest generation failed — continuing anyway');
+    const r = await writeHostManifest(cwd, appRoot);
+    if (r.via === 'cli-fallback') {
+      console.warn('⚠ Used CLI fallback generator — UI may be missing template-derived fields');
+    }
+  } catch (err) {
+    console.warn(`⚠ Manifest generation failed: ${err.message} — continuing anyway`);
   }
 
-  // Start Vite
+  // 2. Start Vite. The template plugin will re-run the same patched script.
   console.log('\n🚀 Starting dev server...\n');
   const envDir = isTemplateRepo(cwd) ? cwd : cwd;
-  const child = spawn('npx', ['vite', '--open', ...args], {
+  const child = spawn('npx', ['vite', '--open', ...viteArgs], {
     cwd: appRoot,
     stdio: 'inherit',
     shell: true,
@@ -34,8 +94,48 @@ export default async function dev(args) {
       ...process.env,
       VITE_KB_LOCAL: 'true',
       VITE_ENV_DIR: envDir,
+      VITE_KB_HOST_ROOT: cwd,
     },
   });
 
-  child.on('exit', (code) => process.exit(code ?? 0));
+  // 3. Watcher.
+  const watchers = [];
+  if (!noWatch) {
+    let debounceTimer = null;
+    const onChange = (label) => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        try {
+          await writeHostManifest(cwd, appRoot);
+          const ts = new Date().toLocaleTimeString();
+          console.log(`[${ts}] 🔄 manifest regenerated (${label})`);
+        } catch (err) {
+          console.warn(`⚠ Manifest regen failed: ${err.message}`);
+        }
+      }, DEBOUNCE_MS);
+    };
+
+    for (const p of watchPaths(cwd)) {
+      try {
+        const w = fsWatch(p, { recursive: true }, (_evt, filename) => {
+          onChange(filename || p);
+        });
+        watchers.push(w);
+      } catch (err) {
+        console.warn(`⚠ Watch failed for ${p}: ${err.message}`);
+      }
+    }
+    console.log(`👀 Watching ${watchers.length} path(s) for content changes\n`);
+  }
+
+  const cleanup = (code) => {
+    for (const w of watchers) {
+      try { w.close(); } catch { /* ignore */ }
+    }
+    process.exit(code ?? 0);
+  };
+
+  child.on('exit', cleanup);
+  process.on('SIGINT', () => cleanup(0));
+  process.on('SIGTERM', () => cleanup(0));
 }

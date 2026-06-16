@@ -1,0 +1,57 @@
+# content-model/workstreams/<id>.yaml
+#
+# A "workstream" descriptor represents a persistent area of investment — a named
+# line of work that spans multiple planning cycles. Workstreams are durable
+# (no cycle field) and stored one file per workstream under content-model/workstreams/.
+#
+# Field contract: docs/work-graph-vocabulary.md §2.2
+# Required: @type, id, name
+# Optional: description, priority, team, systems-of-record
+#
+# Derived edges emitted by the engine (do NOT add these manually):
+#   workstream.priority         → "has-priority" edge to priority (scalar id FK)
+#   workstream.team             → "structural" back-edge to team (scalar id FK)
+#   workstream.systems-of-record → "tracked-in" edges to system-of-record nodes (array id FKs)
+
+"@type": workstream
+
+# Unique machine-readable identifier for this workstream.
+# Use lowercase-kebab-case. This id is the FK target for team.workstreams.
+# It must be unique across all workstream files.
+id: kb-explorer
+
+# Human-readable display name shown in the graph.
+name: KB Explorer
+
+# Optional free-text description.
+description: >
+  Interactive knowledge graph explorer for work-graph sensemaking.
+  Covers content-model pipeline, graph rendering, and the organizational
+  descriptor layer.
+
+# Optional: priority id this workstream is associated with.
+# Produces a "has-priority" edge to the matching priority node.
+# Value must match the `id` field of a priority file in content-model/priorities/.
+priority: p1   # must match content-model/priorities/p1.yaml
+
+# Optional: team id that owns this workstream.
+# Produces a "structural" back-edge to the team.
+# This is the inverse of team.workstreams — keep them in sync.
+# Value must match the `id` field of a team file in content-model/teams/.
+team: graph-platform   # must match content-model/teams/graph-platform.yaml
+
+# Optional: list of system-of-record ids where this workstream is tracked.
+# Each entry produces a "tracked-in" edge to the matching system-of-record node.
+# Values must match the `id` field of a system-of-record file in
+# content-model/systems-of-record/, or they become stub nodes with a warn-level
+# unresolved-ref diagnostic.
+systems-of-record:
+  - gh-repo    # must match content-model/systems-of-record/gh-repo.yaml
+  - ado-board  # must match content-model/systems-of-record/ado-board.yaml
+
+# --- Additional fields ---
+# Any extra YAML fields are passed through verbatim (passthrough mode).
+#
+# quarter: Q3-2026           # current planning quarter
+# status: active             # active | paused | complete
+# dri: adwoa                 # directly responsible individual (person id)

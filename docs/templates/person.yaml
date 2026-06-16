@@ -1,0 +1,51 @@
+# content-model/people/<id>.yaml
+#
+# A "person" descriptor represents an individual contributor, lead, or manager
+# in the work graph. Persons are durable (no cycle field) and stored one file
+# per person under content-model/people/.
+#
+# Persons are referenced by team.lead (alias FK) and team.members (id FK array).
+# For simplicity, keep id === alias in all new person files — this avoids alias
+# look-up complexity and makes FK references unambiguous.
+#
+# Field contract: docs/work-graph-vocabulary.md §2.4
+# Required: @type, id, name
+# Optional: alias, role, email, manager
+#
+# Derived edges emitted by the engine (do NOT add these manually):
+#   person.manager → "reports-to" edge to another person (scalar id FK)
+
+"@type": person
+
+# Unique machine-readable identifier for this person.
+# Use the person's handle or lowercase first name. This id is the FK target
+# for team.members, person.manager, and (as a fallback) team.lead.
+# It must be unique across all person files.
+id: adwoa
+
+# Optional alias. team.lead uses alias-resolution (falls back to id).
+# For new descriptors: set alias === id to keep things simple.
+alias: adwoa
+
+# Human-readable display name.
+name: Adwoa Mensah
+
+# Optional: job title or role description shown in the node detail panel.
+role: Engineering Lead
+
+# Optional: work email (not rendered in the public graph by default — check
+# your organization's privacy policy before committing).
+email: adwoa@example.com
+
+# Optional: manager's person id.
+# Produces a "reports-to" edge from this person to the manager.
+# Value must match the `id` field of another person file in content-model/people/.
+# Leave blank or omit for the top of the reporting chain.
+manager: kwame   # must match content-model/people/kwame.yaml
+
+# --- Additional fields ---
+# Any extra YAML fields are passed through verbatim (passthrough mode).
+#
+# github: adwoa-gh          # GitHub username
+# team: graph-platform      # primary team id (informational; does not create edges)
+# location: Accra, GH       # office / time-zone information
