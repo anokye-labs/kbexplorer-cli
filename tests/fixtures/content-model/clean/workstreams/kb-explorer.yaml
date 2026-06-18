@@ -1,0 +1,10 @@
+"@type": workstream
+id: kb-explorer
+name: KB Explorer
+description: >
+  Interactive knowledge graph explorer for work-graph sensemaking.
+priority: p1   # priority id
+team: graph-platform   # team id
+systems-of-record:
+  - gh-repo    # system-of-record id
+  - ado-board  # system-of-record id

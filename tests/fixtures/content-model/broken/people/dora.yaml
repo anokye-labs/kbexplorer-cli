@@ -1,0 +1,4 @@
+"@type": person
+id: dora
+name: Dora Asante
+manager: cyril   # cycle: dora → cyril → dora

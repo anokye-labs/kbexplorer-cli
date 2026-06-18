@@ -29,6 +29,7 @@ const COMMANDS = {
   update: '../src/commands/update.js',
   links: '../src/commands/links.js',
   audit: '../src/commands/audit.js',
+  validate: '../src/commands/validate.js',
   affected: '../src/commands/affected.js',
   scaffold: '../src/commands/scaffold.js',
   derive: '../src/commands/derive.js',
@@ -49,6 +50,7 @@ function printUsage() {
     manifest    Regenerate repo manifest from local data
     links       Analyze graph health (orphans, broken refs, coverage gaps)
     audit       Schema/structural validation (duplicate ids, broken parents, cycles)
+    validate    Deterministic content-model/ descriptor gate (FK refs, kinds, cycles)
     affected    Map a git diff to impacted content nodes via citations
     scaffold    Create a new content/<slug>.md skeleton with valid frontmatter
     derive      Extract entities from .docx/prose into committed *.jsonld (F8)
@@ -84,6 +86,11 @@ function printUsage() {
     --no-watch                 Don't watch host content for changes (one-shot manifest)
     (other args forwarded to Vite, e.g. --host, --port)
 
+  validate options:
+    --content-model <dir>      Descriptor directory to validate (default: content-model)
+    --dir <dir>                Alias of --content-model
+    --json                     Emit machine-readable JSON
+
   doctor options:
     --runtime <name>           Check a specific adapter ("copilot" | "claude" | "custom")
     --json                     Emit machine-readable JSON
@@ -98,6 +105,8 @@ function printUsage() {
     npx kbexplorer derive docs/*.md --check
     npx kbexplorer dev
     npx kbexplorer build --base /docs/
+    npx kbexplorer validate
+    npx kbexplorer validate --json
     npx kbexplorer doctor
     npx kbexplorer doctor --runtime claude
     npx kbexplorer doctor --json

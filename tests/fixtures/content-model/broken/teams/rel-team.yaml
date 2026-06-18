@@ -1,0 +1,8 @@
+"@type": team
+id: rel-team
+name: Rel Team
+members:
+  - bee
+relations:
+  - leads
+  - bogus-rel   # off-taxonomy

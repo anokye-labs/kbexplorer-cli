@@ -1,0 +1,6 @@
+"@type": priority
+id: p1
+name: "P1 — Explorer Completeness"
+description: >
+  Make KB Explorer the canonical lens for work-graph sensemaking.
+rank: 1

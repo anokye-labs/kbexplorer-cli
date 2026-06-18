@@ -1,0 +1,12 @@
+"@type": team
+id: graph-platform
+name: Graph Platform
+description: >
+  Owns the KB Explorer content-model pipeline and graph rendering.
+  Responsible for data-layer integrity and the organizational layer.
+members:
+  - adwoa       # person id
+  - kwame       # person id
+workstreams:
+  - kb-explorer # workstream id
+lead: adwoa     # person alias/id

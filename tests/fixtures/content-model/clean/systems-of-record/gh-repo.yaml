@@ -1,0 +1,4 @@
+"@type": system-of-record
+id: gh-repo
+name: GitHub Repo
+url: "https://github.com/anokye-labs/kbexplorer-cli"
