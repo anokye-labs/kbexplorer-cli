@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test & validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Run test suite
+        run: npm test
+
+      - name: Audit knowledge-base content
+        run: node bin/cli.js audit
+
+      - name: Check derived artifacts are up to date
+        run: node bin/cli.js derive docs/samples/platform-squad.md --check
