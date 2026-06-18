@@ -2,14 +2,15 @@
  * kbexplorer dev — Start dev server in local mode.
  *
  * Pipeline:
- *   1. Run the template's (CLI-patched, see init.js patchTemplateManifestScript)
- *      generate-manifest.js with VITE_KB_HOST_ROOT pointed at the host repo to
- *      seed an initial, schema-complete manifest before Vite spins up.
+ *   1. Run the template's generate-manifest.js with VITE_KB_HOST_ROOT pointed at
+ *      the host repo to seed an initial, schema-complete manifest before Vite
+ *      spins up. The template's detectHostRoot() honors VITE_KB_HOST_ROOT, so no
+ *      post-install patching of the template script is needed.
  *   2. Spawn Vite in the template directory. The template's vite plugin re-runs
- *      the same patched script at buildStart, so the in-server manifest is
- *      already host-correct (no post-spawn overwrite needed).
+ *      the same script at buildStart, so the in-server manifest is already
+ *      host-correct (no post-spawn overwrite needed).
  *   3. Unless --no-watch is set, watch host content/README/config and re-run
- *      the patched template script on change. Vite HMRs the JSON.
+ *      the template script on change. Vite HMRs the JSON.
  */
 
 import { spawn, spawnSync } from 'node:child_process';
@@ -25,10 +26,10 @@ export function manifestOutPath(appRoot) {
 }
 
 /**
- * Regenerate the manifest by invoking the template's own (CLI-patched)
- * generate-manifest.js with VITE_KB_HOST_ROOT pointing at the host repo. This
- * preserves the template's full enriched schema (themeFileRaw, nodemap*, etc.)
- * which our in-CLI generateManifest() doesn't know about.
+ * Regenerate the manifest by invoking the template's own generate-manifest.js
+ * with VITE_KB_HOST_ROOT pointing at the host repo. This preserves the
+ * template's full enriched schema (themeFileRaw, nodemap*, etc.) which our
+ * in-CLI generateManifest() doesn't know about.
  *
  * Falls back to the in-CLI generator if the template script is missing or
  * exits non-zero — better a partial manifest than a blank UI.

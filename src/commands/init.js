@@ -110,7 +110,6 @@ function installSubmodule(cwd, templateUrl, ref) {
     console.warn(`⚠ Could not pin submodule to ${resolvedRef || ref}: ${err.message}`);
   }
   const resolvedCommit = resolveHeadSha(resolve(cwd, '.kbexplorer'));
-  patchTemplateManifestScript(resolve(cwd, '.kbexplorer'));
   console.log(
     resolvedRef
       ? `✓ Submodule added and pinned to ${resolvedRef}`
@@ -118,42 +117,6 @@ function installSubmodule(cwd, templateUrl, ref) {
   );
   return { ref: resolvedRef ?? null, refType, resolvedCommit };
 }
-
-/**
- * Patch the vendored template's generate-manifest.js to honor VITE_KB_HOST_ROOT.
- *
- * Workaround for anokye-labs/kbexplorer-template#220: the template's
- * detectHostRoot() only works for git-submodule layouts (kbRoot/../..), so in
- * vendored installs (one level deep inside the host) it falls back to reading
- * the template's own stock content instead of the host repo's.
- *
- * We replace the line `const hostRoot = detectHostRoot();` with a version that
- * prefers the env var the CLI already sets. Idempotent — checks for a marker
- * before patching, so re-init/update is safe.
- *
- * Remove once #220 lands upstream.
- */
-function patchTemplateManifestScript(appRoot) {
-  const scriptPath = resolve(appRoot, 'scripts', 'generate-manifest.js');
-  if (!existsSync(scriptPath)) return;
-  let src = readFileSync(scriptPath, 'utf-8');
-  const MARKER = '/* kbexplorer-cli: VITE_KB_HOST_ROOT patch */';
-  if (src.includes(MARKER)) return;
-  const target = 'const hostRoot = detectHostRoot();';
-  if (!src.includes(target)) {
-    console.warn('⚠ Could not patch template manifest script (target line not found — template may have changed)');
-    return;
-  }
-  src = src.replace(
-    target,
-    `${MARKER}\nconst hostRoot = process.env.VITE_KB_HOST_ROOT\n  ? resolve(process.env.VITE_KB_HOST_ROOT)\n  : detectHostRoot();`,
-  );
-  writeFileSync(scriptPath, src, 'utf-8');
-  console.log('✓ Patched template manifest script for VITE_KB_HOST_ROOT (template#220 workaround)');
-}
-
-
-export { patchTemplateManifestScript };
 
 /**
  * Install the template as a one-time vendored copy (no submodule). Clones into a
@@ -182,7 +145,6 @@ function installVendor(cwd, templateUrl, ref) {
     throw new Error('Cloned template has no package.json — aborting.');
   }
   renameSync(tmp, resolve(cwd, '.kbexplorer'));
-  patchTemplateManifestScript(resolve(cwd, '.kbexplorer'));
   console.log(`✓ Vendored template into .kbexplorer/${resolvedRef ? ` (${resolvedRef})` : ''}`);
   return { ref: resolvedRef ?? null, refType, resolvedCommit };
 }
