@@ -7,7 +7,7 @@
     "kbexplorer": "bin/cli.js"
   },
   "scripts": {
-    "test": "node --test tests/**/*.test.js",
+    "test": "node scripts/run-tests.js",
     "kb:dev": "kbexplorer dev",
     "kb:build": "kbexplorer build",
     "kb:generate": "kbexplorer generate"
