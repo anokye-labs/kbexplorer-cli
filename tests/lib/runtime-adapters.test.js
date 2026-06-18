@@ -48,7 +48,13 @@ function hangingSpawn() {
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
   child.stdin = { end: () => {} };
+  // A real spawned child keeps the event loop alive via its stdio handles while
+  // it runs. The fake child must emulate that; otherwise the unref'd timeout
+  // watchdog can never fire (the loop drains first) and the run never settles,
+  // which makes node:test cancel the timeout subtests in isolation.
+  const keepAlive = setInterval(() => {}, 1 << 30);
   child.kill = () => {
+    clearInterval(keepAlive);
     setImmediate(() => child.emit('close', null, 'SIGTERM'));
     return true;
   };
