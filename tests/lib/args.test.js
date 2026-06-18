@@ -6,8 +6,55 @@ const { parseInitArgs, parseUpdateArgs, parseGenerateArgs, parseDeriveArgs, pars
 describe('parseInitArgs', () => {
   it('returns defaults for no args', () => {
     assert.deepStrictEqual(parseInitArgs([]), {
-      template: null, ref: null, vendor: false, help: false, unknown: [],
+      template: null,
+      ref: null,
+      vendor: false,
+      help: false,
+      yes: false,
+      owner: null,
+      repo: null,
+      kbBranch: null,
+      title: null,
+      mode: null,
+      contentMode: null,
+      content: null,
+      visual: null,
+      theme: null,
+      runtime: null,
+      runtimeCommand: null,
+      runtimeArgs: null,
+      runtimeOutput: null,
+      config: null,
+      unknown: [],
     });
+  });
+
+  it('parses non-interactive flags', () => {
+    const out = parseInitArgs([
+      '--yes', '--owner', 'acme', '--repo', 'widgets', '--kb-branch', 'main',
+      '--title', 'Acme KB', '--mode', 'vendor', '--content-mode', 'authored',
+      '--content', 'docs', '--visual', 'sprites', '--theme', 'light',
+      '--runtime', 'claude', '--config', 'kb.json',
+    ]);
+    assert.strictEqual(out.yes, true);
+    assert.strictEqual(out.owner, 'acme');
+    assert.strictEqual(out.repo, 'widgets');
+    assert.strictEqual(out.kbBranch, 'main');
+    assert.strictEqual(out.title, 'Acme KB');
+    assert.strictEqual(out.mode, 'vendor');
+    assert.strictEqual(out.vendor, true); // --mode vendor implies vendor
+    assert.strictEqual(out.contentMode, 'authored');
+    assert.strictEqual(out.content, 'docs');
+    assert.strictEqual(out.visual, 'sprites');
+    assert.strictEqual(out.theme, 'light');
+    assert.strictEqual(out.runtime, 'claude');
+    assert.strictEqual(out.config, 'kb.json');
+  });
+
+  it('keeps --kb-branch separate from the --branch/--ref alias', () => {
+    const out = parseInitArgs(['--branch', 'v2', '--kb-branch', 'release']);
+    assert.strictEqual(out.ref, 'v2');
+    assert.strictEqual(out.kbBranch, 'release');
   });
 
   it('parses --template and -t', () => {
