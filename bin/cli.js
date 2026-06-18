@@ -63,8 +63,13 @@ function printUsage() {
 
   init options:
     --template, -t <url>       Install from a custom template repo
-    --ref, --branch <ref>      Install a specific tag or branch
+    --ref, --branch <ref>      Install a specific template tag or branch
     --vendor, --no-submodule   One-time copy instead of a git submodule
+    --mode <submodule|vendor>  Install mode (alternative to --vendor)
+    --yes, -y                  Non-interactive onboarding (CI / templated)
+    --owner/--repo/--kb-branch/--title   Headless scaffold values
+    --content-mode/--content/--visual/--theme/--runtime   Headless options
+    --config <file>            JSON defaults file for --yes
 
   generate options:
     --prompt, -p <text>        Override the architect prompt sent to copilot

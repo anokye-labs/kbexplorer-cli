@@ -7,15 +7,54 @@
  *
  * Supported flags:
  *   --template, -t <url>        Template repo to install from (default: org template).
- *   --ref, --branch <tag|name>  Specific tag or branch to install.
+ *   --ref, --branch <tag|name>  Specific template tag or branch to install.
  *   --vendor, --no-submodule    Install as a one-time copy instead of a git submodule.
+ *   --mode <submodule|vendor>   Install mode (alternative to --vendor).
+ *   --yes, -y                   Non-interactive: take all config from flags/--config + detection.
+ *   --owner <name>              GitHub owner (default: detected git remote).
+ *   --repo <name>               GitHub repo (default: detected git remote).
+ *   --kb-branch <name>          Knowledge-base content branch (default: detected branch).
+ *   --title <text>              Knowledge-base title (default: "<repo> Knowledge Base").
+ *   --content-mode <m>          repo | authored | both (default: repo).
+ *   --content <dir>             Content directory for authored/both modes (default: content).
+ *   --visual <m>                emoji | sprites | heroes | none (default: emoji).
+ *   --theme <t>                 dark | light | sepia (default: dark).
+ *   --runtime <name>            copilot | claude | custom | skip (default: copilot).
+ *   --runtime-command <cmd>     Custom runtime command (when --runtime custom).
+ *   --runtime-args <tmpl>       Custom runtime args template, space-separated (use {prompt}).
+ *   --runtime-output <fmt>      Custom runtime output format (text | jsonl).
+ *   --config <file>             JSON file of defaults for any of the above.
  *   --help, -h                  Show help.
  *
+ * `--branch` remains an alias of `--ref` (the template ref) for backward
+ * compatibility; use `--kb-branch` for the knowledge-base content branch.
+ *
  * @param {string[]} args
- * @returns {{ template: string|null, ref: string|null, vendor: boolean, help: boolean, unknown: string[] }}
+ * @returns {object}
  */
 export function parseInitArgs(args = []) {
-  const out = { template: null, ref: null, vendor: false, help: false, unknown: [] };
+  const out = {
+    template: null,
+    ref: null,
+    vendor: false,
+    help: false,
+    yes: false,
+    owner: null,
+    repo: null,
+    kbBranch: null,
+    title: null,
+    mode: null,
+    contentMode: null,
+    content: null,
+    visual: null,
+    theme: null,
+    runtime: null,
+    runtimeCommand: null,
+    runtimeArgs: null,
+    runtimeOutput: null,
+    config: null,
+    unknown: [],
+  };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     switch (a) {
@@ -31,6 +70,52 @@ export function parseInitArgs(args = []) {
       case '--no-submodule':
         out.vendor = true;
         break;
+      case '--mode':
+        out.mode = args[++i] ?? null;
+        break;
+      case '--yes':
+      case '-y':
+        out.yes = true;
+        break;
+      case '--owner':
+        out.owner = args[++i] ?? null;
+        break;
+      case '--repo':
+        out.repo = args[++i] ?? null;
+        break;
+      case '--kb-branch':
+        out.kbBranch = args[++i] ?? null;
+        break;
+      case '--title':
+        out.title = args[++i] ?? null;
+        break;
+      case '--content-mode':
+        out.contentMode = args[++i] ?? null;
+        break;
+      case '--content':
+        out.content = args[++i] ?? null;
+        break;
+      case '--visual':
+        out.visual = args[++i] ?? null;
+        break;
+      case '--theme':
+        out.theme = args[++i] ?? null;
+        break;
+      case '--runtime':
+        out.runtime = args[++i] ?? null;
+        break;
+      case '--runtime-command':
+        out.runtimeCommand = args[++i] ?? null;
+        break;
+      case '--runtime-args':
+        out.runtimeArgs = args[++i] ?? null;
+        break;
+      case '--runtime-output':
+        out.runtimeOutput = args[++i] ?? null;
+        break;
+      case '--config':
+        out.config = args[++i] ?? null;
+        break;
       case '--help':
       case '-h':
         out.help = true;
@@ -39,6 +124,8 @@ export function parseInitArgs(args = []) {
         out.unknown.push(a);
     }
   }
+  // `--mode vendor` implies a vendored install.
+  if (out.mode === 'vendor') out.vendor = true;
   return out;
 }
 

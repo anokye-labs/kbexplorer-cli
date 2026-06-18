@@ -196,16 +196,129 @@ function printInitHelp() {
   Options:
     --template, -t <url>       Install from a custom template repo
                                (default: anokye-labs/kbexplorer-template)
-    --ref, --branch <ref>      Install a specific tag or branch
+    --ref, --branch <ref>      Install a specific template tag or branch
                                (default: latest release tag)
     --vendor, --no-submodule   One-time copy instead of a git submodule
+    --mode <submodule|vendor>  Install mode (alternative to --vendor)
     --help, -h                 Show this help
+
+  Non-interactive (CI / templated onboarding):
+    --yes, -y                  Take all config from flags/--config + detection
+    --owner <name>             GitHub owner (default: detected git remote)
+    --repo <name>              GitHub repo (default: detected git remote)
+    --kb-branch <name>         KB content branch (default: detected branch)
+    --title <text>             KB title (default: "<repo> Knowledge Base")
+    --content-mode <m>         repo | authored | both (default: repo)
+    --content <dir>            Content dir for authored/both (default: content)
+    --visual <m>               emoji | sprites | heroes | none (default: emoji)
+    --theme <t>                dark | light | sepia (default: dark)
+    --runtime <name>           copilot | claude | custom | skip (default: copilot)
+    --runtime-command <cmd>    Custom runtime command (with --runtime custom)
+    --runtime-args <tmpl>      Custom runtime args template (use {prompt})
+    --runtime-output <fmt>     Custom runtime output format (text | jsonl)
+    --config <file>            JSON file of defaults for any of the above
 
   Examples:
     kbexplorer init
     kbexplorer init --template https://github.com/my-org/my-template.git
     kbexplorer init --vendor --ref main
+    kbexplorer init --yes --mode vendor --ref <sha> --owner acme --repo widgets --title "Acme KB"
 `);
+}
+
+/** Load a JSON defaults file for non-interactive init. Exits 1 on read/parse error. */
+function loadInitConfigFile(absPath) {
+  try {
+    return JSON.parse(readFileSync(absPath, 'utf-8'));
+  } catch (err) {
+    console.error(`✗ Could not read --config file "${absPath}": ${err.message}`);
+    process.exit(1);
+  }
+}
+
+const CONTENT_MODES = ['repo', 'authored', 'both'];
+const VISUAL_MODES = ['emoji', 'sprites', 'heroes', 'none'];
+const THEMES = ['dark', 'light', 'sepia'];
+const RUNTIME_NAMES = ['copilot', 'claude', 'custom', 'skip'];
+
+/**
+ * Resolve the full init configuration non-interactively from flags, an optional
+ * `--config` JSON file, and git detection — mirroring the defaults the
+ * interactive prompts use, so a headless run produces an identical scaffold.
+ *
+ * Exits 1 with a clear, aggregated error list when a required value is missing
+ * or an enum value is invalid.
+ *
+ * @returns {{ owner, repo, branch, title, contentPath: string|undefined, runtimeBlock: object|null }}
+ */
+function resolveHeadlessConfig(opts, cwd) {
+  const fileCfg = opts.config ? loadInitConfigFile(resolve(cwd, opts.config)) : {};
+  const detected = detectGitRemote(cwd);
+  const detectedBranch = detectBranch(cwd);
+  const errors = [];
+  const pick = (flagVal, cfgKey, fallback) =>
+    flagVal != null ? flagVal : fileCfg[cfgKey] != null ? fileCfg[cfgKey] : fallback;
+
+  const owner = pick(opts.owner, 'owner', detected?.owner ?? null);
+  const repo = pick(opts.repo, 'repo', detected?.repo ?? null);
+  if (!owner) errors.push('owner is required (pass --owner, set it in --config, or run inside a git repo with an origin remote)');
+  if (!repo) errors.push('repo is required (pass --repo, set it in --config, or run inside a git repo with an origin remote)');
+
+  const branch = pick(opts.kbBranch, 'branch', detectedBranch || 'main');
+  const title = pick(opts.title, 'title', repo ? `${repo} Knowledge Base` : null);
+  if (!title) errors.push('title could not be derived (pass --title or --repo)');
+
+  const contentMode = String(pick(opts.contentMode, 'contentMode', 'repo')).toLowerCase();
+  if (!CONTENT_MODES.includes(contentMode)) {
+    errors.push(`--content-mode must be one of ${CONTENT_MODES.join('|')} (got "${contentMode}")`);
+  }
+  const contentPath = contentMode === 'repo' ? undefined : String(pick(opts.content, 'content', 'content'));
+
+  const visual = String(pick(opts.visual, 'visual', 'emoji')).toLowerCase();
+  if (!VISUAL_MODES.includes(visual)) {
+    errors.push(`--visual must be one of ${VISUAL_MODES.join('|')} (got "${visual}")`);
+  }
+  const theme = String(pick(opts.theme, 'theme', 'dark')).toLowerCase();
+  if (!THEMES.includes(theme)) {
+    errors.push(`--theme must be one of ${THEMES.join('|')} (got "${theme}")`);
+  }
+
+  // Runtime block — mirror the interactive choices. copilot/skip → no block.
+  let runtimeBlock = null;
+  const runtimeFromFile = fileCfg.runtime && typeof fileCfg.runtime === 'object' ? fileCfg.runtime : null;
+  const runtimeName = String(pick(opts.runtime, 'runtimeName', runtimeFromFile?.agent ?? 'copilot')).toLowerCase();
+  if (!RUNTIME_NAMES.includes(runtimeName)) {
+    errors.push(`--runtime must be one of ${RUNTIME_NAMES.join('|')} (got "${runtimeName}")`);
+  } else if (runtimeName === 'custom') {
+    const command = pick(opts.runtimeCommand, 'runtimeCommand', runtimeFromFile?.command ?? null);
+    if (!command) {
+      errors.push('--runtime custom requires --runtime-command (or runtime.command in --config)');
+    }
+    const argsRaw = opts.runtimeArgs != null ? opts.runtimeArgs : null;
+    const argsTemplate = argsRaw != null
+      ? argsRaw.trim().split(/\s+/).filter(Boolean)
+      : Array.isArray(runtimeFromFile?.argsTemplate)
+        ? runtimeFromFile.argsTemplate
+        : ['-p', '{prompt}'];
+    const outputFormat = pick(opts.runtimeOutput, 'runtimeOutput', runtimeFromFile?.outputFormat ?? 'text');
+    runtimeBlock = {
+      agent: 'custom',
+      command: command ?? 'my-agent',
+      argsTemplate,
+      ...(outputFormat && outputFormat !== 'text' ? { outputFormat } : {}),
+    };
+  } else if (runtimeName === 'claude') {
+    runtimeBlock = { agent: 'claude' };
+  }
+  // copilot / skip → null (keeps .kbexplorer.json minimal, same as interactive)
+
+  if (errors.length) {
+    console.error('✗ Cannot run `init --yes` — missing or invalid configuration:');
+    for (const e of errors) console.error(`  • ${e}`);
+    process.exit(1);
+  }
+
+  return { owner, repo, branch, title, contentPath, runtimeBlock };
 }
 
 export default async function init(args) {
@@ -216,8 +329,13 @@ export default async function init(args) {
   }
   const cwd = process.cwd();
   const templateUrl = opts.template || TEMPLATE_REPO;
-  const mode = opts.vendor ? 'vendor' : 'submodule';
-  const prompt = createPrompt();
+  const mode = opts.mode || (opts.vendor ? 'vendor' : 'submodule');
+  if (mode !== 'submodule' && mode !== 'vendor') {
+    console.error(`✗ Invalid --mode "${mode}" (expected submodule|vendor).`);
+    process.exit(1);
+  }
+  const isVendor = mode === 'vendor';
+  const prompt = opts.yes ? null : createPrompt();
   const selfHosted = isTemplateRepo(cwd);
 
   console.log('');
@@ -229,7 +347,7 @@ export default async function init(args) {
   // Step 1: Install the template (submodule by default, or a vendored copy)
   if (!selfHosted && !hasSubmodule(cwd)) {
     try {
-      const result = opts.vendor
+      const result = isVendor
         ? installVendor(cwd, templateUrl, opts.ref)
         : installSubmodule(cwd, templateUrl, opts.ref);
       writeSourceRecord(cwd, {
@@ -242,7 +360,7 @@ export default async function init(args) {
       console.log(`✓ Recorded template source in ${SOURCE_FILE}`);
     } catch (err) {
       console.error(`✗ ${err.message}`);
-      prompt.close();
+      prompt?.close();
       process.exit(1);
     }
   } else if (selfHosted) {
@@ -262,53 +380,65 @@ export default async function init(args) {
   // Step 2: Install agents/skills
   copyAssets(cwd);
 
-  // Step 3: Interactive config
-  const detected = detectGitRemote(cwd);
-  const detectedBranch = detectBranch(cwd);
-
-  const owner = await prompt.ask('GitHub owner', detected?.owner ?? '');
-  const repo = await prompt.ask('GitHub repo', detected?.repo ?? '');
-  const branch = await prompt.ask('Branch', detectedBranch);
-  const title = await prompt.ask('Knowledge base title', `${repo} Knowledge Base`);
-
-  const contentModeIdx = await prompt.choose(
-    'Content mode:',
-    ['Repo-aware (issues, PRs, README, file tree)', 'Authored (markdown files)', 'Both'],
-    0,
-  );
+  // Step 3: Configuration — interactive prompts or headless (--yes) resolution.
+  let owner;
+  let repo;
+  let branch;
+  let title;
   let contentPath;
-  if (contentModeIdx === 1 || contentModeIdx === 2) {
-    contentPath = await prompt.ask('Content directory', 'content');
-  }
-
-  const visualModes = ['emoji', 'sprites', 'heroes', 'none'];
-  const visualIdx = await prompt.choose('Visual mode:', visualModes, 0);
-
-  const themes = ['dark', 'light', 'sepia'];
-  const themeIdx = await prompt.choose('Default theme:', themes, 0);
-
-  // Step 3b: Optional runtime block
-  const runtimeAgentIdx = await prompt.choose(
-    'Agent runtime for derive/generate fuzzy steps:',
-    ['copilot (default)', 'claude', 'custom (provide command + argsTemplate)', 'skip (use default)'],
-    0,
-  );
   let runtimeBlock = null;
-  const runtimeAgentName = ['copilot', 'claude', 'custom', null][runtimeAgentIdx];
-  if (runtimeAgentName === 'custom') {
-    const command = await prompt.ask('Custom agent command', 'my-agent');
-    const argsTemplateRaw = await prompt.ask('Args template (space-separated, use {prompt})', '-p {prompt}');
-    const argsTemplate = argsTemplateRaw.trim().split(/\s+/).filter(Boolean);
-    const outputFormat = await prompt.ask('Output format (text|jsonl)', 'text');
-    runtimeBlock = {
-      agent: 'custom',
-      command,
-      argsTemplate,
-      ...(outputFormat && outputFormat !== 'text' ? { outputFormat } : {}),
-    };
-  } else if (runtimeAgentName != null && runtimeAgentName !== 'copilot') {
-    // Only write the block when it differs from the default to keep .kbexplorer.json minimal
-    runtimeBlock = { agent: runtimeAgentName };
+
+  if (opts.yes) {
+    ({ owner, repo, branch, title, contentPath, runtimeBlock } = resolveHeadlessConfig(opts, cwd));
+    console.log(
+      `✓ Non-interactive config (owner=${owner}, repo=${repo}, branch=${branch}, mode=${mode})`,
+    );
+  } else {
+    const detected = detectGitRemote(cwd);
+    const detectedBranch = detectBranch(cwd);
+
+    owner = await prompt.ask('GitHub owner', detected?.owner ?? '');
+    repo = await prompt.ask('GitHub repo', detected?.repo ?? '');
+    branch = await prompt.ask('Branch', detectedBranch);
+    title = await prompt.ask('Knowledge base title', `${repo} Knowledge Base`);
+
+    const contentModeIdx = await prompt.choose(
+      'Content mode:',
+      ['Repo-aware (issues, PRs, README, file tree)', 'Authored (markdown files)', 'Both'],
+      0,
+    );
+    if (contentModeIdx === 1 || contentModeIdx === 2) {
+      contentPath = await prompt.ask('Content directory', 'content');
+    }
+
+    const visualModes = ['emoji', 'sprites', 'heroes', 'none'];
+    await prompt.choose('Visual mode:', visualModes, 0);
+
+    const themes = ['dark', 'light', 'sepia'];
+    await prompt.choose('Default theme:', themes, 0);
+
+    // Step 3b: Optional runtime block
+    const runtimeAgentIdx = await prompt.choose(
+      'Agent runtime for derive/generate fuzzy steps:',
+      ['copilot (default)', 'claude', 'custom (provide command + argsTemplate)', 'skip (use default)'],
+      0,
+    );
+    const runtimeAgentName = ['copilot', 'claude', 'custom', null][runtimeAgentIdx];
+    if (runtimeAgentName === 'custom') {
+      const command = await prompt.ask('Custom agent command', 'my-agent');
+      const argsTemplateRaw = await prompt.ask('Args template (space-separated, use {prompt})', '-p {prompt}');
+      const argsTemplate = argsTemplateRaw.trim().split(/\s+/).filter(Boolean);
+      const outputFormat = await prompt.ask('Output format (text|jsonl)', 'text');
+      runtimeBlock = {
+        agent: 'custom',
+        command,
+        argsTemplate,
+        ...(outputFormat && outputFormat !== 'text' ? { outputFormat } : {}),
+      };
+    } else if (runtimeAgentName != null && runtimeAgentName !== 'copilot') {
+      // Only write the block when it differs from the default to keep .kbexplorer.json minimal
+      runtimeBlock = { agent: runtimeAgentName };
+    }
   }
 
   // Step 4: Write config files
@@ -383,7 +513,7 @@ export default async function init(args) {
     console.log('  Run `kbexplorer update` to fetch a newer template version (never clobbers).');
   }
 
-  prompt.close();
+  prompt?.close();
 
   console.log('\n───────────────────────────────────────────');
   console.log('✅ kbexplorer is configured!');
