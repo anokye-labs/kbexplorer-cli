@@ -1,0 +1,116 @@
+# KB Explorer — EMU CI recipe (deterministic gates → Azure SWA + AAD deploy)
+#
+# Copy this file to `.github/workflows/kb-explorer.yml` in your EMU work repo.
+# To adopt it you only substitute SECRETS and HOST values (see the doc:
+# docs/emu-ci-recipe.md). No logic changes are required.
+#
+# What it does:
+#   • PR gate (blocking, deterministic — no LLM, no `gh` auth):
+#       kbexplorer audit         — content/*.md structural integrity
+#       kbexplorer validate      — content-model/ descriptor FK refs/kinds/cycles
+#       kbexplorer derive --check — committed *.jsonld are in sync with sources
+#   • On push to the default branch: build the static SPA and deploy it to an
+#     Azure Static Web App gated behind Azure AD (allowedRoles).
+#
+# Substitutions you must make (all are repo Secrets/Variables — never inline):
+#   secrets.AZURE_STATIC_WEB_APPS_API_TOKEN  — SWA deployment token
+#   secrets.KBEXPLORER_GH_TOKEN              — PAT (repo:read) on your EMU/GHE host
+#   vars.KBEXPLORER_GH_API_BASE              — e.g. https://github.example.com/api/v3
+#
+# The build's manifest step reads your EMU host's issues/PRs/releases through the
+# direct-HTTP path (ghApiBase + token); no `gh` auth handshake is needed.
+
+name: KB Explorer
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Least privilege. The deploy job needs no extra GitHub scopes — it deploys to
+# Azure, authenticated by the SWA token.
+permissions:
+  contents: read
+
+concurrency:
+  group: kb-explorer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Blocking PR gates — deterministic, offline, no LLM and no `gh` auth.
+  # Make all three required checks in branch protection.
+  # ───────────────────────────────────────────────────────────────────────────
+  gates:
+    name: gates (audit + validate + derive --check)
+    runs-on: ubuntu-latest   # or [self-hosted, emu] for an internal runner pool
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive   # required for submodule-mode .kbexplorer installs
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install template deps
+        run: npm install --no-audit --no-fund
+        working-directory: .kbexplorer
+
+      - name: Audit content/ (structural integrity)
+        run: npx kbexplorer audit
+
+      - name: Validate content-model/ (FK refs, kinds, reports-to cycles)
+        run: npx kbexplorer validate
+
+      - name: Derive drift check (committed *.jsonld in sync with sources)
+        shell: bash
+        run: |
+          shopt -s nullglob
+          sources=(content-model/derived-sources/*.md content-model/derived-sources/*.docx content-model/derived-sources/*.txt)
+          if [ ${#sources[@]} -eq 0 ]; then
+            echo "No derived sources found — skipping derive --check."
+          else
+            npx kbexplorer derive "${sources[@]}" --check
+          fi
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Build + deploy — only after gates pass, only on push to the default branch.
+  # ───────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: build + Azure SWA deploy
+    needs: gates
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest   # or [self-hosted, emu]
+    env:
+      # EMU/GHE host wiring for the manifest build (direct-HTTP path).
+      KBEXPLORER_GH_API_BASE: ${{ vars.KBEXPLORER_GH_API_BASE }}
+      KBEXPLORER_GH_TOKEN: ${{ secrets.KBEXPLORER_GH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install template deps
+        run: npm install --no-audit --no-fund
+        working-directory: .kbexplorer
+
+      - name: Build static SPA (manifest reads the EMU host via ghApiBase/token)
+        run: npx kbexplorer build
+
+      - name: Stage the SWA + AAD config alongside the build output
+        run: cp docs/recipes/staticwebapp.config.json dist/kb/staticwebapp.config.json
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: dist/kb       # pre-built static output
+          output_location: ''         # nothing for Oryx to build
+          skip_app_build: true        # we already ran `kbexplorer build`

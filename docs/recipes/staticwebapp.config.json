@@ -1,0 +1,31 @@
+{
+  "$comment": "Azure Static Web Apps + Azure AD (AAD) gate for KB Explorer. Copy this next to your built output (the recipe stages it into dist/kb/). Substitute <tenant-id>; AAD_CLIENT_ID / AAD_CLIENT_SECRET are SWA application settings, not committed here.",
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/assets/*", "*.{css,js,json,png,svg,jpg,woff2}"]
+  },
+  "routes": [
+    {
+      "route": "/*",
+      "allowedRoles": ["authenticated"]
+    }
+  ],
+  "responseOverrides": {
+    "401": {
+      "redirect": "/.auth/login/aad",
+      "statusCode": 302
+    }
+  },
+  "auth": {
+    "identityProviders": {
+      "azureActiveDirectory": {
+        "userDetailsClaim": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
+        "registration": {
+          "openIdIssuer": "https://login.microsoftonline.com/<tenant-id>/v2.0",
+          "clientIdSettingName": "AAD_CLIENT_ID",
+          "clientSecretSettingName": "AAD_CLIENT_SECRET"
+        }
+      }
+    }
+  }
+}
