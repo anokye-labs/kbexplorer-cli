@@ -1,0 +1,4 @@
+"@type": frobnicate
+id: random
+name: Random Thing
+# Lives under an unrecognized directory with an unknown @type → unknown-kind.

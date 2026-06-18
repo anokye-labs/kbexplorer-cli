@@ -1,0 +1,6 @@
+"@type": system-of-record
+id: ado-board
+name: ADO Board
+url: "https://dev.azure.com/anokye-labs/kbexplorer/_boards"
+description: >
+  Primary planning and tracking board for in-flight work items.

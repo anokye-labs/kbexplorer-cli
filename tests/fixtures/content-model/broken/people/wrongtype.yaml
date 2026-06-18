@@ -1,0 +1,4 @@
+"@type": team
+id: wrongtype
+name: Wrong Type
+# Lives under people/ but declares @type team → type-mismatch.

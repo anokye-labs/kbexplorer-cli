@@ -1,0 +1,4 @@
+"@type": priority
+id: p2
+# Missing required field: name → missing-required-field.
+rank: 2

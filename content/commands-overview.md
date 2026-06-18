@@ -15,6 +15,8 @@ connections:
     description: "safe template refresh"
   - to: "cmd-audit"
     description: "structural lint"
+  - to: "cmd-validate"
+    description: "content-model descriptor gate"
   - to: "cmd-affected"
     description: "diff-driven refresh"
   - to: "cmd-scaffold"

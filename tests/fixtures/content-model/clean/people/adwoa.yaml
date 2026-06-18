@@ -1,0 +1,7 @@
+"@type": person
+id: adwoa
+alias: adwoa
+name: Adwoa Mensah
+role: Engineering Lead
+email: adwoa@example.com
+manager: kwame   # reports-to kwame

@@ -1,0 +1,7 @@
+"@type": workstream
+id: orphan
+name: Orphan Workstream
+priority: p9            # broken-ref → no such priority
+team: ghost-team       # broken-ref → no such team
+systems-of-record:
+  - no-sor             # broken-ref → no such system-of-record
