@@ -460,6 +460,13 @@ internal-only access, configure the `allowedRoles` in `staticwebapp.config.json`
 }
 ```
 
+> **EMU copy-paste CI recipe:** For a single, ready-to-copy workflow that wires
+> the deterministic PR gates (`audit` + `validate` + `derive --check`) ahead of
+> a `build` + Azure SWA/AAD deploy — with `submodules: recursive` and the
+> `ghApiBase`/token wiring for an EMU host — see
+> [`emu-ci-recipe.md`](./emu-ci-recipe.md) and the copyable files under
+> [`recipes/`](./recipes/). You substitute secrets/host values only.
+
 ### 7.3 Internal static host
 
 **Best for:** air-gapped or on-prem environments where GitHub Pages and Azure are
