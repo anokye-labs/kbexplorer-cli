@@ -63,6 +63,10 @@ jobs:
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   pull_number: pr.number,
+                  // Pin to the listed head: if a commit lands between listing
+                  // and merge, GitHub returns 409 and we retry against the new
+                  // (re-checked) head rather than merging unseen code.
+                  sha: pr.head.sha,
                   merge_method: 'squash',
                 });
                 merged++;
