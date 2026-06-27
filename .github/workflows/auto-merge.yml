@@ -83,7 +83,10 @@ jobs:
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     pull_number: pr.number,
-                    expected_head_sha: pr.head.sha,
+                    // Use the freshly-fetched head: updateBranch's intent is to
+                    // bring the branch current, so it must match the latest head
+                    // (a stale list-time sha would 422 if the branch just moved).
+                    expected_head_sha: detail.head.sha,
                   });
                   updated++;
                   core.info(`PR #${pr.number} by ${author}: behind main, updated branch.`);
