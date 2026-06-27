@@ -32,97 +32,42 @@
  *   ARTIFACT_SCHEMA_VERSION
  */
 
+import {
+  KNOWN_RELATIONS,
+  RELATION_SYNONYMS,
+  slugify,
+  normalizeType,
+  buildId,
+  buildEdgeId,
+  stripScheme,
+  mapRelation,
+  ID_RE,
+  TYPE_RE,
+} from '@anokye-labs/kbexplorer-core';
+
+/**
+ * Identity + relation primitives come from the shared contract package
+ * `@anokye-labs/kbexplorer-core` and are re-exported here so existing
+ * `../lib/jsonld.js` imports keep working unchanged. They are pure and
+ * canonical: identical input → byte-identical output, which is what keeps
+ * re-derivation idempotent and the drift check meaningful.
+ */
+export {
+  KNOWN_RELATIONS,
+  RELATION_SYNONYMS,
+  slugify,
+  normalizeType,
+  buildId,
+  buildEdgeId,
+  mapRelation,
+};
+
 export const ARTIFACT_SCHEMA_VERSION = 1;
 
 export const DEFAULT_CONTEXT = 'https://schema.org';
 
 export const GENERATOR = '@anokye-labs/kbexplorer derive';
 
-/** The canonical 6-relation taxonomy (F1 KnownRelation). */
-export const KNOWN_RELATIONS = Object.freeze([
-  'leads',
-  'staffs',
-  'reports-to',
-  'structural',
-  'derived',
-  'deprecated',
-]);
-
-/** Common phrasings → taxonomy. Unknown relations fall back to 'structural'. */
-export const RELATION_SYNONYMS = Object.freeze({
-  leads: 'leads',
-  lead: 'leads',
-  manages: 'leads',
-  heads: 'leads',
-  owns: 'leads',
-  staffs: 'staffs',
-  staff: 'staffs',
-  'member-of': 'staffs',
-  'member of': 'staffs',
-  'belongs-to': 'staffs',
-  'part-of': 'structural',
-  'part of': 'structural',
-  contains: 'structural',
-  'reports-to': 'reports-to',
-  'reports to': 'reports-to',
-  reports: 'reports-to',
-  'managed-by': 'reports-to',
-  structural: 'structural',
-  related: 'structural',
-  associated: 'structural',
-  derived: 'derived',
-  'derived-from': 'derived',
-  generates: 'derived',
-  produces: 'derived',
-  deprecated: 'deprecated',
-  'deprecated-by': 'deprecated',
-  obsolete: 'deprecated',
-});
-
-/** Lowercase, ASCII-fold, collapse to kebab-case. Deterministic. */
-export function slugify(input) {
-  return String(input ?? '')
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'unknown';
-}
-
-/** Normalize an entity-kind into an open registry key (never path-derived). */
-export function normalizeType(type) {
-  const slug = slugify(type);
-  return slug === 'unknown' ? 'entity' : slug;
-}
-
-/** Build the `kg://` identity URN. `@id` is reused as identity, never from path. */
-export function buildId(type, key) {
-  return `kg://${normalizeType(type)}/${slugify(key)}`;
-}
-
-/** Build a deterministic edge URN from endpoints + relation. */
-export function buildEdgeId(fromId, relation, toId) {
-  const from = stripScheme(fromId);
-  const to = stripScheme(toId);
-  return `kg://edge/${from}~${relation}~${to}`;
-}
-
-function stripScheme(id) {
-  return String(id).replace(/^kg:\/\//, '');
-}
-
-/**
- * Map a raw relationship label onto the taxonomy.
- * @param {string} raw
- * @returns {{ relation: string, raw: string }}  `relation` ∈ KNOWN_RELATIONS.
- */
-export function mapRelation(raw) {
-  const key = String(raw ?? '').trim().toLowerCase();
-  if (KNOWN_RELATIONS.includes(key)) return { relation: key, raw: key };
-  const mapped = RELATION_SYNONYMS[key] || RELATION_SYNONYMS[key.replace(/\s+/g, '-')];
-  return { relation: mapped || 'structural', raw: key || 'structural' };
-}
 
 function isScalar(v) {
   return v == null || ['string', 'number', 'boolean'].includes(typeof v);
@@ -316,8 +261,6 @@ function sortObject(obj) {
   return out;
 }
 
-const ID_RE = /^kg:\/\/[a-z0-9-]+\/[a-z0-9-]+$/;
-const TYPE_RE = /^[a-z][a-z0-9-]*$/;
 
 /**
  * Validate an artifact against the F1 node-type contract. Returns a list of
