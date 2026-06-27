@@ -68,15 +68,20 @@ jobs:
                 merged++;
                 core.info(`PR #${pr.number} by ${author}: merged.`);
 
-                // Tidy up the merged head branch (best-effort).
-                try {
-                  await github.rest.git.deleteRef({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    ref: `heads/${pr.head.ref}`,
-                  });
-                } catch (e) {
-                  core.info(`PR #${pr.number}: branch cleanup skipped (${e.status || ''}).`);
+                // Tidy up the merged head branch (best-effort). Guard on
+                // same-repo so a fork PR whose branch name collides with a
+                // base-repo branch can never delete the unrelated base branch.
+                const sameRepo = pr.head.repo?.full_name === `${context.repo.owner}/${context.repo.repo}`;
+                if (sameRepo) {
+                  try {
+                    await github.rest.git.deleteRef({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      ref: `heads/${pr.head.ref}`,
+                    });
+                  } catch (e) {
+                    core.info(`PR #${pr.number}: branch cleanup skipped (${e.status || ''}).`);
+                  }
                 }
               } catch (e) {
                 // 405 = not mergeable yet (checks pending / unresolved threads /
