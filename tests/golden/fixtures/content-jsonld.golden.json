@@ -1,0 +1,131 @@
+{
+  "docs/samples/platform-squad.md": {
+    "edges": [
+      {
+        "id": "kg://edge/person/jane-doe~leads~squad/platform-squad",
+        "relation": "leads",
+        "source": "kg://person/jane-doe",
+        "target": "kg://squad/platform-squad"
+      },
+      {
+        "id": "kg://edge/squad/platform-squad~staffs~person/amir-khan",
+        "relation": "staffs",
+        "source": "kg://squad/platform-squad",
+        "target": "kg://person/amir-khan"
+      }
+    ],
+    "graph": [
+      {
+        "@context": "https://schema.org",
+        "@id": "kg://person/jane-doe",
+        "@type": "person",
+        "jobTitle": "VP Engineering",
+        "name": "Jane Doe"
+      },
+      {
+        "@context": "https://schema.org",
+        "@id": "kg://squad/platform-squad",
+        "@type": "squad",
+        "mission": "Own the build and derivation runtime",
+        "name": "Platform Squad"
+      },
+      {
+        "@context": "https://schema.org",
+        "@id": "kg://person/amir-khan",
+        "@type": "person",
+        "jobTitle": "Staff Engineer",
+        "name": "Amir Khan"
+      },
+      {
+        "@id": "kg://edge/person/jane-doe~leads~squad/platform-squad",
+        "@type": "Relationship",
+        "from": {
+          "@id": "kg://person/jane-doe"
+        },
+        "relation": "leads",
+        "to": {
+          "@id": "kg://squad/platform-squad"
+        }
+      },
+      {
+        "@id": "kg://edge/squad/platform-squad~staffs~person/amir-khan",
+        "@type": "Relationship",
+        "from": {
+          "@id": "kg://squad/platform-squad"
+        },
+        "relation": "staffs",
+        "to": {
+          "@id": "kg://person/amir-khan"
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "data": {
+          "jobTitle": "VP Engineering",
+          "name": "Jane Doe"
+        },
+        "entityType": "person",
+        "id": "kg://person/jane-doe",
+        "identity": "kg://person/jane-doe",
+        "jsonld": {
+          "@context": "https://schema.org",
+          "@id": "kg://person/jane-doe",
+          "@type": "person",
+          "jobTitle": "VP Engineering",
+          "name": "Jane Doe"
+        },
+        "source": {
+          "entityType": "person",
+          "ref": "docs/samples/platform-squad.md#jane-doe",
+          "type": "structured"
+        },
+        "title": "Jane Doe"
+      },
+      {
+        "data": {
+          "mission": "Own the build and derivation runtime",
+          "name": "Platform Squad"
+        },
+        "entityType": "squad",
+        "id": "kg://squad/platform-squad",
+        "identity": "kg://squad/platform-squad",
+        "jsonld": {
+          "@context": "https://schema.org",
+          "@id": "kg://squad/platform-squad",
+          "@type": "squad",
+          "mission": "Own the build and derivation runtime",
+          "name": "Platform Squad"
+        },
+        "source": {
+          "entityType": "squad",
+          "ref": "docs/samples/platform-squad.md#platform-squad",
+          "type": "structured"
+        },
+        "title": "Platform Squad"
+      },
+      {
+        "data": {
+          "jobTitle": "Staff Engineer",
+          "name": "Amir Khan"
+        },
+        "entityType": "person",
+        "id": "kg://person/amir-khan",
+        "identity": "kg://person/amir-khan",
+        "jsonld": {
+          "@context": "https://schema.org",
+          "@id": "kg://person/amir-khan",
+          "@type": "person",
+          "jobTitle": "Staff Engineer",
+          "name": "Amir Khan"
+        },
+        "source": {
+          "entityType": "person",
+          "ref": "docs/samples/platform-squad.md#amir-khan",
+          "type": "structured"
+        },
+        "title": "Amir Khan"
+      }
+    ]
+  }
+}
