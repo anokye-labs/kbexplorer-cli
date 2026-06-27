@@ -50,11 +50,37 @@ jobs:
             });
 
             let merged = 0;
+            let updated = 0;
             let skipped = 0;
             for (const pr of prs) {
               const author = pr.user?.login || '';
               if (pr.draft || !AGENT_AUTHORS.has(author)) {
                 skipped++;
+                continue;
+              }
+
+              // Read the freshly-computed merge state. The ruleset uses strict
+              // required status checks, so a PR that is `behind` main must be
+              // updated before it can merge. We bring it up to date here (which
+              // re-runs checks) and merge it on a later sweep once it's green.
+              const { data: detail } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+              });
+              if (detail.mergeable_state === 'behind') {
+                try {
+                  await github.rest.pulls.updateBranch({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: pr.number,
+                    expected_head_sha: pr.head.sha,
+                  });
+                  updated++;
+                  core.info(`PR #${pr.number} by ${author}: behind main, updated branch.`);
+                } catch (e) {
+                  core.info(`PR #${pr.number}: branch update skipped (${e.status || ''} ${e.message}).`);
+                }
                 continue;
               }
 
@@ -95,4 +121,4 @@ jobs:
                 core.info(`PR #${pr.number} by ${author}: not mergeable yet (${e.status || ''} ${e.message}).`);
               }
             }
-            core.notice(`auto-merge: ${merged} merged, ${skipped} skipped.`);
+            core.notice(`auto-merge: ${merged} merged, ${updated} updated, ${skipped} skipped.`);
