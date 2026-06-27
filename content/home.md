@@ -15,12 +15,12 @@ connections:
   - to: "skill-overview"
     description: "one skill, deep references library"
   - to: "zero-deps"
-    description: "no runtime dependencies — by design"
+    description: "lean, vetted dependencies — by design"
   - to: "derivation-overview"
     description: "docx/prose → engine-contract JSON-LD"
 ---
 
-**kbexplorer-cli** is a zero-dependency Node.js CLI that turns any GitHub
+**kbexplorer-cli** is a lean Node.js CLI that turns any GitHub
 repository into a navigable, interactive **knowledge graph**. It installs the
 explorer web app into a host repo (as a git submodule or vendored copy), wires
 in a set of Copilot agents and a routing skill, and provides eleven commands that

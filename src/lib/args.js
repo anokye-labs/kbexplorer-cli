@@ -292,3 +292,43 @@ export function parseDoctorArgs(args = []) {
   }
   return out;
 }
+
+/**
+ * Parse `mcp` arguments.
+ *
+ * Supported flags:
+ *   --root <dir>        Add an explicit root directory (repeatable). Used as a
+ *                       fallback / supplement when the client does not advertise
+ *                       the `roots` capability.
+ *   --no-sampling       Never issue `sampling/createMessage`; kb_ask returns the
+ *                       grounded context bundle for the host to reason over.
+ *   --name <name>       Override the advertised server name (default 'kbexplorer').
+ *   --help, -h          Show help.
+ *
+ * @param {string[]} args
+ * @returns {{ roots: string[], noSampling: boolean, name: string|null, help: boolean, unknown: string[] }}
+ */
+export function parseMcpArgs(args = []) {
+  const out = { roots: [], noSampling: false, name: null, help: false, unknown: [] };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    switch (a) {
+      case '--root':
+        if (args[i + 1] != null) out.roots.push(args[++i]);
+        break;
+      case '--no-sampling':
+        out.noSampling = true;
+        break;
+      case '--name':
+        out.name = args[++i] ?? null;
+        break;
+      case '--help':
+      case '-h':
+        out.help = true;
+        break;
+      default:
+        out.unknown.push(a);
+    }
+  }
+  return out;
+}

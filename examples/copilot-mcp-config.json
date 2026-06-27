@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "kbexplorer": {
+      "command": "node",
+      "args": ["bin/cli.js", "mcp"]
+    }
+  }
+}

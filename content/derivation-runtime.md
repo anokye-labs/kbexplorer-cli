@@ -12,7 +12,7 @@ connections:
   - to: "node-type-contract"
     description: "the deterministic phase emits contract JSON-LD"
   - to: "zero-deps"
-    description: "the adapter is zero-dependency, like the rest of the CLI"
+    description: "the adapter stays built-ins-only, in keeping with the dependency philosophy"
 ---
 
 The runtime substrate introduced by **Feature F7** (issue [#17](issue-17),
@@ -43,7 +43,7 @@ keeps the whole path **hermetically testable** with no live LLM.
 
 ## `runCopilot()` — the adapter
 
-`src/lib/copilot-runtime.js` is a zero-dependency ESM adapter that spawns
+`src/lib/copilot-runtime.js` is a built-ins-only ESM adapter that spawns
 `copilot -p`, captures output, and returns a structured `RuntimeResult`
 (`{ ok, exitCode, response, events, durationMs, … }`). It rejects with a
 `CopilotRuntimeError` carrying a `.code` from `RuntimeErrorCode`

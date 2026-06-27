@@ -10,7 +10,7 @@ connections:
   - to: "lib-source"
     description: "the install-source seam"
   - to: "lib-frontmatter"
-    description: "zero-dep YAML subset"
+    description: "YAML frontmatter via js-yaml"
   - to: "lib-audit"
     description: "schema validator"
   - to: "lib-affected"
@@ -46,8 +46,8 @@ into one resolution function and one read-from-disk.
 
 Three libraries were added to support the lifecycle tooling:
 
-- [lib-frontmatter](lib-frontmatter) — zero-dep parser for the
-  kbexplorer YAML subset, plus citation extraction.
+- [lib-frontmatter](lib-frontmatter) — js-yaml-backed parser for the
+  kbexplorer frontmatter, plus citation extraction.
 - [lib-audit](lib-audit) — rules-based schema validator used by
   [audit](cmd-audit).
 - [lib-affected](lib-affected) — builds the citation index and computes

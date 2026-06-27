@@ -1,5 +1,5 @@
 /**
- * Zero-dependency `.docx` text extractor.
+ * Built-ins-only `.docx` text extractor.
  *
  * A `.docx` file is a ZIP container; the body text lives in `word/document.xml`
  * as a stream of `<w:p>` paragraphs containing `<w:t>` text runs. This module

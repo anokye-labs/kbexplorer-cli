@@ -33,6 +33,7 @@ const COMMANDS = {
   scaffold: '../src/commands/scaffold.js',
   derive: '../src/commands/derive.js',
   doctor: '../src/commands/doctor.js',
+  mcp: '../src/commands/mcp.js',
 };
 
 function printUsage() {
@@ -54,6 +55,7 @@ function printUsage() {
     derive      Extract entities from .docx/prose into committed *.jsonld (F8)
     update      Pull latest template + refresh agents/skills
     doctor      Diagnose local runtime, MCP, and template setup
+    mcp         Run a knowledge-graph MCP server (sampling + roots) over stdio
 
   Options:
     --help      Show this help message
@@ -89,6 +91,11 @@ function printUsage() {
     --json                     Emit machine-readable JSON
     --offline                  Skip network-dependent checks (latest tag lookup)
 
+  mcp options:
+    --root <dir>               Add an explicit root directory (repeatable)
+    --no-sampling              Return grounded context instead of calling host sampling
+    --name <name>              Override the advertised server name (default 'kbexplorer')
+
   Examples:
     npx kbexplorer init
     npx kbexplorer init --template https://github.com/my-org/my-template.git
@@ -101,6 +108,7 @@ function printUsage() {
     npx kbexplorer doctor
     npx kbexplorer doctor --runtime claude
     npx kbexplorer doctor --json
+    npx kbexplorer mcp
 `);
 }
 

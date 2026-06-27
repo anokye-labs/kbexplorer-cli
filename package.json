@@ -8,6 +8,9 @@
   },
   "scripts": {
     "test": "node --test tests/**/*.test.js",
+    "mcp": "node bin/cli.js mcp",
+    "mcp:smoke": "node scripts/mcp-smoke.mjs",
+    "mcp:bridge": "node scripts/mcp-sampling-bridge.mjs",
     "kb:dev": "kbexplorer dev",
     "kb:build": "kbexplorer build",
     "kb:generate": "kbexplorer generate"
@@ -37,5 +40,9 @@
     "src/",
     "LICENSE",
     "README.md"
-  ]
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  }
 }

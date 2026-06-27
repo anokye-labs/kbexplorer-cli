@@ -34,7 +34,7 @@ flowchart LR
 ```
 
 1. **Ingest (deterministic).** `src/lib/ingest.js` reads bytes into a normalized
-   document — including a zero-dependency `.docx` unzip + WordprocessingML-to-text
+   document — including a built-ins-only `.docx` unzip + WordprocessingML-to-text
    reducer (`src/lib/docx.js`).
 2. **Extract (fuzzy).** The text is sent to GitHub Copilot through the
    [programmatic-mode runtime](derivation-runtime) (`copilot -p`), which returns

@@ -1,48 +1,63 @@
 ---
 id: "zero-deps"
-title: "Zero Runtime Dependencies"
+title: "Dependency Philosophy"
 emoji: "Diamond"
 cluster: infra
 parent: home
 connections:
   - to: "lib-frontmatter"
-    description: "the custom YAML subset parser is a direct consequence"
+    description: "hand-rolled frontmatter parsing is the canonical case for delegating to a vetted library"
   - to: "cli-router"
-    description: "the router uses only node:* built-ins"
+    description: "routing and argument parsing are moving from hand-rolled code to commander"
 ---
 
-`package.json` declares **no `dependencies`** — only `devDependencies`
-(`vitest`, etc.). At runtime the CLI uses only Node built-ins and shells
-out to `git`, `gh`, and `vite` (which lives in the installed template).
+kbexplorer-cli once advertised **zero runtime dependencies** — `package.json`
+declared no `dependencies` at all, and the CLI leaned entirely on Node
+built-ins plus shellouts to `git`, `gh`, and `vite`. That posture has been
+**retired**. Hand-rolling a YAML parser, an MCP protocol stack, and an argument
+parser cost more than it saved: more code to test, more edge cases to get
+wrong, and a worse result than the conventional libraries everyone already
+trusts.
 
-## What this buys
+The replacement is not "depend on everything." It is a **deliberate, minimal,
+vetted** dependency set: reach for a well-maintained library when it removes
+hand-rolled protocol or parsing code, and keep using Node built-ins for
+everything else.
 
-- **Fast `npx` cold starts.** Nothing to download except the package
-  itself.
-- **Tiny supply chain.** No transitive deps means no supply-chain audit
-  surface for the CLI's runtime.
-- **Predictable behavior.** Node + git + gh are stable interfaces; npm
-  packages are not.
-- **Easy fork-and-modify.** A new contributor can read the entire codebase
-  in an afternoon.
+## The principle
 
-## What it costs
+- **Delegate protocol and parsing.** Wire formats and grammars — MCP JSON-RPC,
+  YAML frontmatter, CLI argument parsing — are solved problems. Use the
+  standard implementation instead of a bespoke subset.
+- **Stay lean everywhere else.** Filesystem walks, `git` / `gh` / `vite`
+  shellouts, retrieval scoring, and the `.docx` unzip stay built-ins-only — a
+  dependency would buy nothing there.
+- **Vet what you add.** Each dependency is chosen for maintenance health, a
+  stable API, and a footprint the project is willing to own. Additions are
+  reviewed on their merits, not rejected by reflex.
 
-- **Custom YAML parser.** The [lib-frontmatter](lib-frontmatter) parser
-  handles a deliberate subset of YAML and explicitly does not support
-  multi-line strings, inline objects, anchors, or escaped specials. The
-  trade-off was reviewed and accepted — a full YAML parser is too much
-  weight for what kbexplorer's content schema needs.
-- **Custom prompt / arg parsing.** [lib-detect-repo](lib-detect-repo),
-  `lib/args.js`, and `lib/prompt.js` reinvent small bits of what `commander`
-  / `inquirer` would do — kept small enough to be unit-tested in full.
-- **Discipline required.** Every PR that wants to add a dep is rejected by
-  default. The bar is genuinely high.
+## What landed first
 
-## What is not zero-dep
+The MCP server was the first module to switch. It is built on the official
+**`@modelcontextprotocol/sdk`** (with `zod` for tool schemas) instead of a
+hand-rolled JSON-RPC-over-stdio harness — the SDK owns the handshake, the
+bidirectional `sampling` / `roots` calls, and stdio framing, which are
+genuinely hard to re-derive correctly. See the
+[design doc](https://github.com/gaming-microsoft/kbexplorer-cli/blob/main/docs/mcp-server.md).
 
-The **explorer template** (`.kbexplorer/`) has a normal Vite / React stack
-with all the usual dependencies. The zero-dep posture applies only to the
-CLI itself — the template is a regular npm app and that is fine.
+## Still in flight
+
+The same reasoning is being applied to the other hand-rolled corners as
+separate, reviewed changes: frontmatter parsing moves to `js-yaml` (see
+[lib-frontmatter](lib-frontmatter)), and CLI routing / argument parsing moves
+to `commander`.
+
+## The trade-off we accept
+
+A real dependency tree is a real supply chain. The MCP SDK, for example, pulls
+a sizable transitive set because it bundles HTTP/SSE transports this
+stdio-only server never uses. That cost is acceptable where the library removes
+fragile hand-rolled code — and swapping a heavy library for a lighter one stays
+on the table if a footprint stops being worth it.
 
 <!-- Sources: package.json -->

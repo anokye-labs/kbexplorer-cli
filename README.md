@@ -54,9 +54,9 @@ npx kbexplorer init --vendor   # one-time: vendors the explorer into .kbexplorer
 npx kbexplorer dev             # build the manifest, start Vite at :5173
 ```
 
-Open <http://localhost:5173>. You should see a graph of 27 nodes covering
+Open <http://localhost:5173>. You should see a graph of 28 nodes covering
 the CLI router, every command, the lib/ heart, the agents, the skill,
-install modes, the zero-dependency design, and the **derivation & contract**
+install modes, the dependency philosophy, and the **derivation & contract**
 subsystem (the `derive` command, the programmatic-mode runtime, and the engine
 node-type contract).
 
@@ -65,6 +65,38 @@ To regression-check the dogfood loop end-to-end:
 ```bash
 node scripts/verify-self-kb.js   # headless Playwright; screenshots → dist-screenshots/
 ```
+
+## Dogfood: query this repo's KB over MCP
+
+`kbexplorer mcp` starts a stdio [Model Context Protocol](https://modelcontextprotocol.io)
+server that exposes this repo's dogfood KB to any MCP host. It serves five tools —
+`kb_query`, `kb_get_node`, `kb_neighbors`, `kb_graph_stats`, and `kb_ask` — uses
+MCP **roots** to scope which clusters are in context, and answers `kb_ask` through
+the host's own model via MCP **sampling** (degrading to a grounded-context answer
+when the host has no sampling). The full tool/contract reference is in
+**[docs/mcp-server.md](docs/mcp-server.md)**.
+
+Verify it end-to-end with no model required — a built-in harness plays the host
+and answers the sampling round-trip:
+
+```bash
+npm run mcp:smoke
+```
+
+Or wire it into the GitHub Copilot CLI with the checked-in
+[`examples/copilot-mcp-config.json`](examples/copilot-mcp-config.json) (it points at
+`node bin/cli.js mcp`) and ask a question against the live host:
+
+```bash
+copilot -p "Use the kbexplorer MCP server: call kb_graph_stats, then kb_query for 'mcp server'." \
+  --additional-mcp-config @examples/copilot-mcp-config.json --allow-all-tools
+```
+
+> The `@` prefix tells Copilot CLI to load the JSON from a file rather than parse
+> it inline. `kb_ask` performs a real sampling round-trip only when the host
+> advertises MCP sampling. Copilot CLI advertises it in **interactive** sessions
+> (gated by a user-approval prompt); the non-interactive `copilot -p` path used
+> above does **not**, so `kb_ask` there falls back to a grounded-context answer.
 
 ## What `init` Does
 
@@ -340,7 +372,7 @@ are absent produce a warning instead.
 
 | Adapter | Files checked (in order) |
 |---------|--------------------------|
-| `copilot` | `~/.copilot/mcp-config.json` (the file Copilot CLI reads; it has no repo-local MCP config today) |
+| `copilot` | `~/.copilot/mcp-config.json` (auto-loaded for preflight; a repo file can also be passed per-invocation via `--additional-mcp-config @<file>`) |
 | `claude` | `<repo>/.mcp.json` → `~/.claude.json` (project entries matching cwd) |
 | `custom` | Detection not possible — all declared servers reported as unverifiable (warning, not failure) |
 
