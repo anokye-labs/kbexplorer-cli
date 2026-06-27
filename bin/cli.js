@@ -34,6 +34,8 @@ const COMMANDS = {
   scaffold: '../src/commands/scaffold.js',
   derive: '../src/commands/derive.js',
   doctor: '../src/commands/doctor.js',
+  'search-index': '../src/commands/search-index.js',
+  search: '../src/commands/search.js',
 };
 
 function printUsage() {
@@ -54,6 +56,8 @@ function printUsage() {
     affected    Map a git diff to impacted content nodes via citations
     scaffold    Create a new content/<slug>.md skeleton with valid frontmatter
     derive      Extract entities from .docx/prose into committed *.jsonld (F8)
+    search-index  Build or check semantic search artifacts
+    search      Semantic search over the knowledge graph
     update      Pull latest template + refresh agents/skills
     doctor      Diagnose local runtime, MCP, and template setup
 
