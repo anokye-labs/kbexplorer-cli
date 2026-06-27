@@ -1,0 +1,98 @@
+name: auto-merge
+
+# Automatically squash-merges agent-authored PRs once they satisfy the repo
+# ruleset (required status checks + conversation resolution). The merge is
+# attempted via the REST API, so GitHub enforces every branch-protection rule
+# server-side: a PR that is red, has unresolved threads, or is otherwise blocked
+# simply returns 405 and is skipped. This automation never bypasses a gate — it
+# only saves the final human click on PRs that are already green.
+
+on:
+  check_suite:
+    types: [completed]
+  # Periodic sweep catches PRs whose gating finished between check_suite events
+  # (late thread resolution, races, manual re-runs).
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: auto-merge
+  cancel-in-progress: false
+
+jobs:
+  auto-merge:
+    name: auto-merge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Squash-merge ready agent PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Allowlist of agent authors whose PRs may auto-merge. Human PRs are
+            // never auto-merged — only these bots.
+            const AGENT_AUTHORS = new Set([
+              'devin-ai-integration[bot]',
+              'copilot-swe-agent[bot]',
+              'Copilot',
+            ]);
+
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              base: 'main',
+              per_page: 100,
+            });
+
+            let merged = 0;
+            let skipped = 0;
+            for (const pr of prs) {
+              const author = pr.user?.login || '';
+              if (pr.draft || !AGENT_AUTHORS.has(author)) {
+                skipped++;
+                continue;
+              }
+
+              try {
+                await github.rest.pulls.merge({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                  // Pin to the listed head: if a commit lands between listing
+                  // and merge, GitHub returns 409 and we retry against the new
+                  // (re-checked) head rather than merging unseen code.
+                  sha: pr.head.sha,
+                  merge_method: 'squash',
+                });
+                merged++;
+                core.info(`PR #${pr.number} by ${author}: merged.`);
+
+                // Tidy up the merged head branch (best-effort). Guard on
+                // same-repo so a fork PR whose branch name collides with a
+                // base-repo branch can never delete the unrelated base branch.
+                const sameRepo = pr.head.repo?.full_name === `${context.repo.owner}/${context.repo.repo}`;
+                if (sameRepo) {
+                  try {
+                    await github.rest.git.deleteRef({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      ref: `heads/${pr.head.ref}`,
+                    });
+                  } catch (e) {
+                    core.info(`PR #${pr.number}: branch cleanup skipped (${e.status || ''}).`);
+                  }
+                }
+              } catch (e) {
+                // 405 = not mergeable yet (checks pending / unresolved threads /
+                // blocked by ruleset); 409 = head moved. Skip quietly and retry
+                // on a later run.
+                skipped++;
+                core.info(`PR #${pr.number} by ${author}: not mergeable yet (${e.status || ''} ${e.message}).`);
+              }
+            }
+            core.notice(`auto-merge: ${merged} merged, ${skipped} skipped.`);
