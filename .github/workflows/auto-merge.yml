@@ -9,6 +9,10 @@ name: auto-merge
 
 on:
   # Fire as soon as a gating check workflow finishes (reliable, event-driven).
+  # NOTE: do not "simplify" this to `check_suite`/`schedule` — GitHub suppresses
+  # those events when the check runs were created by a GITHUB_TOKEN job (an
+  # anti-recursion safeguard), so they never fire here. `workflow_run` is the
+  # documented, exempt trigger for "run after another workflow completes".
   workflow_run:
     workflows:
       - dependency-review
