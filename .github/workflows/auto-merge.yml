@@ -8,10 +8,15 @@ name: auto-merge
 # only saves the final human click on PRs that are already green.
 
 on:
-  check_suite:
+  # Fire as soon as a gating check workflow finishes (reliable, event-driven).
+  workflow_run:
+    workflows:
+      - dependency-review
+      - linked-issue
+      - pr-title
     types: [completed]
-  # Periodic sweep catches PRs whose gating finished between check_suite events
-  # (late thread resolution, races, manual re-runs).
+  # Backstop sweep catches PRs whose gating settled between events
+  # (late thread resolution, races, manual updates).
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
