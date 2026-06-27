@@ -195,10 +195,10 @@
     ],
     "schemaVersion": 1,
     "source": {
-      "bytes": 785,
+      "bytes": 767,
       "format": "markdown",
       "path": "docs/samples/platform-squad.md",
-      "sha256": "sha256:2a80464c96d12deb56c16b47ae04469cd286e4d93d8520c9bf5e03d5b4623dfa"
+      "sha256": "sha256:9d0e3e325959a0cc43162de4103f8e6a8d0e9200e43cebbe69f05908fd064265"
     },
     "title": "Platform Squad"
   }
