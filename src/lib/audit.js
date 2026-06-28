@@ -1,5 +1,5 @@
 /**
- * Schema and structural integrity audit for kbexplorer content.
+ * Schema and structural integrity audit for kbx content.
  *
  * Complements the soft "graph health" analysis in `links.js` with hard
  * structural errors that break the explorer at runtime:
@@ -298,3 +298,4 @@ export function audit({ contentDir, cwd, contentPath = 'content' }) {
 }
 
 export const _internal = { parseClusterKeys, detectParentCycle, listMarkdownFiles };
+

@@ -14,7 +14,7 @@
  *
  * # Auth when a base is set
  *
- *   `Authorization: token <KBEXPLORER_GH_TOKEN || GH_TOKEN>`
+ *   `Authorization: token <KBX_GH_TOKEN || GH_TOKEN>`
  *
  * The Gitea DTU adapter is a bare GitHub REST v3 proxy; it does not support the
  * `gh` auth handshake, so `gh --hostname` will not authenticate against it.
@@ -23,12 +23,12 @@
  * # Pointing the CLI at alternative hosts
  *
  *   ## Gitea DTU adapter (hermetic testing)
- *   KBEXPLORER_GH_API_BASE=http://localhost:3456 KBEXPLORER_GH_TOKEN=test-token kbexplorer manifest
+ *   KBX_GH_API_BASE=http://localhost:3456 KBX_GH_TOKEN=test-token kbx manifest
  *
  *   ## GitHub Enterprise (GHE / EMU)
- *   KBEXPLORER_GH_API_BASE=https://github.example.com/api/v3 KBEXPLORER_GH_TOKEN=<pat> kbexplorer manifest
+ *   KBX_GH_API_BASE=https://github.example.com/api/v3 KBX_GH_TOKEN=<pat> kbx manifest
  *   # Or, when using the gh CLI authenticated against your GHE host:
- *   GH_HOST=github.example.com kbexplorer manifest  (no KBEXPLORER_GH_API_BASE needed)
+ *   GH_HOST=github.example.com kbx manifest  (no KBX_GH_API_BASE needed)
  *
  * Zero external dependencies — uses only node: built-ins + the injected fetch / execSync.
  */
@@ -38,10 +38,10 @@ import { readFileSync, existsSync } from 'node:fs';
 import { execSync as _defaultExecSync } from 'node:child_process';
 
 /** Env var for overriding the GitHub API base URL. */
-export const GH_API_BASE_ENV = 'KBEXPLORER_GH_API_BASE';
+export const GH_API_BASE_ENV = 'KBX_GH_API_BASE';
 
 /** Env var for the auth token used with direct-HTTP fetches. */
-export const GH_TOKEN_ENV = 'KBEXPLORER_GH_TOKEN';
+export const GH_TOKEN_ENV = 'KBX_GH_TOKEN';
 
 /** Fallback token env var (gh CLI convention). */
 export const GH_TOKEN_FALLBACK_ENV = 'GH_TOKEN';
@@ -49,30 +49,38 @@ export const GH_TOKEN_FALLBACK_ENV = 'GH_TOKEN';
 /**
  * Resolve the GitHub API base URL using the precedence chain:
  *
- *   1. `ghApiBase` field in `.kbexplorer.json` (cwd)
- *   2. `KBEXPLORER_GH_API_BASE` env var
+ *   1. `ghApiBase` field in `.kbx.json` (or legacy `.kbexplorer.json`)
+ *   2. `KBX_GH_API_BASE` env var (or legacy `KBEXPLORER_GH_API_BASE`)
  *   3. null (default → use `gh` CLI)
  *
- * @param {string} [cwd=process.cwd()] - Project root to look for .kbexplorer.json
+ * @param {string} [cwd=process.cwd()] - Project root to look for .kbx.json
  * @param {NodeJS.ProcessEnv} [env=process.env]
  * @returns {string|null}
  */
 export function resolveGhApiBase(cwd = process.cwd(), env = process.env) {
-  // 1. .kbexplorer.json field
-  const configFile = resolve(cwd, '.kbexplorer.json');
-  if (existsSync(configFile)) {
-    try {
-      const data = JSON.parse(readFileSync(configFile, 'utf-8'));
-      if (data && typeof data.ghApiBase === 'string' && data.ghApiBase.trim()) {
-        return data.ghApiBase.trim();
-      }
-    } catch { /* ignore malformed JSON */ }
+  // 1. .kbx.json field (also accepts legacy .kbexplorer.json)
+  for (const fileName of ['.kbx.json', '.kbexplorer.json']) {
+    const configFile = resolve(cwd, fileName);
+    if (existsSync(configFile)) {
+      try {
+        const data = JSON.parse(readFileSync(configFile, 'utf-8'));
+        if (data && typeof data.ghApiBase === 'string' && data.ghApiBase.trim()) {
+          return data.ghApiBase.trim();
+        }
+      } catch { /* ignore malformed JSON */ }
+      break; // found a config file (even if it had no ghApiBase), stop searching
+    }
   }
 
-  // 2. Env var
+  // 2. Env var (with legacy fallback)
   const envVal = env[GH_API_BASE_ENV];
   if (envVal && envVal.trim()) {
     return envVal.trim();
+  }
+  const legacyVal = env['KBEXPLORER_GH_API_BASE'];
+  if (legacyVal && legacyVal.trim()) {
+    process.stderr.write(`[kbx] KBEXPLORER_GH_API_BASE is deprecated; rename to ${GH_API_BASE_ENV}\n`);
+    return legacyVal.trim();
   }
 
   // 3. Default: use gh CLI
@@ -82,13 +90,19 @@ export function resolveGhApiBase(cwd = process.cwd(), env = process.env) {
 /**
  * Resolve the auth token for direct-HTTP fetches.
  *
- * Precedence: KBEXPLORER_GH_TOKEN → GH_TOKEN → '' (anonymous)
+ * Precedence: KBX_GH_TOKEN → KBEXPLORER_GH_TOKEN (deprecated) → GH_TOKEN → '' (anonymous)
  *
  * @param {NodeJS.ProcessEnv} [env=process.env]
  * @returns {string}
  */
 export function resolveGhToken(env = process.env) {
-  return env[GH_TOKEN_ENV] || env[GH_TOKEN_FALLBACK_ENV] || '';
+  if (env[GH_TOKEN_ENV]) return env[GH_TOKEN_ENV];
+  const legacy = env['KBEXPLORER_GH_TOKEN'];
+  if (legacy) {
+    process.stderr.write(`[kbx] KBEXPLORER_GH_TOKEN is deprecated; rename to ${GH_TOKEN_ENV}\n`);
+    return legacy;
+  }
+  return env[GH_TOKEN_FALLBACK_ENV] || '';
 }
 
 /**

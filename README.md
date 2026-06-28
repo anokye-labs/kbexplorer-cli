@@ -1,4 +1,4 @@
-# kbexplorer
+# kbx
 
 CLI tool for the [kbexplorer-template](https://github.com/anokye-labs/kbexplorer-template) interactive knowledge base — turn any GitHub repository into a navigable knowledge graph.
 
@@ -16,25 +16,25 @@ npm install -D @anokye-labs/kbexplorer
 
 | Command | Description |
 |---------|-------------|
-| `kbexplorer init` | Add `.kbexplorer/` submodule, install agents/skills, configure |
-| `kbexplorer generate` | Run content generation pipeline (architect → transform → writer) |
-| `kbexplorer derive <source...>` | Extract JSON-LD entities from unstructured sources (.docx/.md/.txt) via Copilot |
-| `kbexplorer scaffold <slug> --cluster <id>` | Create a single new content page with valid frontmatter |
-| `kbexplorer audit` | Schema/structural validation (duplicate ids, broken parents, cycles) — CI-grade |
-| `kbexplorer affected <git-ref>` | Map a git diff to impacted content nodes via citations |
-| `kbexplorer links` | Graph health report (orphans, weak clusters, coverage gaps) |
-| `kbexplorer dev` | Start dev server in local mode |
-| `kbexplorer build` | Production build |
-| `kbexplorer manifest` | Regenerate repo manifest from local data |
-| `kbexplorer update` | Pull latest template + refresh agents/skills |
-| `kbexplorer doctor` | Diagnose local runtime, MCP, and template setup |
+| `kbx init` | Add `.kbx/` submodule, install agents/skills, configure |
+| `kbx generate` | Run content generation pipeline (architect → transform → writer) |
+| `kbx derive <source...>` | Extract JSON-LD entities from unstructured sources (.docx/.md/.txt) via Copilot |
+| `kbx scaffold <slug> --cluster <id>` | Create a single new content page with valid frontmatter |
+| `kbx audit` | Schema/structural validation (duplicate ids, broken parents, cycles) — CI-grade |
+| `kbx affected <git-ref>` | Map a git diff to impacted content nodes via citations |
+| `kbx links` | Graph health report (orphans, weak clusters, coverage gaps) |
+| `kbx dev` | Start dev server in local mode |
+| `kbx build` | Production build |
+| `kbx manifest` | Regenerate repo manifest from local data |
+| `kbx update` | Pull latest template + refresh agents/skills |
+| `kbx doctor` | Diagnose local runtime, MCP, and template setup |
 
 ## Quick Start
 
 ```bash
 # In any GitHub repo:
-npx kbexplorer init    # Interactive setup wizard
-npx kbexplorer dev     # Launch the explorer
+npx kbx init    # Interactive setup wizard
+npx kbx dev     # Launch the explorer
 ```
 
 For a full enterprise deployment walkthrough — prerequisites, work-graph YAML
@@ -50,8 +50,8 @@ The authored content in [`content/`](content/) describes kbexplorer-cli
 itself. Once the explorer is installed (`init`), `dev` will render it:
 
 ```bash
-npx kbexplorer init --vendor   # one-time: vendors the explorer into .kbexplorer/
-npx kbexplorer dev             # build the manifest, start Vite at :5173
+npx kbx init --vendor   # one-time: vendors the explorer into .kbx/
+npx kbx dev             # build the manifest, start Vite at :5173
 ```
 
 Open <http://localhost:5173>. You should see a graph of 27 nodes covering
@@ -68,11 +68,11 @@ node scripts/verify-self-kb.js   # headless Playwright; screenshots → dist-scr
 
 ## What `init` Does
 
-1. Adds `.kbexplorer/` as a git submodule (the visual explorer app)
+1. Adds `.kbx/` as a git submodule (the visual explorer app)
 2. Installs agents to `.github/agents/` (kb-architect, kb-writer, kb-researcher)
-3. Installs skills to `.github/skills/kbexplorer/`
+3. Installs skills to `.github/skills/kbx/`
 4. Runs interactive config wizard (content mode, title, theme, etc.)
-5. Creates `.env.kbexplorer` and adds npm scripts
+5. Creates `.env.kbx` and adds npm scripts
 
 ## Using a Custom Template
 
@@ -80,68 +80,68 @@ By default `init` installs the official `anokye-labs/kbexplorer-template`. To us
 fork or an org-internal template, pass `--template`:
 
 ```bash
-npx kbexplorer init --template https://github.com/my-org/my-template.git
+npx kbx init --template https://github.com/my-org/my-template.git
 ```
 
 ### Install modes
 
 | Mode | Flag | What you get |
 |------|------|--------------|
-| **Submodule** (default) | _(none)_ | `.kbexplorer/` is a pinned git submodule. Lightweight; `kbexplorer update` bumps the pin. Best when you track upstream as-is. |
-| **Vendor** (one-time copy) | `--vendor` / `--no-submodule` | `.kbexplorer/` is a plain folder (the template's `.git` is stripped). Best when you want to copy-and-customize. |
+| **Submodule** (default) | _(none)_ | `.kbx/` is a pinned git submodule. Lightweight; `kbx update` bumps the pin. Best when you track upstream as-is. |
+| **Vendor** (one-time copy) | `--vendor` / `--no-submodule` | `.kbx/` is a plain folder (the template's `.git` is stripped). Best when you want to copy-and-customize. |
 
 ```bash
 # Pin to a specific tag or branch (default: latest release tag)
-npx kbexplorer init --ref v1.2.0
-npx kbexplorer init --vendor --ref main
+npx kbx init --ref v1.2.0
+npx kbx init --vendor --ref main
 ```
 
-Both modes record where the template came from in **`.kbexplorer.json`** at your repo root:
+Both modes record where the template came from in **`.kbx.json`** at your repo root:
 
 ```json
 { "template": "<url>", "ref": "v1.2.0", "refType": "tag", "resolvedCommit": "…", "mode": "submodule" }
 ```
 
-`kbexplorer update` reads this record. For vendored installs it never overwrites your
-`.kbexplorer/` silently — it fetches the new version into a sibling folder for review, and
+`kbx update` reads this record. For vendored installs it never overwrites your
+`.kbx/` silently — it fetches the new version into a sibling folder for review, and
 `--force` backs up your current copy before swapping it in.
 
 ## Content Generation
 
-`kbexplorer generate` runs the content pipeline on top of **Copilot CLI
+`kbx generate` runs the content pipeline on top of **Copilot CLI
 programmatic mode** (`copilot -p`). When there is no `catalogue.json` (or you
 pass `--refresh`), it drives Copilot to analyze the repo and emit one, then
 deterministically transforms it into `content/` and regenerates the manifest:
 
 ```bash
 # Drives `copilot -p` (kb-architect) → catalogue.json → content/ → manifest
-npx kbexplorer generate
+npx kbx generate
 
 # Preview the exact copilot command without running it
-npx kbexplorer generate --dry-run
+npx kbx generate --dry-run
 
 # Scope tool permissions instead of the default --allow-all-tools
-npx kbexplorer generate --allow-tool 'shell(git)' --allow-tool 'write'
+npx kbx generate --allow-tool 'shell(git)' --allow-tool 'write'
 
 # Re-run analysis even if catalogue.json already exists
-npx kbexplorer generate --refresh
+npx kbx generate --refresh
 
 # Skip the agent step and just transform an existing catalogue
-npx kbexplorer generate --no-agent
+npx kbx generate --no-agent
 ```
 
 Requires the [Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli)
-on your `PATH` (or set `KBEXPLORER_COPILOT_BIN` to its full path). The fuzzy
+on your `PATH` (or set `KBX_COPILOT_BIN` to its full path). The fuzzy
 (LLM) and deterministic (transform/manifest) phases both flow through a single
 **runtime router** — see [`docs/copilot-runtime.md`](docs/copilot-runtime.md)
 for the adapter's public API and configuration.
 
 You can still produce `catalogue.json` out-of-band (e.g. via the kb-architect
-agent in an interactive Copilot session) and run `kbexplorer generate --no-agent`.
+agent in an interactive Copilot session) and run `kbx generate --no-agent`.
 
 ## Build-time Derivation (unstructured → JSON-LD)
 
-`kbexplorer derive` turns **unstructured / semi-structured** sources — `.docx`,
+`kbx derive` turns **unstructured / semi-structured** sources — `.docx`,
 prose Markdown, and loosely-structured text — into committed `*.jsonld` entity
 artifacts that conform to the engine's node-type contract. It mirrors
 `generate`: a fuzzy (LLM) phase runs through **Copilot programmatic mode**
@@ -150,21 +150,21 @@ normalizes and validates them into canonical JSON-LD.
 
 ```bash
 # Read .docx/.md/.txt, extract via `copilot -p`, emit content/derived/*.jsonld
-npx kbexplorer derive docs/org-chart.docx notes/teams.md
+npx kbx derive docs/org-chart.docx notes/teams.md
 
 # Preview the exact copilot command + planned outputs without running anything
-npx kbexplorer derive docs/org-chart.docx --dry-run
+npx kbx derive docs/org-chart.docx --dry-run
 
 # Write to a custom output directory
-npx kbexplorer derive docs/*.docx --out content/derived
+npx kbx derive docs/*.docx --out content/derived
 
 # CI drift gate: fail (non-zero exit) if any committed artifact is stale.
 # Pass the SAME source files you derived from — never the .jsonld outputs.
 # Never calls the LLM — purely deterministic.
-npx kbexplorer derive docs/*.docx --check
+npx kbx derive docs/*.docx --check
 
 # Force re-extraction even when a fresh artifact already exists
-npx kbexplorer derive docs/org-chart.docx --refresh
+npx kbx derive docs/org-chart.docx --refresh
 ```
 
 Each emitted node carries the F1 contract fields: an `@id` identity URN
@@ -198,7 +198,7 @@ Copilot.
 
 Like `generate`, the fuzzy phase requires the
 [Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli) on your
-`PATH` (or `KBEXPLORER_COPILOT_BIN`); sources already derived from unchanged
+`PATH` (or `KBX_COPILOT_BIN`); sources already derived from unchanged
 input do not need it. Both phases flow through the same **runtime router** — see
 [`docs/copilot-runtime.md`](docs/copilot-runtime.md).
 
@@ -210,8 +210,8 @@ By default the CLI fetches GitHub data (issues, PRs, releases) via the `gh` CLI 
 
 | Priority | Source | How |
 |----------|--------|-----|
-| 1 | `ghApiBase` in `.kbexplorer.json` | Set once; travels with the repo |
-| 2 | `KBEXPLORER_GH_API_BASE` env var | Runtime override |
+| 1 | `ghApiBase` in `.kbx.json` | Set once; travels with the repo |
+| 2 | `KBX_GH_API_BASE` env var | Runtime override |
 | 3 | Default | `gh` CLI (github.com) |
 
 ### Gitea DTU adapter (hermetic testing)
@@ -219,9 +219,9 @@ By default the CLI fetches GitHub data (issues, PRs, releases) via the `gh` CLI 
 When the DTU adapter is running on `TWIN_PORT` (default 3456), point the CLI at it:
 
 ```bash
-KBEXPLORER_GH_API_BASE=http://localhost:3456 \
-KBEXPLORER_GH_TOKEN=<gitea-token> \
-kbexplorer manifest
+KBX_GH_API_BASE=http://localhost:3456 \
+KBX_GH_TOKEN=<gitea-token> \
+kbx manifest
 ```
 
 The adapter translates GitHub REST v3 requests to the Gitea API — the CLI needs no other changes.
@@ -232,12 +232,12 @@ Two options:
 
 ```bash
 # Option A — direct HTTP (works without a gh auth handshake)
-KBEXPLORER_GH_API_BASE=https://github.example.com/api/v3 \
-KBEXPLORER_GH_TOKEN=<personal-access-token> \
-kbexplorer manifest
+KBX_GH_API_BASE=https://github.example.com/api/v3 \
+KBX_GH_TOKEN=<personal-access-token> \
+kbx manifest
 
 # Option B — gh CLI with GH_HOST (no base override needed)
-GH_HOST=github.example.com kbexplorer manifest
+GH_HOST=github.example.com kbx manifest
 ```
 
 ### Auth
@@ -246,13 +246,13 @@ When a base is set the CLI sends `Authorization: token <token>` where `<token>` 
 
 | Priority | Source |
 |----------|--------|
-| 1 | `KBEXPLORER_GH_TOKEN` env var |
+| 1 | `KBX_GH_TOKEN` env var |
 | 2 | `GH_TOKEN` env var |
 | 3 | Anonymous (no header sent) |
 
 ### Repo-local config
 
-Add `ghApiBase` alongside the existing template-source fields in `.kbexplorer.json`:
+Add `ghApiBase` alongside the existing template-source fields in `.kbx.json`:
 
 ```jsonc
 {
@@ -265,18 +265,18 @@ Add `ghApiBase` alongside the existing template-source fields in `.kbexplorer.js
 
 ## Runtime Configuration
 
-kbexplorer supports three agent runtimes for fuzzy (LLM) steps: **copilot**
+kbx supports three agent runtimes for fuzzy (LLM) steps: **copilot**
 (default), **claude**, and **custom** (any CLI). The active runtime is resolved
 using the following precedence, from highest to lowest:
 
 | Priority | Source | How |
 |----------|--------|-----|
-| 1 | `--runtime <name>` flag | `kbexplorer derive --runtime claude` |
-| 2 | `runtime` block in `.kbexplorer.json` | Set once; travels with the repo |
-| 3 | `KBEXPLORER_RUNTIME` env var | `KBEXPLORER_RUNTIME=claude kbexplorer derive …` |
+| 1 | `--runtime <name>` flag | `kbx derive --runtime claude` |
+| 2 | `runtime` block in `.kbx.json` | Set once; travels with the repo |
+| 3 | `KBX_RUNTIME` env var | `KBX_RUNTIME=claude kbx derive …` |
 | 4 | Default | `copilot` |
 
-### Repo-local config (`.kbexplorer.json`)
+### Repo-local config (`.kbx.json`)
 
 Add a `runtime` block alongside the existing template-source fields:
 
@@ -311,7 +311,7 @@ For a **custom** CLI (must include `{prompt}` placeholder):
 }
 ```
 
-`kbexplorer init` offers a runtime selection step during interactive setup and
+`kbx init` offers a runtime selection step during interactive setup and
 can write this block automatically.
 
 ### MCP server requirements
@@ -359,8 +359,8 @@ Development escape hatch. Bypasses the MCP check with a warning — never use
 in CI.
 
 ```bash
-kbexplorer derive docs/org.docx --skip-preflight
-kbexplorer generate --skip-preflight
+kbx derive docs/org.docx --skip-preflight
+kbx generate --skip-preflight
 ```
 
 ### Binary path overrides
@@ -369,14 +369,14 @@ The named adapters honour existing env vars for binary paths:
 
 | Env var | Purpose |
 |---------|---------|
-| `KBEXPLORER_COPILOT_BIN` | Full path to the `copilot` binary |
-| `KBEXPLORER_CLAUDE_BIN` | Full path to the `claude` binary |
+| `KBX_COPILOT_BIN` | Full path to the `copilot` binary |
+| `KBX_CLAUDE_BIN` | Full path to the `claude` binary |
 
 These work alongside (not instead of) the runtime selection above.
 
 ## Doctor
 
-`kbexplorer doctor` is the first thing to run when regeneration fails on a teammate's machine. It diagnoses the full local setup in four sections:
+`kbx doctor` is the first thing to run when regeneration fails on a teammate's machine. It diagnoses the full local setup in four sections:
 
 ```
 Runtime
@@ -391,9 +391,9 @@ MCP
 
 Template
 ────────
-  ✅ .kbexplorer.json present (mode: submodule, template: …)
-  ✅ .gitmodules url agrees with .kbexplorer.json
-  ⚠️  A newer release tag exists: v1.0.0 → v1.1.0 (run kbexplorer update)
+  ✅ .kbx.json present (mode: submodule, template: …)
+  ✅ .gitmodules url agrees with .kbx.json
+  ⚠️  A newer release tag exists: v1.0.0 → v1.1.0 (run kbx update)
 
 Environment
 ───────────
@@ -404,13 +404,13 @@ Environment
 ```
 
 ```bash
-kbexplorer doctor                 # full diagnosis
-kbexplorer doctor --runtime claude  # diagnose a specific adapter
-kbexplorer doctor --json          # machine-readable output for scripts
-kbexplorer doctor --offline       # skip the latest-tag network check
+kbx doctor                 # full diagnosis
+kbx doctor --runtime claude  # diagnose a specific adapter
+kbx doctor --json          # machine-readable output for scripts
+kbx doctor --offline       # skip the latest-tag network check
 ```
 
-**Exit codes:** `0` when all checks pass or produce warnings; `1` when any check fails. Suitable as a CI gate (`kbexplorer doctor --offline || exit 1`).
+**Exit codes:** `0` when all checks pass or produce warnings; `1` when any check fails. Suitable as a CI gate (`kbx doctor --offline || exit 1`).
 
 ## Agents
 
@@ -422,15 +422,15 @@ kbexplorer doctor --offline       # skip the latest-tag network check
 
 For environments without agent support, each agent has an equivalent
 step-by-step playbook in
-`.github/skills/kbexplorer/references/{architect,writer,researcher}-playbook.md`
+`.github/skills/kbx/references/{architect,writer,researcher}-playbook.md`
 that any LLM can follow directly.
 
 Adapted from [microsoft/skills deep-wiki](https://github.com/microsoft/skills/tree/main/.github/plugins/deep-wiki) (MIT License).
 
 ## Skill — full lifecycle
 
-`kbexplorer init` installs the `kbexplorer` skill at
-`.github/skills/kbexplorer/`. It is a single skill with a slim router and a
+`kbx init` installs the `kbx` skill at
+`.github/skills/kbx/`. It is a single skill with a slim router and a
 library of focused references loaded on demand:
 
 | Reference | Covers |
@@ -454,3 +454,4 @@ library of focused references loaded on demand:
 ## License
 
 MIT
+

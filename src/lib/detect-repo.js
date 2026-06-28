@@ -40,7 +40,7 @@ export function detectBranch(cwd = process.cwd()) {
 }
 
 /**
- * Check if the current repo is the kbexplorer template itself.
+ * Check if the current repo is the kbx template itself.
  */
 export function isTemplateRepo(cwd = process.cwd()) {
   try {
@@ -52,11 +52,11 @@ export function isTemplateRepo(cwd = process.cwd()) {
 }
 
 /**
- * Check if a `.kbexplorer` template is installed (submodule OR vendored copy).
+ * Check if a `.kbx` template is installed (submodule OR vendored copy).
  * Both look the same to the runtime: a folder containing package.json.
  */
 export function hasSubmodule(cwd = process.cwd()) {
-  return existsSync(resolve(cwd, '.kbexplorer', 'package.json'));
+  return existsSync(resolve(cwd, '.kbx', 'package.json'));
 }
 
 /**
@@ -67,11 +67,11 @@ export function hasTemplate(cwd = process.cwd()) {
 }
 
 /**
- * Whether the installed `.kbexplorer` is a real git submodule (has its own .git)
+ * Whether the installed `.kbx` is a real git submodule (has its own .git)
  * as opposed to a vendored one-time copy.
  */
 export function isSubmoduleInstall(cwd = process.cwd()) {
-  return existsSync(resolve(cwd, '.kbexplorer', '.git'));
+  return existsSync(resolve(cwd, '.kbx', '.git'));
 }
 
 /**
@@ -83,13 +83,13 @@ export function getSubmoduleUrl(cwd = process.cwd()) {
   if (!existsSync(file)) return null;
   try {
     const content = readFileSync(file, 'utf-8');
-    // Find the [submodule ".kbexplorer"] stanza and its url.
+    // Find the [submodule ".kbx"] stanza and its url.
     const lines = content.split(/\r?\n/);
     let inBlock = false;
     for (const line of lines) {
       const header = line.match(/^\s*\[submodule\s+"([^"]+)"\]/);
       if (header) {
-        inBlock = header[1] === '.kbexplorer' || header[1].endsWith('/.kbexplorer');
+        inBlock = header[1] === '.kbx' || header[1].endsWith('/.kbx');
         continue;
       }
       if (inBlock) {
@@ -102,13 +102,23 @@ export function getSubmoduleUrl(cwd = process.cwd()) {
 }
 
 /**
- * Get the path to the kbexplorer app root.
+ * Get the path to the kbx app root.
  * In template repo: the repo root itself.
- * In host repo: .kbexplorer/ submodule directory.
+ * In host repo: .kbx/ submodule directory.
  */
 export function getAppRoot(cwd = process.cwd()) {
   if (isTemplateRepo(cwd)) return cwd;
-  const submodulePath = resolve(cwd, '.kbexplorer');
+  const submodulePath = resolve(cwd, '.kbx');
   if (existsSync(resolve(submodulePath, 'package.json'))) return submodulePath;
   return null;
 }
+
+/**
+ * Returns true when the legacy `.kbexplorer/` directory exists but `.kbx/` does not.
+ * Used to emit a migration warning on dev/build.
+ */
+export function hasLegacyDir(cwd = process.cwd()) {
+  return !existsSync(resolve(cwd, '.kbx', 'package.json')) &&
+    existsSync(resolve(cwd, '.kbexplorer', 'package.json'));
+}
+

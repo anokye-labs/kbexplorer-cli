@@ -46,8 +46,8 @@ export function buildContentJsonldGolden(derivedDir = DERIVED_DIR, root = REPO_R
       .sort();
     for (const file of files) {
       const artifact = JSON.parse(readFileSync(join(derivedDir, file), 'utf-8'));
-      const source = artifact.kbexplorer?.source ?? {};
-      const extraction = artifact.kbexplorer?.extraction ?? { entities: [], relationships: [] };
+      const source = artifact.kbx?.source ?? artifact.kbexplorer?.source ?? {};
+      const extraction = artifact.kbx?.extraction ?? artifact.kbexplorer?.extraction ?? { entities: [], relationships: [] };
       const key = source.path ?? relative(root, join(derivedDir, file)).replace(/\\/g, '/');
       out[key] = normalizeExtraction(extraction, { sourceRef: source.path ?? key });
     }

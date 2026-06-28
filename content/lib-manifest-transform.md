@@ -13,7 +13,7 @@ connections:
     description: "transform consumes the architect's catalogue"
 ---
 
-Two libraries handle the **data side** of kbexplorer.
+Two libraries handle the **data side** of kbx.
 
 ## generateManifest (lib/manifest.js)
 
@@ -54,3 +54,4 @@ human edits is safe — only new nodes get scaffolded; existing ones are
 left alone.
 
 <!-- Sources: src/lib/manifest.js, src/lib/transform.js -->
+

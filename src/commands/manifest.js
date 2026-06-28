@@ -1,5 +1,5 @@
 /**
- * kbexplorer manifest — Regenerate repo manifest from local data.
+ * kbx manifest — Regenerate repo manifest from local data.
  *
  * Primary path: invoke the template's own generate-manifest.js (with
  * VITE_KB_HOST_ROOT pointing at the host repo). This preserves the
@@ -10,7 +10,7 @@
  * <appRoot>/src/generated/repo-manifest.json — exactly the same location the
  * template script writes to, so `dev` and `build` find it without changes.
  *
- * KBEXPLORER_GH_API_BASE / KBEXPLORER_GH_TOKEN are already in process.env and
+ * KBX_GH_API_BASE / KBX_GH_TOKEN are already in process.env and
  * are inherited by both paths — no extra wiring needed.
  */
 
@@ -26,7 +26,7 @@ export default async function manifest(args) {
   const appRoot = getAppRoot(cwd);
 
   if (!appRoot) {
-    console.error('✗ kbexplorer not found. Run `kbexplorer init` first.');
+    console.error('✗ kbx not found. Run `kbx init` first.');
     process.exit(1);
   }
 
@@ -48,3 +48,5 @@ export default async function manifest(args) {
   writeFileSync(outPath, JSON.stringify(manifestData, null, 2), 'utf-8');
   console.log(`✓ Manifest written to ${outPath}`);
 }
+
+

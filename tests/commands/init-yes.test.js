@@ -64,8 +64,8 @@ function runInteractive(dir, answers) {
 }
 
 function readScaffold(dir) {
-  const envPath = resolve(dir, '.env.kbexplorer');
-  const recPath = resolve(dir, '.kbexplorer.json');
+  const envPath = resolve(dir, '.env.kbx');
+  const recPath = resolve(dir, '.kbx.json');
   return {
     env: existsSync(envPath) ? readFileSync(envPath, 'utf-8') : null,
     record: existsSync(recPath) ? readFileSync(recPath, 'utf-8') : null,
@@ -103,8 +103,8 @@ describe('init --yes (non-interactive onboarding)', () => {
       const b = readScaffold(headlessDir);
 
       // The headless scaffold must be byte-identical to the interactive one.
-      assert.equal(b.env, a.env, 'headless .env.kbexplorer differs from interactive');
-      assert.equal(b.record, a.record, 'headless .kbexplorer.json differs from interactive');
+      assert.equal(b.env, a.env, 'headless .env.kbx differs from interactive');
+      assert.equal(b.record, a.record, 'headless .kbx.json differs from interactive');
 
       // And the concrete expected content.
       assert.equal(
@@ -191,3 +191,4 @@ describe('init --yes (non-interactive onboarding)', () => {
     }
   });
 });
+

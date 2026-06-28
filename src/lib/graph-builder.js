@@ -1,7 +1,7 @@
 /**
  * Build a KBGraph from local content/ directory.
  *
- * Reads markdown files with kbexplorer frontmatter, parses config.yaml for
+ * Reads markdown files with kbx frontmatter, parses config.yaml for
  * cluster definitions, and produces a KBGraph compatible with the
  * @anokye-labs/kbexplorer-search module's extraction pipeline.
  *
@@ -169,3 +169,4 @@ export function buildGraph(cwd, options = {}) {
     related: {},
   };
 }
+

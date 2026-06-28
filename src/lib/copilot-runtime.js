@@ -15,9 +15,9 @@ export const DEFAULT_COPILOT_BINARY = 'copilot';
 export const DEFAULT_CLAUDE_BINARY = 'claude';
 
 /** Environment variable that, when set, overrides the resolved Copilot binary path. */
-export const COPILOT_BIN_ENV = 'KBEXPLORER_COPILOT_BIN';
+export const COPILOT_BIN_ENV = 'KBX_COPILOT_BIN';
 /** Environment variable that, when set, overrides the resolved Claude binary path. */
-export const CLAUDE_BIN_ENV = 'KBEXPLORER_CLAUDE_BIN';
+export const CLAUDE_BIN_ENV = 'KBX_CLAUDE_BIN';
 
 /** Default time budget for a single programmatic run (10 minutes). */
 export const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -50,14 +50,25 @@ export class CopilotRuntimeError extends RuntimeAdapterError {
   }
 }
 
+/** Map of new env var names to their deprecated predecessors. */
+const LEGACY_ENV_MAP = {
+  KBX_COPILOT_BIN: 'KBEXPLORER_COPILOT_BIN',
+  KBX_CLAUDE_BIN: 'KBEXPLORER_CLAUDE_BIN',
+};
+
 export function resolveBinary(options = {}) {
   const env = options.env ?? process.env;
-  return (
-    options.binary ||
-    (options.envVar ? env[options.envVar] : undefined) ||
-    options.defaultBinary ||
-    DEFAULT_COPILOT_BINARY
-  );
+  const envVar = options.envVar;
+  let envVal = envVar ? env[envVar] : undefined;
+  if (!envVal && envVar && LEGACY_ENV_MAP[envVar]) {
+    const legacyVar = LEGACY_ENV_MAP[envVar];
+    const legacyVal = env[legacyVar];
+    if (legacyVal) {
+      process.stderr.write(`[kbx] ${legacyVar} is deprecated; rename to ${envVar}\n`);
+      envVal = legacyVal;
+    }
+  }
+  return options.binary || envVal || options.defaultBinary || DEFAULT_COPILOT_BINARY;
 }
 
 function asArray(value) {

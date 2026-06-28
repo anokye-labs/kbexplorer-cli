@@ -74,7 +74,7 @@ render — bespoke when a viewer exists, generic otherwise.
 This repo ships a runnable sample. The source
 [`docs/samples/platform-squad.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/docs/samples/platform-squad.md)
 says *"Jane Doe (VP Engineering) leads the Platform Squad … it staffs Amir Khan
-(Staff Engineer)."* Running `kbexplorer derive docs/samples/platform-squad.md`
+(Staff Engineer)."* Running `kbx derive docs/samples/platform-squad.md`
 emits the committed artifact
 [`content/derived/platform-squad.jsonld`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/content/derived/platform-squad.jsonld)
 — excerpt of its `@graph` (verbatim, validated output of `src/lib/jsonld.js`):
@@ -98,7 +98,7 @@ Alongside the LD `@graph`, the artifact carries a **KBNode mirror** the engine
 consumes directly:
 
 ```jsonc
-"kbexplorer": {
+"kbx": {
   "nodes": [{
     "id": "kg://person/jane-doe", "identity": "kg://person/jane-doe",
     "entityType": "person", "title": "Jane Doe",
@@ -113,7 +113,8 @@ The engine resolves `entityType: "person"` to `PersonView`, the `squad` node to
 `SquadView`, and styles the `leads` edge from the shared taxonomy — closing the
 loop from a sentence in a source doc to a rendered, navigable node. The
 `source.ref` keeps the mapping reversible back to the originating document, and
-`kbexplorer derive … --check` proves the committed `.jsonld` is byte-identical
+`kbx derive … --check` proves the committed `.jsonld` is byte-identical
 canonical output (no LLM call).
 
 <!-- Sources: src/lib/jsonld.js, src/commands/derive.js; kbexplorer-template#148, src/engine/node-types/registry.ts, src/engine/content-model/register.ts -->
+

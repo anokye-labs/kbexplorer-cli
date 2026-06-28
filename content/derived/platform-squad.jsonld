@@ -69,7 +69,7 @@
       }
     }
   ],
-  "kbexplorer": {
+  "kbx": {
     "edges": [
       {
         "id": "kg://edge/person/jane-doe~leads~squad/platform-squad",
@@ -124,7 +124,7 @@
         }
       ]
     },
-    "generator": "@anokye-labs/kbexplorer derive",
+    "generator": "@anokye-labs/kbx derive",
     "nodes": [
       {
         "data": {
@@ -195,10 +195,10 @@
     ],
     "schemaVersion": 1,
     "source": {
-      "bytes": 767,
+      "bytes": 766,
       "format": "markdown",
       "path": "docs/samples/platform-squad.md",
-      "sha256": "sha256:9d0e3e325959a0cc43162de4103f8e6a8d0e9200e43cebbe69f05908fd064265"
+      "sha256": "sha256:196e1355b5c064c21f8df3362d3d680c44725f3a1559195efb4c23ac5811d77b"
     },
     "title": "Platform Squad"
   }

@@ -1,6 +1,6 @@
 # Contributor Guide — kbexplorer-cli
 
-**Audience:** engineers who work on the kbexplorer **CLI codebase** — whether you're landing
+**Audience:** engineers who work on the kbx **CLI codebase** — whether you're landing
 your first PR or making deep architectural changes. Assumes you're comfortable with JavaScript
 and general software engineering. This repo is **modern Node.js (ES modules), Node ≥ 22, with
 zero runtime dependencies**, so there is no language-foundations section to wade through — if
@@ -59,7 +59,7 @@ you know JS and `async/await`, you know enough to start. Every claim links to so
 ## 1. What this project does
 
 kbexplorer-cli is a CLI that **turns any GitHub repository into a navigable knowledge graph.**
-Running `npx kbexplorer init` in a repo installs a visual "explorer" web app (the *template*),
+Running `npx kbx init` in a repo installs a visual "explorer" web app (the *template*),
 copies in a set of Copilot agents/skills, and configures everything. Later commands generate a
 *manifest* of the repo (file tree, README, issues, PRs, commits, authored markdown) that the
 explorer renders as an interactive constellation of cards and a force-directed graph.
@@ -92,7 +92,7 @@ kbexplorer-cli/
 │   ├── lib/                  # Shared, dependency-free logic (the reusable "heart")
 │   │   ├── detect-repo.js    #   git remote/branch detection + getAppRoot (the seam)
 │   │   ├── version.js        #   remote tag/SHA lookups, checkout helpers
-│   │   ├── source.js         #   read/write .kbexplorer.json + classifyRef
+│   │   ├── source.js         #   read/write .kbx.json + classifyRef
 │   │   ├── args.js           #   pure flag parsers (parseInitArgs/parseUpdateArgs)
 │   │   ├── manifest.js       #   generateManifest: repo -> JSON snapshot
 │   │   ├── transform.js      #   catalogue JSON -> content/*.md + config.yaml
@@ -165,17 +165,17 @@ graph TB
 
 These are the domain terms you'll see everywhere. Learn them once and the code reads easily.
 
-- **Host repo** — the repository a user runs `kbexplorer init` in. The CLI installs into it.
+- **Host repo** — the repository a user runs `kbx init` in. The CLI installs into it.
 - **Template / explorer app** — the Vite web app that renders the graph. Installed at
-  `.kbexplorer/`. Lives in a separate repo by default.
+  `.kbx/`. Lives in a separate repo by default.
 - **Self-hosted mode** — running the CLI *inside* the template repo itself. Detected by
-  `isTemplateRepo` (the `package.json` name is `kbexplorer`/`kbexplorer-template`)
+  `isTemplateRepo` (the `package.json` name is `kbx`/`kbexplorer-template`)
   ([`detect-repo.js:45-52`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/detect-repo.js#L45-L52)). No submodule needed.
 - **App root** — the directory of the explorer app for the current context, resolved by
-  `getAppRoot` ([`detect-repo.js:109-114`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/detect-repo.js#L109-L114)). Either the repo root (self-hosted) or `.kbexplorer/`.
+  `getAppRoot` ([`detect-repo.js:109-114`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/detect-repo.js#L109-L114)). Either the repo root (self-hosted) or `.kbx/`.
 - **Install mode** — `submodule` (default; a pinned git submodule) or `vendor` (a one-time
   copy with `.git` stripped). Chosen by the `--vendor` flag in `init`.
-- **Source record** — `.kbexplorer.json` at the host repo root: `{ template, ref, refType,
+- **Source record** — `.kbx.json` at the host repo root: `{ template, ref, refType,
   resolvedCommit, mode }`. The CLI-owned record of where the template came from
   ([`source.js:8-15`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/source.js#L8-L15)).
 - **Ref type** — `release` (track latest semver tag), `tag` (pinned), or `branch` (track
@@ -241,7 +241,7 @@ stateDiagram-v2
     Vendor --> Vendor: update --force (backup + swap)
     Submodule --> Refused: re-init with other mode
     Vendor --> Refused: re-init with other mode
-    Refused --> Uninstalled: remove .kbexplorer, re-init
+    Refused --> Uninstalled: remove .kbx, re-init
 ```
 
 <!-- Sources: src/commands/init.js:191-221, src/commands/update.js:79-266 -->
@@ -250,7 +250,7 @@ stateDiagram-v2
 
 ## 4. Command lifecycle
 
-Every invocation flows through the same tiny router. Here's `kbexplorer dev` end to end:
+Every invocation flows through the same tiny router. Here's `kbx dev` end to end:
 
 ```mermaid
 sequenceDiagram
@@ -263,11 +263,11 @@ sequenceDiagram
     participant Sh as git / gh (shell)
     participant Vite as vite (template)
 
-    Dev->>CLI: npx kbexplorer dev
+    Dev->>CLI: npx kbx dev
     CLI->>CLI: command = argv[0]; look up COMMANDS[command]
     CLI->>Cmd: await import(...).default(args.slice(1))
     Cmd->>Detect: getAppRoot(cwd)
-    Detect-->>Cmd: ".kbexplorer/" (or null -> error + exit 1)
+    Detect-->>Cmd: ".kbx/" (or null -> error + exit 1)
     Cmd->>MLib: generateManifest(cwd)
     MLib->>Sh: walk FS, read README/config, gh issue/pr list, git log
     Sh-->>MLib: issues/PRs/commits (best-effort)
@@ -299,7 +299,7 @@ export default async function foo(args) {
   const cwd = process.cwd();
   const appRoot = getAppRoot(cwd);
   if (!appRoot) {
-    console.error('✗ kbexplorer not found. Run `kbexplorer init` first.');
+    console.error('✗ kbx not found. Run `kbx init` first.');
     process.exit(1);
   }
   // ... do work ...
@@ -415,12 +415,12 @@ node bin/cli.js --help
 Expected (abridged) — note the `init options` block:
 
 ```
-  kbexplorer — Interactive Knowledge Base Explorer CLI
+  kbx — Interactive Knowledge Base Explorer CLI
 
-  Usage: kbexplorer <command> [options]
+  Usage: kbx <command> [options]
 
   Commands:
-    init        Add .kbexplorer submodule, install agents/skills, configure
+    init        Add .kbx submodule, install agents/skills, configure
     generate    Run content generation pipeline (architect → transform → writer)
     ...
   init options:
@@ -617,12 +617,12 @@ Expected `npm test` tail:
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| `✗ kbexplorer not found. Run kbexplorer init first.` | `getAppRoot` returned `null` — no `.kbexplorer/package.json` | Run `init`, or run from the host repo root ([`detect-repo.js:109-114`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/detect-repo.js#L109-L114)) |
+| `✗ kbx not found. Run kbx init first.` | `getAppRoot` returned `null` — no `.kbx/package.json` | Run `init`, or run from the host repo root ([`detect-repo.js:109-114`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/detect-repo.js#L109-L114)) |
 | Empty graph / no issues or PRs | `gh` not installed or not authenticated | Install/auth `gh`, or accept the degraded build (warns, continues) ([`manifest.js:168-175`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/manifest.js#L168-L175)) |
 | GitHub rate-limit warnings | 60 unauth requests/hour | Set `GITHUB_TOKEN` / `gh auth login` ([`references/setup.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/setup.md)) |
 | `git submodule add` fails with `file://` locally | Git blocks the file protocol for submodules by default | Use a real `https` URL, or test vendor mode (`--vendor`) which uses `git clone` |
 | Test fails after adding a flag | The exact-shape default test wasn't updated | Update the `deepStrictEqual` default-shape assertion ([`args.test.js:7-11`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/tests/lib/args.test.js#L7-L11)) |
-| `update` says "Already up to date" unexpectedly | `resolvedCommit` in `.kbexplorer.json` matches remote SHA | Expected — it compares SHAs ([`update.js:228-232`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L228-L232)) |
+| `update` says "Already up to date" unexpectedly | `resolvedCommit` in `.kbx.json` matches remote SHA | Expected — it compares SHAs ([`update.js:228-232`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L228-L232)) |
 | Windows: delete fails / EBUSY | File lock during `rmSync` | Use `safeRemove` (retries built in) instead of bare `rmSync` ([`init.js:80-84`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L80-L84)) |
 
 **General technique:** because the CLI is just Node, you can debug any command directly:
@@ -643,7 +643,7 @@ stepping through is straightforward.
 2. **Branching on install mode in a command.** Use `getAppRoot`. Submodule vs vendor is
    invisible to runtime code by design — don't reintroduce the distinction.
 3. **Hand-rolling arg parsing in a command.** Extend `args.js` and add a test instead.
-4. **Writing into `.kbexplorer/` before success.** Use the temp-dir + `renameSync` pattern so
+4. **Writing into `.kbx/` before success.** Use the temp-dir + `renameSync` pattern so
    a failure can't leave a half-installed app ([`init.js:132-146`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L132-L146)).
 5. **Forgetting the exact-shape default test.** `parseInitArgs([])` is asserted with
    `deepStrictEqual` — any new field breaks it until you update the expected object.
@@ -673,7 +673,7 @@ downstream commands resolve the template through one function, and install/updat
 decoupled from the hardcoded template URL by one declarative record.**
 
 Concretely, every command that needs the explorer app calls `getAppRoot(cwd)`. It returns the
-repo root when self-hosted (the CLI is run *inside* the template), `.kbexplorer/` when the
+repo root when self-hosted (the CLI is run *inside* the template), `.kbx/` when the
 template is installed in a host repo, or `null` when nothing is installed — and it decides
 purely on the presence of a `package.json`, never on *how* the folder got there
 ([`src/lib/detect-repo.js:109-114`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/detect-repo.js#L109-L114)).
@@ -685,9 +685,9 @@ seam is this small:
 
 ```python
 def get_app_root(cwd):
-    if is_template_repo(cwd):           # package.json name == kbexplorer[-template]
+    if is_template_repo(cwd):           # package.json name == kbx[-template]
         return cwd                      # self-hosted: the repo *is* the app
-    candidate = path.join(cwd, ".kbexplorer")
+    candidate = path.join(cwd, ".kbx")
     if exists(path.join(candidate, "package.json")):
         return candidate                # host repo: submodule OR vendored copy — same thing
     return None                         # not installed
@@ -696,12 +696,12 @@ def get_app_root(cwd):
 def run(cmd, cwd):
     app_root = get_app_root(cwd)
     if app_root is None:
-        fail("run `kbexplorer init` first")
+        fail("run `kbx init` first")
     do_work(app_root)
 ```
 
 The second half of the seam is the **source record**. Historically the template URL was a
-hardcoded constant. Install and update now read a declarative `.kbexplorer.json` —
+hardcoded constant. Install and update now read a declarative `.kbx.json` —
 `{ template, ref, refType, resolvedCommit, mode }` — so the host repo, not the CLI binary, is
 the source of truth for "where did this come from and how do I update it"
 ([`src/lib/source.js:1-63`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/source.js#L1-L63)).
@@ -782,9 +782,9 @@ universal side-effect primitive, equivalent to a shelled subprocess call.
 | Source record | `refType ∈ {release, tag, branch}`, derived from `ref` | `classifyRef` (null→release, semver→tag, else→branch) | [`source.js:32-35`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/source.js#L32-L35) |
 | Source record | A `release` install always resolves to a concrete tag before writing | `installSubmodule`/`installVendor` resolve latest tag | [`init.js:94-98`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L94-L98), [`:128-130`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L128-L130) |
 | Source record | `resolvedCommit` captures the exact installed SHA for reproducibility | `resolveHeadSha` after clone/checkout | [`version.js:97-107`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/version.js#L97-L107) |
-| App root | Resolves only when `.kbexplorer/package.json` exists | `getAppRoot` / `hasSubmodule` | [`detect-repo.js:58-114`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/detect-repo.js#L58-L114) |
-| Vendor install | `.kbexplorer/` never contains a `.git` dir (it's a copy, not a clone) | `installVendor` strips `.git` before rename | [`init.js:141`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L141) |
-| Install atomicity | A failed clone never leaves a half-installed `.kbexplorer/` | clone-to-sibling-temp, validate, then `renameSync` | [`init.js:132-146`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L132-L146) |
+| App root | Resolves only when `.kbx/package.json` exists | `getAppRoot` / `hasSubmodule` | [`detect-repo.js:58-114`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/detect-repo.js#L58-L114) |
+| Vendor install | `.kbx/` never contains a `.git` dir (it's a copy, not a clone) | `installVendor` strips `.git` before rename | [`init.js:141`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L141) |
+| Install atomicity | A failed clone never leaves a half-installed `.kbx/` | clone-to-sibling-temp, validate, then `renameSync` | [`init.js:132-146`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L132-L146) |
 | Authored node | Edges only form between IDs that exist in the node set | `analyzeGraph` membership check | [`links.js:119-127`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/links.js#L119-L127) |
 
 ---
@@ -795,9 +795,9 @@ universal side-effect primitive, equivalent to a shelled subprocess call.
 |----------|-------------------------|-----------|--------|
 | Zero runtime dependencies; shell out to `git`/`gh`/`vite` | Octokit, commander/oclif, bundled deps | Fast `npx`, tiny supply chain, tools already present | [`package.json`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/package.json) (no `dependencies`) |
 | Mode-agnostic `getAppRoot` | Branch on submodule vs vendor everywhere | Confines install-mode knowledge to `init`/`update` | [`detect-repo.js:109-114`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/detect-repo.js#L109-L114) |
-| CLI-owned `.kbexplorer.json` source record | Rely on `.gitmodules`; keep hardcoded const | Vendor installs have no `.gitmodules`; record is the single source of truth | [`source.js:1-63`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/source.js#L1-L63) |
+| CLI-owned `.kbx.json` source record | Rely on `.gitmodules`; keep hardcoded const | Vendor installs have no `.gitmodules`; record is the single source of truth | [`source.js:1-63`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/source.js#L1-L63) |
 | Store `resolvedCommit` (SHA), not just a ref | Store only the mutable ref | Reproducibility; detect "already up to date" by SHA | [`update.js:228-232`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L228-L232) |
-| Atomic vendor install (temp + rename) | Clone straight into `.kbexplorer/` | A failed clone must not leave a broken install | [`init.js:132-146`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L132-L146) |
+| Atomic vendor install (temp + rename) | Clone straight into `.kbx/` | A failed clone must not leave a broken install | [`init.js:132-146`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L132-L146) |
 | Vendor `update` never clobbers; `--force` backs up | Overwrite in place | Vendored copies hold user customizations | [`update.js:243-265`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L243-L265) |
 | Refuse mode conversion on re-init | Auto-convert submodule<->vendor | Conversion is lossy/ambiguous; force explicit intent | [`init.js:211-221`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L211-L221) |
 | `gh`/git data is best-effort | Hard-fail without GitHub data | A partial graph beats no build | [`manifest.js:182-247`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/manifest.js#L182-L247) |
@@ -825,9 +825,9 @@ the codebase — protect it.
 State lives in three places, all on disk in the host repo — there is no in-process persistence
 between command invocations:
 
-1. **Install state** — `.kbexplorer/` (the app), `.kbexplorer.json` (the record),
+1. **Install state** — `.kbx/` (the app), `.kbx.json` (the record),
    `.gitmodules` (submodule mode only).
-2. **Config/runtime state** — `.env.kbexplorer` (Vite vars: owner, repo, branch, title, path)
+2. **Config/runtime state** — `.env.kbx` (Vite vars: owner, repo, branch, title, path)
    written by `init` ([`init.js:252-261`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L252-L261)).
 3. **Derived state** — the manifest at `src/generated/repo-manifest.json` and `content/*.md`,
    both regenerated on demand and safe to delete.
@@ -838,9 +838,9 @@ template renders.
 
 | Store | Lifetime | Authoritative for | Rebuildable? |
 |-------|----------|-------------------|--------------|
-| `.kbexplorer.json` | Permanent (committed) | Where the template came from | No — it *is* the source of truth |
-| `.kbexplorer/` | Permanent | The explorer app | Yes — re-init / update |
-| `.env.kbexplorer` | Permanent (gitignored) | Owner/repo/branch/title | Re-run `init` |
+| `.kbx.json` | Permanent (committed) | Where the template came from | No — it *is* the source of truth |
+| `.kbx/` | Permanent | The explorer app | Yes — re-init / update |
+| `.env.kbx` | Permanent (gitignored) | Owner/repo/branch/title | Re-run `init` |
 | `content/*.md` | Permanent (authored) | Hand-written graph nodes | Partially (agents regenerate skeletons) |
 | `repo-manifest.json` | Ephemeral | Snapshot for the UI | Yes — every `dev`/`build`/`manifest` |
 
@@ -866,7 +866,7 @@ flowchart TD
 
     work --> clone{clone/checkout<br>fails?}:::d
     clone -->|init vendor| cleanup["safeRemove temp, throw"]:::err
-    clone -->|update vendor| keepcur["keep current .kbexplorer, warn"]:::warn
+    clone -->|update vendor| keepcur["keep current .kbx, warn"]:::warn
     clone -->|ok| proceed[proceed]:::n
 
     cont --> done([exit 0]):::n
@@ -882,7 +882,7 @@ flowchart TD
 
 | Failure | Behavior | Source |
 |---------|----------|--------|
-| No `.kbexplorer/` for a runtime command | `console.error` + `exit 1` | [`dev.js:13-16`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/dev.js#L13-L16) |
+| No `.kbx/` for a runtime command | `console.error` + `exit 1` | [`dev.js:13-16`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/dev.js#L13-L16) |
 | `gh` missing or rate-limited | Warn, return empty issues/PRs, build continues | [`manifest.js:168-213`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/manifest.js#L168-L213) |
 | Vendor clone fails during `init` | Remove temp dir, throw, exit 1 (no partial install) | [`init.js:134-146`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L134-L146) |
 | Vendor update fetch fails | Remove review dir, keep current install, return | [`update.js:218-224`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L218-L224) |
@@ -897,7 +897,7 @@ flowchart TD
   there is no dependency graph to resolve, by design.
 - **Hot path** is `generateManifest`: a synchronous recursive FS walk
   ([`manifest.js:60-90`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/manifest.js#L60-L90)) plus up to two `gh` calls and one `git log`. The FS walk skips
-  `node_modules`, `.git`, `dist`, `.kbexplorer`, etc. ([`manifest.js:46-49`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/manifest.js#L46-L49)).
+  `node_modules`, `.git`, `dist`, `.kbx`, etc. ([`manifest.js:46-49`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/manifest.js#L46-L49)).
 - **Bounded inputs:** issues/PRs are capped at 200 each, commits at 50
   ([`manifest.js:188`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/manifest.js#L188), [`:256`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/manifest.js#L256)). This bounds memory but caps fidelity on large repos.
 - **Everything is synchronous** (`execSync`, `readFileSync`). For a CLI this is the right call —
@@ -917,7 +917,7 @@ unpaginated GitHub data). Incremental manifests and pagination are the obvious n
 |--------|---------|--------|
 | Trust boundary | Runs locally with the developer's privileges; no server, no inbound surface | architecture |
 | GitHub auth | Inherited from the user's `gh` session — the CLI never handles tokens | [`manifest.js:181-247`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/manifest.js#L181-L247) |
-| Secrets | `.env.kbexplorer` is force-added to `.gitignore` on init | [`init.js:264-273`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L264-L273) |
+| Secrets | `.env.kbx` is force-added to `.gitignore` on init | [`init.js:264-273`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L264-L273) |
 | Supply chain | Zero runtime deps; OIDC trusted publishing (no long-lived npm token) | [`publish.yml:7-9`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/.github/workflows/publish.yml#L7-L9) |
 | Command injection | **Watch item:** template URLs and refs are interpolated into shell strings | [`init.js:100`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L100), [`:135`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L135), [`version.js:86-90`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/version.js#L86-L90) |
 
@@ -964,7 +964,7 @@ Recommended reading order, fastest path to a complete mental model:
 
 1. [`bin/cli.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/bin/cli.js) — the whole control surface in ~85 lines.
 2. [`src/lib/detect-repo.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/detect-repo.js) — the resolution seam (`getAppRoot`).
-3. [`src/lib/source.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/source.js) — the decoupling record (`.kbexplorer.json`).
+3. [`src/lib/source.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/source.js) — the decoupling record (`.kbx.json`).
 4. [`src/commands/init.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js) — install modes, atomicity, source-record write.
 5. [`src/commands/update.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js) — per-mode update, the never-clobber vendor flow.
 6. [`src/lib/manifest.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/manifest.js) — how a repo becomes data.
@@ -972,7 +972,7 @@ Recommended reading order, fastest path to a complete mental model:
 8. [`src/commands/links.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/links.js) — the graph model made explicit (orphans, edges, clusters).
 
 For building a knowledge base *with* the tool (rather than on it), see the
-[Knowledge Base Author Guide](./author-guide.md). For standardizing kbexplorer across an org —
+[Knowledge Base Author Guide](./author-guide.md). For standardizing kbx across an org —
 custom templates, install modes, fleet updates — see the
 [Platform & Template Author Guide](./platform-guide.md).
 
@@ -992,18 +992,18 @@ custom templates, install modes, fleet updates — see the
 | Command module | A file in `src/commands` exporting a default async function |
 | Connection / edge | A link between two nodes: `{ to, description }` |
 | Content mode | `repo-aware`, `authored`, or both |
-| `.env.kbexplorer` | Vite env vars written by `init` (owner/repo/branch/title/path) |
+| `.env.kbx` | Vite env vars written by `init` (owner/repo/branch/title/path) |
 | ESM | ECMAScript Modules (`import`/`export`); this repo's module system |
 | `execSync` | Synchronous shell-out primitive used throughout |
 | `gh` CLI | GitHub CLI; source of issues/PRs in the manifest |
 | `generateManifest` | Builds the JSON snapshot the explorer renders |
 | `getAppRoot` | The resolution "seam" — mode-agnostic app-root lookup |
-| Host repo | The repo a user installs kbexplorer into |
+| Host repo | The repo a user installs kbx into |
 | `init` | Command that installs the template + assets + config |
 | Install mode | `submodule` (default) or `vendor` (one-time copy) |
 | Issue type | GitHub Issue Type field: Epic / Feature / Task / Bug |
-| `.kbexplorer/` | The installed explorer app directory |
-| `.kbexplorer.json` | The source record (template/ref/refType/resolvedCommit/mode) |
+| `.kbx/` | The installed explorer app directory |
+| `.kbx.json` | The source record (template/ref/refType/resolvedCommit/mode) |
 | Manifest | JSON snapshot of repo data for the UI |
 | Node (graph) | A page in the graph: markdown + YAML frontmatter |
 | Node.js ≥22 | Required runtime (`engines.node`) |
@@ -1014,9 +1014,9 @@ custom templates, install modes, fleet updates — see the
 | `resolvedCommit` | The exact installed template SHA, for reproducibility |
 | `safeRemove` | `rmSync` wrapper with retries (Windows-safe) |
 | Self-hosted mode | Running the CLI inside the template repo itself |
-| Source record | Synonym for `.kbexplorer.json` |
+| Source record | Synonym for `.kbx.json` |
 | Submodule | Git submodule install of the template (default mode) |
-| Template | The explorer web app installed at `.kbexplorer/` |
+| Template | The explorer web app installed at `.kbx/` |
 | `TEMPLATE_REPO` | Default template URL constant in `version.js` |
 | `transformCatalogue` | Converts a catalogue into `content/*.md` + `config.yaml` |
 | `update` | Command that refreshes assets + updates the template |
@@ -1030,7 +1030,7 @@ custom templates, install modes, fleet updates — see the
 |------|---------|----------------|--------|
 | `bin/cli.js` | Command router | The entire control surface; start here | [link](https://github.com/anokye-labs/kbexplorer-cli/blob/main/bin/cli.js) |
 | `src/lib/detect-repo.js` | Repo detection + `getAppRoot` | The mode-agnostic resolution seam | [link](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/detect-repo.js) |
-| `src/lib/source.js` | `.kbexplorer.json` read/write | Decouples install/update from the hardcoded URL | [link](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/source.js) |
+| `src/lib/source.js` | `.kbx.json` read/write | Decouples install/update from the hardcoded URL | [link](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/source.js) |
 | `src/lib/args.js` | Pure flag parsers | Where every flag is defined and tested | [link](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/args.js) |
 | `src/lib/version.js` | Remote tag/SHA helpers | Parametrized by URL; powers pin/track logic | [link](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/version.js) |
 | `src/lib/manifest.js` | `generateManifest` | Turns a repo into the JSON the UI reads | [link](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/manifest.js) |
@@ -1074,3 +1074,4 @@ node --inspect-brk bin/cli.js dev
 
 For the architectural *why* behind these patterns, read
 [Part IV — Architecture & internals](#part-iv--architecture--internals) above.
+

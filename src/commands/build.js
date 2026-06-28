@@ -1,5 +1,5 @@
 /**
- * kbexplorer build — Production build.
+ * kbx build — Production build.
  */
 
 import { resolve } from 'node:path';
@@ -11,7 +11,7 @@ export default async function build(args) {
   const appRoot = getAppRoot(cwd);
 
   if (!appRoot) {
-    console.error('✗ kbexplorer not found. Run `kbexplorer init` first.');
+    console.error('✗ kbx not found. Run `kbx init` first.');
     process.exit(1);
   }
 
@@ -64,3 +64,5 @@ export default async function build(args) {
     process.exit(code ?? 0);
   });
 }
+
+

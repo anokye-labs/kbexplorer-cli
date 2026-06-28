@@ -17,7 +17,7 @@ connections:
 the CLI command is a thin orchestrator that wires them together.
 
 ```bash
-npx kbexplorer generate
+npx kbx generate
 ```
 
 ## Pipeline
@@ -53,3 +53,4 @@ instead — it maps a git diff to the nodes that cite the changed files, so
 the writer agent only refreshes what actually shifted.
 
 <!-- Sources: src/commands/generate.js, src/lib/transform.js -->
+

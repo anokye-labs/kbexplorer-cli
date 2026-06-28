@@ -1,14 +1,14 @@
 /**
- * kbexplorer scaffold — Create a new content/<slug>.md skeleton with valid
+ * kbx scaffold — Create a new content/<slug>.md skeleton with valid
  * frontmatter and a writer-prompt placeholder.
  *
  * Usage:
- *   kbexplorer scaffold <slug> --cluster <id> [--parent <id>] [--title "..."]
+ *   kbx scaffold <slug> --cluster <id> [--parent <id>] [--title "..."]
  *                              [--emoji "..."] [--content <dir>] [--force]
  *
  * Examples:
- *   kbexplorer scaffold auth-flow --cluster security
- *   kbexplorer scaffold worker-pool --cluster core --parent runtime --title "Worker Pool"
+ *   kbx scaffold auth-flow --cluster security
+ *   kbx scaffold worker-pool --cluster core --parent runtime --title "Worker Pool"
  */
 
 import { resolve } from 'node:path';
@@ -57,7 +57,7 @@ const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 function printUsage() {
   console.error(
-    'Usage: kbexplorer scaffold <slug> --cluster <id> [--parent <id>] [--title "..."] [--emoji "..."]',
+    'Usage: kbx scaffold <slug> --cluster <id> [--parent <id>] [--title "..."] [--emoji "..."]',
   );
 }
 
@@ -121,6 +121,8 @@ export default async function scaffoldCommand(args) {
   console.log('Next steps:');
   console.log(`  1. Open ${opts.slug}.md and follow the kb-writer playbook to fill in content.`);
   console.log(`  2. Add a connection by editing the connections: list in the frontmatter.`);
-  console.log(`  3. Run: kbexplorer audit   # verify frontmatter is valid`);
+  console.log(`  3. Run: kbx audit   # verify frontmatter is valid`);
   console.log('');
 }
+
+

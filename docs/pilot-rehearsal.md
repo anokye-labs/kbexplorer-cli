@@ -19,7 +19,7 @@ curl http://localhost:3456/repos/test-owner/test-repo/releases → 3 releases
 
 The CLI routes all GitHub fetches to the twin via:
 ```
-KBEXPLORER_GH_API_BASE=http://localhost:3456 KBEXPLORER_GH_TOKEN=test-token
+KBX_GH_API_BASE=http://localhost:3456 KBX_GH_TOKEN=test-token
 ```
 
 ---
@@ -55,13 +55,13 @@ kbexplorer-fixture/
 
 Git remote set to `https://github.com/test-owner/test-repo` — this matches the twin's fixture data (`fixtures/issues.json`, `fixtures/releases.json`, etc.).
 
-The fixture was initialized with a git commit and `kbexplorer init --vendor --template <local-template-path> --ref main` (non-interactive; interactive config step failed with exit 13 due to TTY, but `.kbexplorer.json` was correctly created before the prompt).
+The fixture was initialized with a git commit and `kbx init --vendor --template <local-template-path> --ref main` (non-interactive; interactive config step failed with exit 13 due to TTY, but `.kbx.json` was correctly created before the prompt).
 
 ---
 
 ## 3. Command Transcript
 
-### 3.1 `kbexplorer doctor --offline`
+### 3.1 `kbx doctor --offline`
 
 ```
 Runtime
@@ -76,7 +76,7 @@ MCP
 
 Template
 ────────
-  ✅ .kbexplorer.json present (mode: vendor, template: C:/…/kbexplorer)
+  ✅ .kbx.json present (mode: vendor, template: C:/…/kbexplorer)
   ⚠  Template tracks branch "main" — consider pinning to a release tag
 
 Environment
@@ -122,7 +122,7 @@ $ node kbexplorer-cli-rehearsal/bin/cli.js generate --no-agent
   ⏭ cmd-init.md already exists — skipping
   ...
 ✓ Generated 4 files (4 imported from existing content)
-⚠ Manifest script exited 1 — manifest may be stale. Run kbexplorer manifest separately.
+⚠ Manifest script exited 1 — manifest may be stale. Run kbx manifest separately.
 ✅ Content generated.
 ```
 
@@ -131,7 +131,7 @@ Key results:
 - **4 existing node bodies imported** (fix for `findExistingBody` using wrong root)
 - Manifest script failure is now a **warning, not a crash** (spawnSync instead of execSync)
 
-### 3.4 `kbexplorer audit`
+### 3.4 `kbx audit`
 
 ```
 Files scanned:  11
@@ -141,10 +141,10 @@ Warnings:       0
 ✅ No structural issues found.
 ```
 
-### 3.5 `kbexplorer manifest` (via twin)
+### 3.5 `kbx manifest` (via twin)
 
 ```
-KBEXPLORER_GH_API_BASE=http://localhost:3456 KBEXPLORER_GH_TOKEN=test-token \
+KBX_GH_API_BASE=http://localhost:3456 KBX_GH_TOKEN=test-token \
   node kbexplorer-cli-rehearsal/bin/cli.js manifest
 ```
 
@@ -158,7 +158,7 @@ Output:
 [generate-manifest] PRs: 25
 [generate-manifest] Commits: 1
 [generate-manifest] Releases: 3
-✓ Manifest written to .kbexplorer/src/generated/repo-manifest.json
+✓ Manifest written to .kbx/src/generated/repo-manifest.json
 ```
 
 The manifest was written to the correct path (fix for fallback not writing to file). GitHub data came from the twin.
@@ -226,3 +226,4 @@ Issue #39 (VITE_KB_HOST_ROOT missing in vendored installs) was reported as fixed
 - `generate.js — fix #39: VITE_KB_HOST_ROOT in manifest regeneration` — 2 tests
 
 Total: **485 tests, 0 failures** (up from 471 before this branch).
+

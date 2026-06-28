@@ -1,5 +1,5 @@
 /**
- * Minimal, zero-dependency argument parsing for kbexplorer commands.
+ * Minimal, zero-dependency argument parsing for kbx commands.
  */
 
 /**
@@ -318,7 +318,7 @@ export function parseDeriveArgs(args = []) {
  *
  * Supported flags:
  *   --force, -f   Apply updates without prompting. For vendor installs, replace
- *                 `.kbexplorer/` after backing it up (never clobbers silently).
+ *                 `.kbx/` after backing it up (never clobbers silently).
  *   --help, -h    Show help.
  *
  * @param {string[]} args
@@ -379,3 +379,5 @@ export function parseDoctorArgs(args = []) {
   }
   return out;
 }
+
+

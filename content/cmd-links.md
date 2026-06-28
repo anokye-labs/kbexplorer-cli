@@ -13,8 +13,8 @@ connections:
 fails CI; that role belongs to [audit](cmd-audit).
 
 ```bash
-npx kbexplorer links
-npx kbexplorer links --json
+npx kbx links
+npx kbx links --json
 ```
 
 ## What it reports
@@ -40,3 +40,4 @@ strengthen the graph (add connections to orphans; linkify mentions; close
 coverage gaps with new [scaffold](cmd-scaffold) calls).
 
 <!-- Sources: src/commands/links.js -->
+

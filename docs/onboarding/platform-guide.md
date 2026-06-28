@@ -1,6 +1,6 @@
 # Platform & Template Author Guide — kbexplorer-cli
 
-**Audience:** the person standardizing kbexplorer **across an organization** — packaging the CLI
+**Audience:** the person standardizing kbx **across an organization** — packaging the CLI
 and a template so many teams can adopt them, building a custom org-internal template (a different
 look and feel), and deciding how installs are pinned, updated, and reused at scale. You operate
 the tool fleet-wide rather than author a single knowledge base (for that, see the
@@ -33,9 +33,9 @@ There is no server, database, or hosted service. The whole system is three small
 
 ```mermaid
 graph LR
-    dev([Developer / CI]):::actor --> cli["kbexplorer CLI<br>(npm package, this repo)"]:::core
+    dev([Developer / CI]):::actor --> cli["kbx CLI<br>(npm package, this repo)"]:::core
     cli -->|installs| tmpl["Explorer template app<br>(a separate Vite repo)"]:::unit
-    cli -->|reads / writes| repo["Host repository<br>(.kbexplorer/, content/, .github/)"]:::unit
+    cli -->|reads / writes| repo["Host repository<br>(.kbx/, content/, .github/)"]:::unit
     cli -->|fetches issues / PRs| gh["GitHub via gh CLI"]:::ext
     tmpl -->|preview / build| site["Static knowledge-base site<br>(you host it)"]:::unit
     cli -. invokes .-> agents["Copilot AI agents<br>(architect / writer / researcher)"]:::ext
@@ -63,36 +63,36 @@ org, because it determines how teams receive updates and whether they can custom
 | | **Submodule** (default) | **Vendor** (one-time copy) |
 |---|---|---|
 | Flag | _(none)_ | `--vendor` / `--no-submodule` |
-| What `.kbexplorer/` is | A pinned git submodule | A plain folder (the template's `.git` is stripped) |
+| What `.kbx/` is | A pinned git submodule | A plain folder (the template's `.git` is stripped) |
 | Best for | Tracking the upstream template **as-is** | **Copy-and-customize** — teams that fork the look & feel |
-| Updates | `kbexplorer update` bumps the pin | Opt-in; `update` never clobbers local edits |
+| Updates | `kbx update` bumps the pin | Opt-in; `update` never clobbers local edits |
 | Customizing in place | Discouraged (it's upstream's code) | Expected — the files are yours |
 
 <!-- Sources: src/commands/init.js:89-149, README.md:51-72 -->
 
 ```bash
 # Default: pinned submodule of the official template
-npx kbexplorer init
+npx kbx init
 
 # One-time editable copy instead of a submodule
-npx kbexplorer init --vendor
+npx kbx init --vendor
 
 # Pin to a tag, or track a branch (default: latest release tag)
-npx kbexplorer init --ref v1.2.0
-npx kbexplorer init --vendor --ref main
+npx kbx init --ref v1.2.0
+npx kbx init --vendor --ref main
 ```
 
 Two safety properties are deliberate and worth knowing as an operator:
 
 - **A vendored copy never contains a `.git` dir** — `installVendor` clones into a sibling temp
   dir, strips `.git`, validates it has a `package.json`, then atomically `renameSync`s it into
-  place, so a failed clone never leaves a half-installed `.kbexplorer/`
+  place, so a failed clone never leaves a half-installed `.kbx/`
   ([`init.js:125-148`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L125-L148)).
-- **Re-running `init` never silently converts modes.** If `.kbexplorer/` already exists with a
+- **Re-running `init` never silently converts modes.** If `.kbx/` already exists with a
   different mode, the CLI warns and refuses — you must remove it first
   ([`init.js:211-221`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L211-L221)).
 
-For a vendored install you also choose whether to **commit** `.kbexplorer/` (to version your
+For a vendored install you also choose whether to **commit** `.kbx/` (to version your
 customizations) or **gitignore** it (to treat it as a re-fetchable dependency) — `init` prints
 this guidance ([`init.js:301-306`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L301-L306)).
 
@@ -105,13 +105,13 @@ fork or an org-internal template with `--template`
 ([`README.md:42-49`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/README.md#L42-L49)):
 
 ```bash
-npx kbexplorer init --template https://github.com/my-org/kb-template.git
-npx kbexplorer init --template https://github.com/my-org/kb-template.git --vendor --ref main
+npx kbx init --template https://github.com/my-org/kb-template.git
+npx kbx init --template https://github.com/my-org/kb-template.git --vendor --ref main
 ```
 
 The default URL is only a fallback constant
 ([`version.js:12`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/version.js#L12)); `--template` overrides it and the choice is recorded
-in `.kbexplorer.json` (see [§5](#5-the-source-record-kbexplorerjson)). To create an org template,
+in `.kbx.json` (see [§5](#5-the-source-record-kbexplorerjson)). To create an org template,
 the simplest path is to **fork the official template** and rebrand it.
 
 ### The template contract
@@ -130,9 +130,9 @@ The env-var interface the CLI hands the template at runtime:
 
 | Variable | Set by | Meaning |
 |----------|--------|---------|
-| `VITE_KB_OWNER` / `VITE_KB_REPO` / `VITE_KB_BRANCH` / `VITE_KB_TITLE` / `VITE_KB_PATH` | `init` → `.env.kbexplorer` | Which repo the graph describes, its title, and the authored-content path |
+| `VITE_KB_OWNER` / `VITE_KB_REPO` / `VITE_KB_BRANCH` / `VITE_KB_TITLE` / `VITE_KB_PATH` | `init` → `.env.kbx` | Which repo the graph describes, its title, and the authored-content path |
 | `VITE_KB_LOCAL` | `dev` / `build` | Tells the app it's running locally |
-| `VITE_ENV_DIR` | `dev` / `build` | Where to find `.env.kbexplorer` and generated data |
+| `VITE_ENV_DIR` | `dev` / `build` | Where to find `.env.kbx` and generated data |
 | `VITE_BASE_PATH` | `build --base` | Sub-path for hosting under a prefix |
 
 <!-- Sources: src/commands/init.js:252-261, src/commands/dev.js:33-37, src/commands/build.js:46-51 -->
@@ -150,12 +150,12 @@ The workflow for building and iterating on a custom template:
    to change — UI components, CSS/styling, fonts, the default theme and visual modes, logos and
    branding, and the template's own default config.
 3. **Preview your changes two ways:**
-   - **Self-hosted (fastest loop):** run `npx kbexplorer dev` *inside the template repo itself*.
-     Because the template's `package.json` name is `kbexplorer`/`kbexplorer-template`, the CLI
+   - **Self-hosted (fastest loop):** run `npx kbx dev` *inside the template repo itself*.
+     Because the template's `package.json` name is `kbx`/`kbexplorer-template`, the CLI
      recognizes the repo as its own app root and runs Vite against it directly — no install step
      ([`detect-repo.js:45-52`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/detect-repo.js#L45-L52), [`:109-114`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/detect-repo.js#L109-L114)).
    - **Real-install check:** in a throwaway host repo, run
-     `npx kbexplorer init --template <fork-url> --ref <branch> --vendor` and then `kbexplorer dev`
+     `npx kbx init --template <fork-url> --ref <branch> --vendor` and then `kbx dev`
      to see exactly what a team will get.
 4. **Cut a release.** Tag with semver so installs that track releases pick it up:
 
@@ -167,14 +167,14 @@ The workflow for building and iterating on a custom template:
    branch's HEAD; a `--ref v1.1.0` install pins to that exact tag
    ([`source.js:32-35`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/source.js#L32-L35)).
 
-> **Don't break the contract.** Keep the root `package.json` (and its `kbexplorer`/
+> **Don't break the contract.** Keep the root `package.json` (and its `kbx`/
 > `kbexplorer-template` name for self-hosted preview), stay a Vite app, keep
 > `scripts/generate-manifest.js`, and keep consuming the `VITE_KB_*` env vars. Everything else is
 > fair game.
 
 ---
 
-## 5. The source record: `.kbexplorer.json`
+## 5. The source record: `.kbx.json`
 
 Both install modes write a small record at the host repo root. **This file, not the CLI binary,
 is the source of truth** for where a team's template came from and how to update it
@@ -201,13 +201,13 @@ is the source of truth** for where a team's template came from and how to update
 Because the record stores a **resolved commit**, `update` can tell whether a repo is already
 current by SHA rather than guessing from a mutable ref
 ([`update.js:228-232`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L228-L232)). For governance, you can audit which template
-and version each repo in your fleet is on simply by reading its `.kbexplorer.json`.
+and version each repo in your fleet is on simply by reading its `.kbx.json`.
 
 ---
 
 ## 6. Updating across a fleet
 
-`kbexplorer update` reads the source record and updates per mode — and the **never-clobber**
+`kbx update` reads the source record and updates per mode — and the **never-clobber**
 behavior is the property that makes org-wide rollouts safe
 ([`update.js:218-265`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L218-L265)):
 
@@ -238,18 +238,18 @@ stateDiagram-v2
 ### Updating when you're on a custom template
 
 This is the key property for org reuse: **`update` updates from your custom template, not the
-official one.** It reads the recorded `template` URL from `.kbexplorer.json` and pulls from there —
+official one.** It reads the recorded `template` URL from `.kbx.json` and pulls from there —
 the hardcoded default is never consulted for an existing install
 ([`update.js:68-83`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L68-L83), [`:93`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L93), [`:194`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L194)). What `update` does then depends on how the team
 pinned it:
 
-| Install was… | `kbexplorer update` does | Source |
+| Install was… | `kbx update` does | Source |
 |--------------|--------------------------|--------|
 | `release` (no `--ref`) | Fetches your template's **latest release tag**, shows the changelog, prompts to confirm (or `--force`) | [`update.js:135-185`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L135-L185) |
 | `--ref <branch>` | Pulls the latest commit of that branch (prompts, or `--force`) | [`update.js:115-133`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L115-L133) |
 | `--ref <tag>` (pinned) | Nothing — reports the pin; move with `init --ref <new>` | [`update.js:110-113`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L110-L113) |
 
-For a **submodule** install, if `.gitmodules` ever disagrees with `.kbexplorer.json` (e.g. someone
+For a **submodule** install, if `.gitmodules` ever disagrees with `.kbx.json` (e.g. someone
 re-pointed the submodule by hand), `update` warns and trusts the source record — reconcile the two
 so you don't update from the wrong remote
 ([`update.js:97-101`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L97-L101)).
@@ -259,17 +259,17 @@ point — review then apply, explicitly:
 
 ```bash
 # 1. Fetch the new template version into a sibling review folder (no changes made yet)
-npx kbexplorer update
-#    → prints:  git diff --no-index .kbexplorer .kbexplorer-update-<timestamp>
+npx kbx update
+#    → prints:  git diff --no-index .kbx .kbx-update-<timestamp>
 
 # 2. Inspect what would change against your customized copy
-git diff --no-index .kbexplorer ".kbexplorer-update-<timestamp>"
+git diff --no-index .kbx ".kbx-update-<timestamp>"
 
-# 3. Apply it — backs up your current .kbexplorer/ then swaps the new one in
-npx kbexplorer update --force
+# 3. Apply it — backs up your current .kbx/ then swaps the new one in
+npx kbx update --force
 ```
 
-The backup is written to `.kbexplorer.backup-<timestamp>/`, so a team that customized a vendored
+The backup is written to `.kbx.backup-<timestamp>/`, so a team that customized a vendored
 template can always recover its edits after an update
 ([`update.js:234-265`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L234-L265)). Re-applying those edits on top of the new version is a manual
 merge — which is the trade-off vendor mode makes in exchange for full ownership.
@@ -283,7 +283,7 @@ a branch (`--ref main`). `update` then does the right thing per repo with no cen
 
 ---
 
-## 7. Standardizing kbexplorer across the org
+## 7. Standardizing kbx across the org
 
 A practical recipe for putting the CLI + template inside an enterprise org for reuse:
 
@@ -294,8 +294,8 @@ A practical recipe for putting the CLI + template inside an enterprise org for r
    - *Submodule + pinned tag* — most teams, want upstream as-is with controlled updates.
    - *Vendor* — teams that need to diverge and customize the template itself.
 4. **Document one install command** for your teams, e.g.
-   `npx kbexplorer init --template https://github.com/my-org/kb-template.git --ref v1.0.0`.
-5. **Audit** adoption and versions by reading each repo's `.kbexplorer.json`.
+   `npx kbx init --template https://github.com/my-org/kb-template.git --ref v1.0.0`.
+5. **Audit** adoption and versions by reading each repo's `.kbx.json`.
 
 | Decision | Choose… | Because |
 |----------|---------|---------|
@@ -332,7 +332,7 @@ capability for the "layer private nodes on a shared graph" use case.
 
 ```mermaid
 graph TB
-    cli["kbexplorer CLI"]:::core
+    cli["kbx CLI"]:::core
     cli --> git["git (submodule, clone, log)"]:::plat
     cli --> ghcli["gh CLI (issues, PRs)"]:::svc
     cli --> node["Node.js >=22 runtime"]:::plat
@@ -361,7 +361,7 @@ The two residual risks that are organizational rather than code defects: **bus f
 team owning both the CLI and the template) and **AI output quality** (agent-assisted, always
 human-reviewed). The codebase has actively reduced its other risks — zero supply-chain deps,
 non-clobbering updates, and decoupling host repos from the default template URL via
-`.kbexplorer.json` ([Feature #12](https://github.com/anokye-labs/kbexplorer-cli/issues/12)).
+`.kbx.json` ([Feature #12](https://github.com/anokye-labs/kbexplorer-cli/issues/12)).
 
 ---
 
@@ -401,3 +401,4 @@ Feature/Task) and a PR that references it — enforced in CI
 3. **Standardize on submodule + pinned tags for most teams**, reserving vendor mode for teams that genuinely need to customize the template.
 4. **Pilot with one internal team** using `--template` + your chosen mode, and capture friction before broad rollout.
 5. **Reduce bus-factor risk** by documenting your forked template to the same standard as this onboarding set and naming a second maintainer.
+

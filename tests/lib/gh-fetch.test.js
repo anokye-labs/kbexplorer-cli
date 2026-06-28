@@ -2,8 +2,8 @@
  * Tests for src/lib/gh-fetch.js
  *
  * Coverage:
- *   - resolveGhApiBase: precedence chain (.kbexplorer.json > env > null)
- *   - resolveGhToken: precedence chain (KBEXPLORER_GH_TOKEN > GH_TOKEN > '')
+ *   - resolveGhApiBase: precedence chain (.kbx.json > env > null)
+ *   - resolveGhToken: precedence chain (KBX_GH_TOKEN > GH_TOKEN > '')
  *   - buildApiUrl: URL construction
  *   - ghFetch: default (gh CLI) path + override (direct HTTP) path
  *   - createFetcher: convenience wrapper
@@ -41,7 +41,7 @@ after(() => {
 });
 
 function writeConfig(dir, data) {
-  writeFileSync(resolve(dir, '.kbexplorer.json'), JSON.stringify(data), 'utf-8');
+  writeFileSync(resolve(dir, '.kbx.json'), JSON.stringify(data), 'utf-8');
 }
 
 // ── resolveGhApiBase ───────────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ describe('resolveGhApiBase', () => {
     assert.strictEqual(resolveGhApiBase(dir, {}), null);
   });
 
-  it('reads ghApiBase from .kbexplorer.json (highest precedence)', () => {
+  it('reads ghApiBase from .kbx.json (highest precedence)', () => {
     const dir = join(TMP, 'config-base');
     mkdirSync(dir, { recursive: true });
     writeConfig(dir, { ghApiBase: 'http://localhost:3456' });
@@ -69,7 +69,7 @@ describe('resolveGhApiBase', () => {
     assert.strictEqual(result, 'http://localhost:3456');
   });
 
-  it('reads base from KBEXPLORER_GH_API_BASE env var when config has no field', () => {
+  it('reads base from KBX_GH_API_BASE env var when config has no field', () => {
     const dir = join(TMP, 'env-base');
     mkdirSync(dir, { recursive: true });
     writeConfig(dir, { mode: 'vendor' });
@@ -84,7 +84,7 @@ describe('resolveGhApiBase', () => {
     assert.strictEqual(resolveGhApiBase(dir, {}), 'http://localhost:3456');
   });
 
-  it('trims whitespace from KBEXPLORER_GH_API_BASE env var value', () => {
+  it('trims whitespace from KBX_GH_API_BASE env var value', () => {
     const dir = join(TMP, 'env-base-trim');
     mkdirSync(dir, { recursive: true });
     const result = resolveGhApiBase(dir, { [GH_API_BASE_ENV]: '  http://localhost:3456  ' });
@@ -103,10 +103,10 @@ describe('resolveGhApiBase', () => {
     assert.strictEqual(resolveGhApiBase(dir, { [GH_API_BASE_ENV]: '   ' }), null);
   });
 
-  it('ignores malformed .kbexplorer.json and falls through to env', () => {
+  it('ignores malformed .kbx.json and falls through to env', () => {
     const dir = join(TMP, 'malformed-json');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(resolve(dir, '.kbexplorer.json'), '{ not valid json', 'utf-8');
+    writeFileSync(resolve(dir, '.kbx.json'), '{ not valid json', 'utf-8');
     const result = resolveGhApiBase(dir, { [GH_API_BASE_ENV]: 'http://localhost:9000' });
     assert.strictEqual(result, 'http://localhost:9000');
   });
@@ -115,14 +115,14 @@ describe('resolveGhApiBase', () => {
 // ── resolveGhToken ─────────────────────────────────────────────────────────────
 
 describe('resolveGhToken', () => {
-  it('returns KBEXPLORER_GH_TOKEN when set (highest precedence)', () => {
+  it('returns KBX_GH_TOKEN when set (highest precedence)', () => {
     assert.strictEqual(
       resolveGhToken({ [GH_TOKEN_ENV]: 'primary-tok', [GH_TOKEN_FALLBACK_ENV]: 'fallback-tok' }),
       'primary-tok',
     );
   });
 
-  it('falls back to GH_TOKEN when KBEXPLORER_GH_TOKEN is absent', () => {
+  it('falls back to GH_TOKEN when KBX_GH_TOKEN is absent', () => {
     assert.strictEqual(
       resolveGhToken({ [GH_TOKEN_FALLBACK_ENV]: 'fallback-tok' }),
       'fallback-tok',
@@ -344,7 +344,7 @@ describe('createFetcher', () => {
   });
 });
 
-// ── Smoke test (skipped unless KBEXPLORER_GH_API_BASE is set) ─────────────────
+// ── Smoke test (skipped unless KBX_GH_API_BASE is set) ─────────────────
 
 describe('smoke: live base URL', { skip: !process.env[GH_API_BASE_ENV] }, () => {
   it('fetches releases from the configured base URL', async () => {
@@ -363,3 +363,4 @@ describe('smoke: live base URL', { skip: !process.env[GH_API_BASE_ENV] }, () => 
     console.log(`[smoke] Live base ${base} returned ${result.length} release(s)`);
   });
 });
+

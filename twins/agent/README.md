@@ -64,7 +64,7 @@ This works identically on Windows, macOS, and Linux.
 
 ### Via the binary-override env var
 
-The existing overrides (`KBEXPLORER_COPILOT_BIN`, `KBEXPLORER_CLAUDE_BIN`) set
+The existing overrides (`KBX_COPILOT_BIN`, `KBX_CLAUDE_BIN`) set
 the spawned binary path directly:
 
 - **macOS / Linux** — point the override at the POSIX launcher (mark it
@@ -72,14 +72,14 @@ the spawned binary path directly:
 
   ```sh
   chmod +x twins/agent/fake-agent
-  KBEXPLORER_COPILOT_BIN="$PWD/twins/agent/fake-agent" kbexplorer derive src.docx
+  KBX_COPILOT_BIN="$PWD/twins/agent/fake-agent" kbx derive src.docx
   ```
 
 - **claude adapter** — same idea with the claude override + runtime selector:
 
   ```sh
-  KBEXPLORER_RUNTIME=claude \
-  KBEXPLORER_CLAUDE_BIN="$PWD/twins/agent/fake-agent" kbexplorer derive src.docx
+  KBX_RUNTIME=claude \
+  KBX_CLAUDE_BIN="$PWD/twins/agent/fake-agent" kbx derive src.docx
   ```
 
 - **Windows** — Node refuses to spawn `.cmd`/`.bat` files with `shell:false`
@@ -99,3 +99,4 @@ Append to the `FIXTURES` array in [`fixtures.mjs`](./fixtures.mjs):
 `match` is matched case-sensitively as a substring against the full prompt
 (which embeds the source document body). Order matters — put more specific
 `match` strings earlier, since the first match wins.
+

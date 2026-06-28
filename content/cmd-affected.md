@@ -16,9 +16,9 @@ connections:
 `affected` answers: **"After this diff, which content nodes need a refresh?"**
 
 ```bash
-npx kbexplorer affected HEAD~10           # changed files since 10 commits ago
-npx kbexplorer affected main              # changed files vs main
-npx kbexplorer affected --json            # machine-readable
+npx kbx affected HEAD~10           # changed files since 10 commits ago
+npx kbx affected main              # changed files vs main
+npx kbx affected --json            # machine-readable
 ```
 
 ## How it works
@@ -39,10 +39,10 @@ npx kbexplorer affected --json            # machine-readable
 ## The refresh loop
 
 ```bash
-npx kbexplorer affected HEAD~5      # → ["cmd-init", "lib-source"]
+npx kbx affected HEAD~5      # → ["cmd-init", "lib-source"]
 # edit cmd-init.md and lib-source.md to reflect the changes
-npx kbexplorer audit                # validate
-npx kbexplorer dev                  # eyeball
+npx kbx audit                # validate
+npx kbx dev                  # eyeball
 ```
 
 For monorepos with many `auth.ts`-style basename collisions, the suffix-match
@@ -50,3 +50,4 @@ can over-report. That is acceptable — it errs toward asking you to look at
 more nodes rather than missing one.
 
 <!-- Sources: src/commands/affected.js, src/lib/affected.js -->
+

@@ -32,7 +32,7 @@ out to `git`, `gh`, and `vite` (which lives in the installed template).
   handles a deliberate subset of YAML and explicitly does not support
   multi-line strings, inline objects, anchors, or escaped specials. The
   trade-off was reviewed and accepted — a full YAML parser is too much
-  weight for what kbexplorer's content schema needs.
+  weight for what kbx's content schema needs.
 - **Custom prompt / arg parsing.** [lib-detect-repo](lib-detect-repo),
   `lib/args.js`, and `lib/prompt.js` reinvent small bits of what `commander`
   / `inquirer` would do — kept small enough to be unit-tested in full.
@@ -41,8 +41,9 @@ out to `git`, `gh`, and `vite` (which lives in the installed template).
 
 ## What is not zero-dep
 
-The **explorer template** (`.kbexplorer/`) has a normal Vite / React stack
+The **explorer template** (`.kbx/`) has a normal Vite / React stack
 with all the usual dependencies. The zero-dep posture applies only to the
 CLI itself — the template is a regular npm app and that is fine.
 
 <!-- Sources: package.json -->
+

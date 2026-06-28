@@ -17,17 +17,17 @@ Three commands manage the explorer's runtime surface — preview, production
 build, and the manifest that backs them both.
 
 ```bash
-npx kbexplorer dev                # local Vite server on :5173
-npx kbexplorer build              # static site into dist/kb/
-npx kbexplorer build --base /my-repo/    # for GitHub Pages project sites
-npx kbexplorer manifest           # regenerate manifest.json without spawning Vite
+npx kbx dev                # local Vite server on :5173
+npx kbx build              # static site into dist/kb/
+npx kbx build --base /my-repo/    # for GitHub Pages project sites
+npx kbx manifest           # regenerate manifest.json without spawning Vite
 ```
 
 ## Install-mode agnostic
 
 All three commands call `getAppRoot()` from [lib-detect-repo](lib-detect-repo)
 to find the explorer app. That function returns the repo root in self-hosted
-mode (when the CLI runs inside the template repo), `.kbexplorer/` for a host
+mode (when the CLI runs inside the template repo), `.kbx/` for a host
 repo (submodule **or** vendored), or `null` when nothing is installed.
 
 This is why adding [vendor mode](install-modes) required **zero** changes to
@@ -47,6 +47,7 @@ authored content.
 
 If `gh` is not installed or authenticated, the build degrades gracefully — it
 warns, omits issues / PRs / commits, and renders the rest. Empty graphs
-usually mean a wrong owner / repo in `.env.kbexplorer`.
+usually mean a wrong owner / repo in `.env.kbx`.
 
 <!-- Sources: src/commands/dev.js, src/commands/build.js, src/commands/manifest.js, src/lib/manifest.js -->
+

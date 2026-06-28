@@ -38,7 +38,7 @@ each other's concerns, and lets `audit` and `affected` reuse
 
 | Verb | Module | What it does |
 |---|---|---|
-| `init` | [cmd-init](cmd-init) | Bootstrap kbexplorer into a host repo. |
+| `init` | [cmd-init](cmd-init) | Bootstrap kbx into a host repo. |
 | `generate` | [cmd-generate](cmd-generate) | Architect → transform → writer pipeline. |
 | `dev` | [cmd-dev-build](cmd-dev-build) | Start the Vite dev server. |
 | `build` | [cmd-dev-build](cmd-dev-build) | Production build into `dist/`. |
@@ -51,3 +51,4 @@ each other's concerns, and lets `audit` and `affected` reuse
 | `derive` | [cmd-derive](cmd-derive) | Unstructured docs → committed `*.jsonld`. |
 
 <!-- Sources: bin/cli.js, package.json -->
+

@@ -1,5 +1,5 @@
 /**
- * kbexplorer generate — run the content-generation pipeline.
+ * kbx generate — run the content-generation pipeline.
  *
  * Two phases, both driven through the {@link module:lib/runtime-router}:
  *   1. fuzzy   — when there is no `catalogue.json` (or `--refresh`), invoke
@@ -46,9 +46,9 @@ const CATALOGUE_FILE = 'catalogue.json';
  */
 export function defaultArchitectPrompt() {
   return [
-    'Analyze this repository and produce a kbexplorer catalogue.',
+    'Analyze this repository and produce a kbx catalogue.',
     'Prefer the kb-architect agent in .github/agents/; if agents are unavailable,',
-    'follow .github/skills/kbexplorer/references/architect-playbook.md.',
+    'follow .github/skills/kbx/references/architect-playbook.md.',
     `Write the result as ${CATALOGUE_FILE} at the repository root.`,
     'It MUST be valid JSON shaped as { "title", "subtitle", "clusters", "nodes" },',
     'where each node has { id, title, cluster, connections } and clusters map id → { name }.',
@@ -58,9 +58,9 @@ export function defaultArchitectPrompt() {
 
 function printHelp() {
   console.log(`
-  kbexplorer generate — run the content generation pipeline
+  kbx generate — run the content generation pipeline
 
-  Usage: kbexplorer generate [options]
+  Usage: kbx generate [options]
 
   When no catalogue.json exists (or with --refresh), generate drives Copilot
   programmatic mode (copilot -p) to analyze the repo and emit catalogue.json,
@@ -77,7 +77,7 @@ function printHelp() {
         --refresh,--force Re-run the agent even if catalogue.json already exists
         --dry-run         Print the assembled agent command and exit (no run)
         --runtime <name>  Override runtime adapter: "copilot" | "claude" | "custom"
-                          (precedence: flag > .kbexplorer.json > KBEXPLORER_RUNTIME > default)
+                          (precedence: flag > .kbx.json > KBX_RUNTIME > default)
         --skip-preflight  Skip MCP preflight check (development escape hatch)
     -h, --help            Show this help
 `);
@@ -115,7 +115,7 @@ export default async function generate(args = []) {
   const cataloguePath = resolve(cwd, CATALOGUE_FILE);
   const haveCatalogue = existsSync(cataloguePath);
 
-  // ── Resolve runtime adapter (precedence: --runtime flag > .kbexplorer.json > env > default) ──
+  // ── Resolve runtime adapter (precedence: --runtime flag > .kbx.json > env > default) ──
   let runtimeConfig;
   let runtimeAdapter;
   try {
@@ -223,8 +223,8 @@ export default async function generate(args = []) {
   } else {
     console.log('No catalogue.json found and no agent step ran.');
     console.log('');
-    console.log('Run `kbexplorer generate` (drives Copilot programmatic mode) to create one,');
-    console.log('or produce catalogue.json yourself and run `kbexplorer generate --no-agent`.');
+    console.log('Run `kbx generate` (drives Copilot programmatic mode) to create one,');
+    console.log('or produce catalogue.json yourself and run `kbx generate --no-agent`.');
     process.exit(0);
   }
 
@@ -247,7 +247,7 @@ export default async function generate(args = []) {
               env: { ...process.env, VITE_KB_LOCAL: 'true', VITE_KB_HOST_ROOT: cwd },
             });
             if (r.status !== 0) {
-              console.warn(`⚠ Manifest script exited ${r.status} — manifest may be stale. Run kbexplorer manifest separately.`);
+              console.warn(`⚠ Manifest script exited ${r.status} — manifest may be stale. Run kbx manifest separately.`);
             }
           }
         },
@@ -256,5 +256,7 @@ export default async function generate(args = []) {
     );
   }
 
-  console.log('\n✅ Content generated. Run `npx kbexplorer dev` to preview.');
+  console.log('\n✅ Content generated. Run `npx kbx dev` to preview.');
 }
+
+

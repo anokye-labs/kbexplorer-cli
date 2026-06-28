@@ -1,5 +1,5 @@
 /**
- * kbexplorer derive — build-time fuzzy/docx → JSON-LD extraction (Feature F8).
+ * kbx derive — build-time fuzzy/docx → JSON-LD extraction (Feature F8).
  *
  * Turns UNSTRUCTURED / semi-structured sources (`.docx`, prose markdown, text)
  * into committed `*.jsonld` entity artifacts that conform to Epic 1 / F1's
@@ -55,9 +55,9 @@ const DEFAULT_OUT_DIR = 'content/derived';
 
 function printHelp() {
   console.log(`
-  kbexplorer derive — build-time fuzzy/docx → JSON-LD extraction
+  kbx derive — build-time fuzzy/docx → JSON-LD extraction
 
-  Usage: kbexplorer derive <source...> [options]
+  Usage: kbx derive <source...> [options]
 
   Reads unstructured sources (.docx, prose .md/.markdown, .txt), uses the
   configured runtime agent to extract entities/relationships, then emits
@@ -78,7 +78,7 @@ function printHelp() {
         --timeout <ms>    Time budget for the programmatic run (default 600000)
         --dry-run         Print the assembled agent command + planned outputs; run nothing
         --runtime <name>  Override runtime adapter: "copilot" | "claude" | "custom"
-                          (precedence: flag > .kbexplorer.json > KBEXPLORER_RUNTIME > default)
+                          (precedence: flag > .kbx.json > KBX_RUNTIME > default)
         --skip-preflight  Skip MCP preflight check (development escape hatch)
     -h, --help            Show this help
 `);
@@ -150,26 +150,27 @@ export async function deriveSource(sourcePath, options = {}) {
   const existing = readArtifact(outPath);
 
   const sourceFresh =
-    existing && existing.kbexplorer?.source?.sha256 === document.sha256;
+    existing && (existing.kbx ?? existing.kbexplorer)?.source?.sha256 === document.sha256;
   const reusableIntermediate =
-    existing && existing.kbexplorer?.extraction && sourceFresh && !refresh;
+    existing && (existing.kbx ?? existing.kbexplorer)?.extraction && sourceFresh && !refresh;
 
   // ── Drift mode: never extract, never write. ──
   if (check) {
     if (!existing) {
       return result('drift', true, `no committed artifact at ${relOut} (run \`derive\`)`);
     }
-    if (!existing.kbexplorer?.extraction) {
+    const kb = existing.kbx ?? existing.kbexplorer;
+    if (!kb?.extraction) {
       return result('drift', true, `committed ${relOut} has no embedded extraction to verify`);
     }
     if (!sourceFresh) {
       return result(
         'drift',
         true,
-        `source changed since derivation (committed sha256 ${short(existing.kbexplorer.source?.sha256)} ≠ ${short(document.sha256)})`,
+        `source changed since derivation (committed sha256 ${short(kb.source?.sha256)} ≠ ${short(document.sha256)})`,
       );
     }
-    const expected = buildAndStringify(document, existing.kbexplorer.extraction, context);
+    const expected = buildAndStringify(document, kb.extraction, context);
     const committedBytes = readFileSync(outPath, 'utf-8');
     if (expected.bytes !== committedBytes) {
       return result('drift', true, `committed ${relOut} differs from a fresh deterministic emit`, expected);
@@ -181,7 +182,7 @@ export async function deriveSource(sourcePath, options = {}) {
   let intermediate;
   let reused = false;
   if (reusableIntermediate) {
-    intermediate = existing.kbexplorer.extraction;
+    intermediate = (existing.kbx ?? existing.kbexplorer).extraction;
     reused = true;
   } else {
     intermediate = await runExtraction(document);
@@ -224,8 +225,8 @@ export async function deriveSource(sourcePath, options = {}) {
       artifact: built?.artifact,
       bytes: built?.bytes,
       validation: built?.validation,
-      nodeCount: built?.artifact?.kbexplorer?.nodes?.length,
-      edgeCount: built?.artifact?.kbexplorer?.edges?.length,
+      nodeCount: built?.artifact?.kbx?.nodes?.length,
+      edgeCount: built?.artifact?.kbx?.edges?.length,
     };
   }
 }
@@ -239,11 +240,11 @@ export default async function derive(args = []) {
 
   if (opts.unknown.length > 0) {
     console.error(`Unknown option(s): ${opts.unknown.join(', ')}`);
-    console.error('Run "kbexplorer derive --help" for usage.');
+    console.error('Run "kbx derive --help" for usage.');
     process.exit(1);
   }
   if (opts.sources.length === 0) {
-    console.error('✗ No source files given. Usage: kbexplorer derive <source...> [options]');
+    console.error('✗ No source files given. Usage: kbx derive <source...> [options]');
     process.exit(1);
   }
 
@@ -251,7 +252,7 @@ export default async function derive(args = []) {
   const outDir = resolve(cwd, opts.out || DEFAULT_OUT_DIR);
   const context = opts.context || DEFAULT_CONTEXT;
 
-  // ── Resolve runtime adapter (precedence: --runtime flag > .kbexplorer.json > env > default) ──
+  // ── Resolve runtime adapter (precedence: --runtime flag > .kbx.json > env > default) ──
   let runtimeConfig;
   let runtimeAdapter;
   try {
@@ -407,7 +408,7 @@ function needsExtraction(opts, cwd, outDir) {
       continue;
     }
     const existing = readArtifact(artifactPathFor(src, outDir));
-    const fresh = existing && existing.kbexplorer?.source?.sha256 === doc.sha256 && existing.kbexplorer?.extraction;
+    const fresh = existing && (existing.kbx ?? existing.kbexplorer)?.source?.sha256 === doc.sha256 && (existing.kbx ?? existing.kbexplorer)?.extraction;
     if (!fresh) return true;
   }
   return false;

@@ -1,11 +1,11 @@
 /**
- * kbexplorer affected — Map a git diff to impacted content nodes.
+ * kbx affected — Map a git diff to impacted content nodes.
  *
  * Usage:
- *   kbexplorer affected <ref>           # human report
- *   kbexplorer affected <ref> --json    # machine-readable
- *   kbexplorer affected HEAD~5
- *   kbexplorer affected main
+ *   kbx affected <ref>           # human report
+ *   kbx affected <ref> --json    # machine-readable
+ *   kbx affected HEAD~5
+ *   kbx affected main
  *
  * If <ref> is omitted, defaults to HEAD (working-tree changes).
  */
@@ -85,3 +85,5 @@ export default async function affectedCommand(args) {
     printHumanReport(result);
   }
 }
+
+

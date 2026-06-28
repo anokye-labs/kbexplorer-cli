@@ -43,7 +43,7 @@ All citations MUST use the resolved source context:
 
 ## Output Format
 
-Every page MUST have kbexplorer YAML frontmatter (preserve existing frontmatter if updating a skeleton):
+Every page MUST have kbx YAML frontmatter (preserve existing frontmatter if updating a skeleton):
 
 ```yaml
 ---
@@ -136,3 +136,4 @@ Before finishing any page:
 - [ ] At least 5 different source files cited
 - [ ] Cross-references to related nodes included (inline links + updated connections in frontmatter)
 - [ ] No claims without code references
+

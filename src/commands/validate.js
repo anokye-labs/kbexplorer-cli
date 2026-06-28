@@ -1,8 +1,8 @@
 /**
- * kbexplorer validate — deterministic content-model descriptor gate.
+ * kbx validate — deterministic content-model descriptor gate.
  *
  * Validates the structured `content-model/` descriptor tree (person / team /
- * workstream / priority / system-of-record) that `kbexplorer audit` (markdown
+ * workstream / priority / system-of-record) that `kbx audit` (markdown
  * only) never inspects. Runs with NO LLM and NO `gh` auth, so it is safe as a
  * blocking PR gate.
  *
@@ -11,10 +11,10 @@
  * reports-to (person.manager) cycle detection.
  *
  * Usage:
- *   kbexplorer validate                       # human report, exits 1 on any error
- *   kbexplorer validate --json                # machine-readable JSON to stdout
- *   kbexplorer validate --content-model <dir> # override descriptor directory
- *   kbexplorer validate --dir <dir>           # alias of --content-model
+ *   kbx validate                       # human report, exits 1 on any error
+ *   kbx validate --json                # machine-readable JSON to stdout
+ *   kbx validate --content-model <dir> # override descriptor directory
+ *   kbx validate --dir <dir>           # alias of --content-model
  */
 
 import { resolve } from 'node:path';
@@ -36,9 +36,9 @@ function parseArgs(args) {
 
 function printHelp() {
   console.log(`
-  kbexplorer validate — deterministic content-model descriptor gate
+  kbx validate — deterministic content-model descriptor gate
 
-  Usage: kbexplorer validate [options]
+  Usage: kbx validate [options]
 
   Options:
     --content-model <dir>   Descriptor directory to validate (default: content-model)
@@ -120,3 +120,5 @@ export default async function validateCommand(args) {
     process.exit(1);
   }
 }
+
+

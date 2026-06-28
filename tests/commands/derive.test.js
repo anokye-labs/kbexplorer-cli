@@ -165,19 +165,19 @@ describe('derive runtime config integration', () => {
     assert.strictEqual(adapter.name, 'copilot');
   });
 
-  it('resolveRuntime picks up claude from .kbexplorer.json config', () => {
+  it('resolveRuntime picks up claude from .kbx.json config', () => {
     const config = validateRuntimeBlock({ agent: 'claude' });
     const adapter = resolveRuntime({ flag: null, config, env: {} });
     assert.strictEqual(adapter.name, 'claude');
   });
 
-  it('resolveRuntime --runtime flag overrides .kbexplorer.json', () => {
+  it('resolveRuntime --runtime flag overrides .kbx.json', () => {
     const config = validateRuntimeBlock({ agent: 'claude' });
     const adapter = resolveRuntime({ flag: 'copilot', config, env: {} });
     assert.strictEqual(adapter, copilotAdapter);
   });
 
-  it('loadRuntimeConfig returns null in a dir with no .kbexplorer.json', () => {
+  it('loadRuntimeConfig returns null in a dir with no .kbx.json', () => {
     const dir = mkdtempSync(join(tmpdir(), 'kb-drt-'));
     try {
       assert.strictEqual(loadRuntimeConfig(dir), null);
@@ -212,3 +212,4 @@ describe('derive runtime config integration', () => {
     });
   });
 });
+

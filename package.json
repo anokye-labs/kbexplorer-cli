@@ -1,16 +1,16 @@
 {
-  "name": "@anokye-labs/kbexplorer",
+  "name": "@anokye-labs/kbx",
   "version": "0.1.0",
   "description": "CLI tool for the kbexplorer interactive knowledge base — turn any repo into a navigable knowledge graph",
   "type": "module",
   "bin": {
-    "kbexplorer": "bin/cli.js"
+    "kbx": "bin/cli.js"
   },
   "scripts": {
     "test": "node scripts/run-tests.js",
-    "kb:dev": "kbexplorer dev",
-    "kb:build": "kbexplorer build",
-    "kb:generate": "kbexplorer generate"
+    "kb:dev": "kbx dev",
+    "kb:build": "kbx build",
+    "kb:generate": "kbx generate"
   },
   "keywords": [
     "knowledge-base",

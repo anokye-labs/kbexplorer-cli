@@ -1,5 +1,5 @@
 /**
- * MCP preflight checker for kbexplorer.
+ * MCP preflight checker for kbx.
  *
  * Before any fuzzy (LLM) phase runs, this module verifies that MCP servers
  * declared in the `runtime.mcp` config block are actually configured for the
@@ -292,3 +292,4 @@ function _expectedConfigFiles(adapterName, cwd, env) {
     secondary: '<adapter-config-file>',
   };
 }
+

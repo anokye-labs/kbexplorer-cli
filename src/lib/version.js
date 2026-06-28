@@ -32,7 +32,7 @@ export function getLatestTag(repoUrl = TEMPLATE_REPO) {
  * Get the tag the submodule is currently pinned to.
  */
 export function getCurrentTag(cwd = process.cwd()) {
-  const submodulePath = resolve(cwd, '.kbexplorer');
+  const submodulePath = resolve(cwd, '.kbx');
   try {
     const tag = execSync('git describe --tags --exact-match HEAD', {
       cwd: submodulePath,
@@ -84,7 +84,7 @@ export function checkoutTag(tag, cwd = process.cwd()) {
  * @param {string} cwd
  */
 export function checkoutRef(ref, cwd = process.cwd()) {
-  const submodulePath = resolve(cwd, '.kbexplorer');
+  const submodulePath = resolve(cwd, '.kbx');
   execSync('git fetch --tags', { cwd: submodulePath, stdio: 'pipe' });
   execSync(`git checkout ${ref}`, { cwd: submodulePath, stdio: 'pipe' });
 }

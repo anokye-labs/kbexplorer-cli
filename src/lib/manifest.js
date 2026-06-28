@@ -1,5 +1,5 @@
 /**
- * Manifest generation logic for kbexplorer.
+ * Manifest generation logic for kbx.
  *
  * Generates repo manifest containing:
  * - configRaw: parsed config.yaml
@@ -36,12 +36,12 @@
  * previous behaviour). Set an API base to switch to direct HTTP:
  *
  *   ## Gitea DTU adapter (hermetic / local testing)
- *   KBEXPLORER_GH_API_BASE=http://localhost:3456 KBEXPLORER_GH_TOKEN=test-token kbexplorer manifest
+ *   KBX_GH_API_BASE=http://localhost:3456 KBX_GH_TOKEN=test-token kbx manifest
  *
  *   ## GitHub Enterprise (GHE / EMU)
- *   KBEXPLORER_GH_API_BASE=https://github.example.com/api/v3 KBEXPLORER_GH_TOKEN=<pat> kbexplorer manifest
+ *   KBX_GH_API_BASE=https://github.example.com/api/v3 KBX_GH_TOKEN=<pat> kbx manifest
  *   # Or, when using the gh CLI authenticated against your GHE host (no base override needed):
- *   GH_HOST=github.example.com kbexplorer manifest
+ *   GH_HOST=github.example.com kbx manifest
  *
  * See src/lib/gh-fetch.js for the full precedence chain and auth details.
  *
@@ -81,7 +81,7 @@ function detectHostRoot(kbRoot) {
 // ── File Tree ──────────────────────────────────────────────
 
 const SKIP_DIRS = new Set([
-  'node_modules', '.git', 'dist', '.kbexplorer', '.astro',
+  'node_modules', '.git', 'dist', '.kbx', '.kbexplorer', '.astro',
   '.playwright-cli', '.vscode', '.idea', 'coverage',
 ]);
 const SKIP_FILES = new Set([
@@ -508,7 +508,7 @@ export function fetchLocalCommits(cwd) {
 /**
  * Generate manifest for a given root directory.
  *
- * When `KBEXPLORER_GH_API_BASE` is set (or `ghApiBase` is in `.kbexplorer.json`),
+ * When `KBX_GH_API_BASE` is set (or `ghApiBase` is in .kbx.json),
  * GitHub data is fetched via direct HTTP to that base (DTU / GHE path).
  * Otherwise the `gh` CLI is used — behaviour is byte-identical to before.
  *
@@ -564,3 +564,5 @@ export async function generateManifest(root) {
 
   return manifest;
 }
+
+

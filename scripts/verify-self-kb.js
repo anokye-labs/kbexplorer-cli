@@ -68,7 +68,7 @@ async function loadChromium() {
     process.exit(2);
   }
 
-  if (process.env.KBEXPLORER_VERIFY_REEXECED === '1') {
+  if (process.env.KBX_VERIFY_REEXECED === '1') {
     console.error('[verify] Playwright still not importable after auto-install. Install manually:');
     console.error('  npm install --no-save playwright && npx playwright install chromium');
     process.exit(2);
@@ -85,7 +85,7 @@ async function loadChromium() {
   log('Re-executing with fresh module cache…');
   const child = spawnSync(process.execPath, [fileURLToPath(import.meta.url), ...process.argv.slice(2)], {
     stdio: 'inherit',
-    env: { ...process.env, KBEXPLORER_VERIFY_REEXECED: '1' },
+    env: { ...process.env, KBX_VERIFY_REEXECED: '1' },
   });
   process.exit(child.status ?? 1);
 }
@@ -123,7 +123,7 @@ async function runVerifyPass(browser, label = 'verify') {
 
   const title = await page.title();
   const visibleText = await page.evaluate(() => document.body.innerText.slice(0, 4000));
-  const missing = ['kbexplorer'].filter((s) => !visibleText.toLowerCase().includes(s));
+  const missing = ['kbx'].filter((s) => !visibleText.toLowerCase().includes(s));
 
   const stamp = label === 'verify' ? '' : `-${label}`;
   const homePath = join(SCREENSHOT_DIR, `home${stamp}.png`);
@@ -212,3 +212,4 @@ const cleanup = async () => {
 };
 process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
+

@@ -15,9 +15,9 @@ connections:
     description: "a deliberate trade-off"
 ---
 
-`frontmatter.js` is a zero-dependency parser for the **kbexplorer
+`frontmatter.js` is a zero-dependency parser for the **kbx
 YAML subset**. It is intentionally not a full YAML parser — it handles only
-the fields kbexplorer's content schema uses, and no more.
+the fields kbx's content schema uses, and no more.
 
 ## Why a custom parser
 
@@ -61,10 +61,11 @@ three citation styles for use by [affected](cmd-affected):
 
 ## Environment helpers
 
-`loadKbEnv(cwd)` reads `.env.kbexplorer` without mutating `process.env`.
+`loadKbEnv(cwd)` reads `.env.kbx` without mutating `process.env`.
 `resolveContentDir(cwd, override)` picks the content directory using a clear
-priority: explicit flag → `process.env.VITE_KB_PATH` → `.env.kbexplorer` →
+priority: explicit flag → `process.env.VITE_KB_PATH` → `.env.kbx` →
 `'content'`. [audit](cmd-audit), [affected](cmd-affected), and
 [scaffold](cmd-scaffold) all use this to honor the user's configured path.
 
 <!-- Sources: src/lib/frontmatter.js -->
+

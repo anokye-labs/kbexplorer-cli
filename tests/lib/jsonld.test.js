@@ -117,9 +117,9 @@ describe('buildArtifact + validateArtifact', () => {
   });
 
   it('carries schema version, generator, and embedded extraction (no timestamp)', () => {
-    assert.strictEqual(artifact.kbexplorer.schemaVersion, ARTIFACT_SCHEMA_VERSION);
-    assert.ok(artifact.kbexplorer.generator.includes('derive'));
-    assert.deepStrictEqual(artifact.kbexplorer.extraction.entities, INTERMEDIATE.entities);
+    assert.strictEqual(artifact.kbx.schemaVersion, ARTIFACT_SCHEMA_VERSION);
+    assert.ok(artifact.kbx.generator.includes('derive'));
+    assert.deepStrictEqual(artifact.kbx.extraction.entities, INTERMEDIATE.entities);
     const json = JSON.stringify(artifact);
     assert.ok(!/\d{4}-\d{2}-\d{2}T/.test(json)); // no ISO timestamp anywhere
   });
@@ -144,7 +144,7 @@ describe('buildArtifact + validateArtifact', () => {
   });
   it('flags an off-taxonomy edge relation', () => {
     const bad = structuredClone(artifact);
-    bad.kbexplorer.edges[0].relation = 'frobnicates';
+    bad.kbx.edges[0].relation = 'frobnicates';
     const v = validateArtifact(bad);
     assert.ok(!v.ok);
     assert.ok(v.errors.some((e) => /off-taxonomy/.test(e)));

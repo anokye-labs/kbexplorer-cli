@@ -51,19 +51,19 @@ describe('hasSubmodule', () => {
 describe('hasTemplate / isSubmoduleInstall', () => {
   it('hasTemplate mirrors hasSubmodule (present when package.json exists)', () => {
     const dir = join(tmpdir(), `kbe-test-tmpl-${Date.now()}`);
-    mkdirSync(join(dir, '.kbexplorer'), { recursive: true });
-    writeFileSync(join(dir, '.kbexplorer', 'package.json'), '{"name":"kbexplorer"}');
+    mkdirSync(join(dir, '.kbx'), { recursive: true });
+    writeFileSync(join(dir, '.kbx', 'package.json'), '{"name":"kbx"}');
     assert.strictEqual(hasTemplate(dir), true);
     // vendored copy has no inner .git
     assert.strictEqual(isSubmoduleInstall(dir), false);
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('isSubmoduleInstall is true when .kbexplorer/.git exists', () => {
+  it('isSubmoduleInstall is true when .kbx/.git exists', () => {
     const dir = join(tmpdir(), `kbe-test-sm-${Date.now()}`);
-    mkdirSync(join(dir, '.kbexplorer'), { recursive: true });
-    writeFileSync(join(dir, '.kbexplorer', 'package.json'), '{"name":"kbexplorer"}');
-    writeFileSync(join(dir, '.kbexplorer', '.git'), 'gitdir: ../.git/modules/.kbexplorer');
+    mkdirSync(join(dir, '.kbx'), { recursive: true });
+    writeFileSync(join(dir, '.kbx', 'package.json'), '{"name":"kbx"}');
+    writeFileSync(join(dir, '.kbx', '.git'), 'gitdir: ../.git/modules/.kbexplorer');
     assert.strictEqual(isSubmoduleInstall(dir), true);
     rmSync(dir, { recursive: true, force: true });
   });
@@ -77,14 +77,15 @@ describe('getSubmoduleUrl', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('parses the .kbexplorer submodule url', () => {
+  it('parses the .kbx submodule url', () => {
     const dir = join(tmpdir(), `kbe-test-gm1-${Date.now()}`);
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, '.gitmodules'),
-      '[submodule ".kbexplorer"]\n\tpath = .kbexplorer\n\turl = https://github.com/my-org/my-template.git\n',
+      '[submodule ".kbx"]\n\tpath = .kbx\n\turl = https://github.com/my-org/my-template.git\n',
     );
     assert.strictEqual(getSubmoduleUrl(dir), 'https://github.com/my-org/my-template.git');
     rmSync(dir, { recursive: true, force: true });
   });
 });
+

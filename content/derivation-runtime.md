@@ -80,8 +80,9 @@ Both content-producing commands map cleanly onto the substrate:
 | [generate](cmd-generate) | kb-architect analyzes the repo → `catalogue.json` | `transformCatalogue` → `content/*.md` + manifest |
 | [derive](cmd-derive) | `extractEntities` → `{ entities, relationships }` | `normalizeExtraction` → committed `*.jsonld` |
 
-The binary is resolved as explicit `binary` → `KBEXPLORER_COPILOT_BIN` env →
+The binary is resolved as explicit `binary` → `KBX_COPILOT_BIN` env →
 `copilot` on `PATH`; `isCopilotAvailable()` lets a command verify presence
 before promising a fuzzy run.
 
 <!-- Sources: src/lib/copilot-runtime.js, src/lib/runtime-router.js, src/commands/derive.js, docs/copilot-runtime.md -->
+
