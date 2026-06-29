@@ -10,7 +10,7 @@
  *   build      Production build
  *   manifest   Regenerate repo manifest
  *   update     Pull latest template + refresh agents/skills
- *   doctor     Diagnose local runtime, MCP, and template setup
+ *   doctor     Diagnose local runtime, MCP, template setup, and adoption readiness
  */
 
 import { resolve, dirname } from 'node:path';
@@ -59,7 +59,7 @@ function printUsage() {
     search-index  Build or check semantic search artifacts
     search      Semantic search over the knowledge graph
     update      Pull latest template + refresh agents/skills
-    doctor      Diagnose local runtime, MCP, and template setup
+    doctor      Diagnose local runtime, MCP, template setup, and adoption readiness
 
   Options:
     --help      Show this help message

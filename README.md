@@ -27,7 +27,7 @@ npm install -D @anokye-labs/kbexplorer
 | `kbx build` | Production build |
 | `kbx manifest` | Regenerate repo manifest from local data |
 | `kbx update` | Pull latest template + refresh agents/skills |
-| `kbx doctor` | Diagnose local runtime, MCP, and template setup |
+| `kbx doctor` | Diagnose local runtime, MCP, template setup, and adoption readiness |
 
 ## Quick Start
 
@@ -376,7 +376,7 @@ These work alongside (not instead of) the runtime selection above.
 
 ## Doctor
 
-`kbx doctor` is the first thing to run when regeneration fails on a teammate's machine. It diagnoses the full local setup in four sections:
+`kbx doctor` is the first thing to run when regeneration fails on a teammate's machine. It diagnoses the full local setup in five sections:
 
 ```
 Runtime
@@ -394,6 +394,12 @@ Template
   ✅ .kbx.json present (mode: submodule, template: …)
   ✅ .gitmodules url agrees with .kbx.json
   ⚠️  A newer release tag exists: v1.0.0 → v1.1.0 (run kbx update)
+
+Adoption readiness
+──────────────────
+  ✅ Structured-content path: content-model/ (default convention); 5 YAML descriptors found
+  ✅ Structured-content path is repo-relative (content-model/), so local and remote builds can use the same layout
+  ⚠️  Template compatibility/capabilities are not advertised yet — cannot confirm content-model ingestion, diagram rendering, or edge semantics
 
 Environment
 ───────────
@@ -454,4 +460,3 @@ library of focused references loaded on demand:
 ## License
 
 MIT
-

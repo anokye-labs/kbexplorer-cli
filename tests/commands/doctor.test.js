@@ -13,7 +13,7 @@ import { join } from 'node:path';
 
 const doctorMod = await import('../../src/commands/doctor.js');
 const doctor = doctorMod.default;
-const { checkRuntime, checkMcp, checkTemplate, checkEnvironment } = doctorMod;
+const { checkRuntime, checkMcp, checkTemplate, checkAdoption, checkEnvironment } = doctorMod;
 
 const { copilotAdapter, claudeAdapter, createCustomAdapter } = await import('../../src/lib/copilot-runtime.js');
 const { parseDoctorArgs } = await import('../../src/lib/args.js');
@@ -564,6 +564,155 @@ describe('checkTemplate — branch ref', () => {
   });
 });
 
+// ── checkAdoption ─────────────────────────────────────────────────────────────
+
+describe('checkAdoption — structured-content path', () => {
+  it('warns with actionable guidance when the default content-model directory is absent', () => {
+    withTempDir((cwd) => {
+      const checks = checkAdoption({ cwd, env: {} });
+      const pathCheck = checks.find((c) => c.id === 'adoption.structured-path');
+      assert.ok(pathCheck);
+      assert.strictEqual(pathCheck.status, 'warn');
+      assert.match(pathCheck.message, /content-model\//);
+      assert.match(pathCheck.message, /deploy-to-a-work-repo/);
+    });
+  });
+
+  it('fails missing structured content only when repo config marks it required', () => {
+    withTempDir((cwd) => {
+      writeJson(join(cwd, '.kbx.json'), {
+        template: 'https://github.com/anokye-labs/kbexplorer-template.git',
+        mode: 'vendor',
+        structuredContent: { path: 'work-graph', required: true },
+      });
+      const checks = checkAdoption({ cwd, env: {} });
+      const pathCheck = checks.find((c) => c.id === 'adoption.structured-path');
+      assert.ok(pathCheck);
+      assert.strictEqual(pathCheck.status, 'fail');
+      assert.match(pathCheck.message, /work-graph\//);
+    });
+  });
+
+  it('reports a forward-compatible configured path from .kbx.json', () => {
+    withTempDir((cwd) => {
+      writeJson(join(cwd, '.kbx.json'), {
+        template: 'https://github.com/anokye-labs/kbexplorer-template.git',
+        mode: 'vendor',
+        structuredContent: { path: 'work-graph' },
+      });
+      mkdirSync(join(cwd, 'work-graph', 'teams'), { recursive: true });
+      writeFileSync(join(cwd, 'work-graph', 'teams', 'platform.yaml'), '"@type": team\nid: platform\nname: Platform\n', 'utf-8');
+
+      const checks = checkAdoption({ cwd, env: {} });
+      const pathCheck = checks.find((c) => c.id === 'adoption.structured-path');
+      assert.ok(pathCheck);
+      assert.strictEqual(pathCheck.status, 'pass');
+      assert.match(pathCheck.message, /work-graph\//);
+      assert.match(pathCheck.message, /\.kbx\.json structuredContent\.path/);
+    });
+  });
+
+  it('warns when structured content appears under a likely misnamed path', () => {
+    withTempDir((cwd) => {
+      mkdirSync(join(cwd, 'structured-content', 'teams'), { recursive: true });
+      writeFileSync(
+        join(cwd, 'structured-content', 'teams', 'platform.yaml'),
+        '"@type": team\nid: platform\nname: Platform\n',
+        'utf-8',
+      );
+
+      const checks = checkAdoption({ cwd, env: {} });
+      const candidate = checks.find((c) => c.id.startsWith('adoption.structured-candidate.'));
+      assert.ok(candidate);
+      assert.strictEqual(candidate.status, 'warn');
+      assert.match(candidate.message, /structured-content\//);
+      assert.match(candidate.message, /content-model\//);
+    });
+  });
+
+  it('warns about local/remote parity when path comes from .env.kbx', () => {
+    withTempDir((cwd) => {
+      writeFileSync(join(cwd, '.env.kbx'), 'VITE_KB_CONTENT_MODEL=work-graph\n', 'utf-8');
+      mkdirSync(join(cwd, 'work-graph', 'teams'), { recursive: true });
+      writeFileSync(join(cwd, 'work-graph', 'teams', 'platform.yaml'), '"@type": team\nid: platform\nname: Platform\n', 'utf-8');
+
+      const checks = checkAdoption({ cwd, env: {} });
+      const parity = checks.find((c) => c.id === 'adoption.path-parity');
+      assert.ok(parity);
+      assert.strictEqual(parity.status, 'warn');
+      assert.match(parity.message, /\.env\.kbx/);
+      assert.match(parity.message, /CI|hosting/);
+    });
+  });
+});
+
+describe('checkAdoption — template capabilities', () => {
+  it('warns when structured content is present but capabilities are not advertised yet', () => {
+    withTempDir((cwd) => {
+      mkdirSync(join(cwd, 'content-model', 'teams'), { recursive: true });
+      writeFileSync(join(cwd, 'content-model', 'teams', 'platform.yaml'), '"@type": team\nid: platform\nname: Platform\n', 'utf-8');
+      writeJson(join(cwd, '.kbx', 'package.json'), { name: 'kbexplorer-template', version: '0.0.1' });
+
+      const checks = checkAdoption({ cwd, env: {} });
+      const capabilities = checks.find((c) => c.id === 'adoption.template-capabilities');
+      const visibility = checks.find((c) => c.id === 'adoption.visibility');
+      assert.ok(capabilities);
+      assert.ok(visibility);
+      assert.strictEqual(capabilities.status, 'warn');
+      assert.strictEqual(visibility.status, 'warn');
+      assert.match(capabilities.message, /not advertised yet/);
+    });
+  });
+
+  it('passes visibility when template metadata advertises structured-content ingestion', () => {
+    withTempDir((cwd) => {
+      mkdirSync(join(cwd, 'content-model', 'teams'), { recursive: true });
+      mkdirSync(join(cwd, '.kbx', 'scripts'), { recursive: true });
+      writeFileSync(join(cwd, 'content-model', 'teams', 'platform.yaml'), '"@type": team\nid: platform\nname: Platform\n', 'utf-8');
+      writeFileSync(join(cwd, '.kbx', 'scripts', 'generate-manifest.js'), 'console.log("ok");\n', 'utf-8');
+      writeJson(join(cwd, '.kbx', 'package.json'), {
+        name: 'kbexplorer-template',
+        version: '2.0.0',
+        kbx: {
+          protocolVersion: '1.0.0',
+          minCliVersion: '0.1.0',
+          capabilities: ['content-model-ingestion', 'configurable-content-model-path'],
+        },
+      });
+
+      const checks = checkAdoption({ cwd, env: {} });
+      const capabilities = checks.find((c) => c.id === 'adoption.template-capabilities');
+      const visibility = checks.find((c) => c.id === 'adoption.visibility');
+      const cliVersion = checks.find((c) => c.id === 'adoption.cli-version');
+      assert.ok(capabilities);
+      assert.ok(visibility);
+      assert.ok(cliVersion);
+      assert.strictEqual(capabilities.status, 'pass');
+      assert.strictEqual(visibility.status, 'pass');
+      assert.strictEqual(cliVersion.status, 'pass');
+    });
+  });
+
+  it('warns when template metadata requires a newer CLI version', () => {
+    withTempDir((cwd) => {
+      writeJson(join(cwd, '.kbx', 'package.json'), {
+        name: 'kbexplorer-template',
+        version: '2.0.0',
+        kbx: {
+          minCliVersion: '99.0.0',
+          capabilities: ['content-model-ingestion'],
+        },
+      });
+
+      const checks = checkAdoption({ cwd, env: {} });
+      const cliVersion = checks.find((c) => c.id === 'adoption.cli-version');
+      assert.ok(cliVersion);
+      assert.strictEqual(cliVersion.status, 'warn');
+      assert.match(cliVersion.message, /older than template minimum/);
+    });
+  });
+});
+
 // ── checkEnvironment ──────────────────────────────────────────────────────────
 
 describe('checkEnvironment — node version', () => {
@@ -736,7 +885,7 @@ describe('doctor command — --help', () => {
 });
 
 describe('doctor command — human output sections', () => {
-  it('includes all four sections in human output', async () => {
+  it('includes all five sections in human output', async () => {
     withTempDir(async (cwd) => {
       const home = mkdtempSync(join(tmpdir(), 'kb-dr-home-'));
       try {
@@ -763,6 +912,7 @@ describe('doctor command — human output sections', () => {
         assert.match(text, /Runtime/);
         assert.match(text, /MCP/);
         assert.match(text, /Template/);
+        assert.match(text, /Adoption readiness/);
         assert.match(text, /Environment/);
       } finally {
         rmSync(home, { recursive: true, force: true });
@@ -799,7 +949,7 @@ describe('doctor command — --json output', () => {
         const parsed = JSON.parse(text);
         assert.ok(Array.isArray(parsed.sections), 'sections should be an array');
         assert.ok(typeof parsed.ok === 'boolean', 'ok should be boolean');
-        assert.ok(parsed.sections.length >= 4, 'should have at least 4 sections');
+        assert.ok(parsed.sections.length >= 5, 'should have at least 5 sections');
         for (const section of parsed.sections) {
           assert.ok(section.name, 'section should have name');
           assert.ok(Array.isArray(section.checks), 'section should have checks');
@@ -1003,4 +1153,3 @@ describe('doctor command — gitmodules mismatch reported', () => {
     });
   });
 });
-
