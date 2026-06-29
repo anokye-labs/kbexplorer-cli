@@ -17,9 +17,9 @@ connections:
 **non-zero on errors**, so it is safe to wire into CI as a gating check.
 
 ```bash
-npx kbexplorer audit                          # default: scan content/
-npx kbexplorer audit --content my-content     # custom content dir
-npx kbexplorer audit --json                   # machine-readable output
+npx kbx audit                          # default: scan content/
+npx kbx audit --content my-content     # custom content dir
+npx kbx audit --json                   # machine-readable output
 ```
 
 ## What it catches
@@ -48,3 +48,4 @@ errors block, warnings are informational. The split lets teams be strict
 about correctness while keeping graph-shape feedback as guidance.
 
 <!-- Sources: src/commands/audit.js, src/lib/audit.js, src/lib/frontmatter.js -->
+

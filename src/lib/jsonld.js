@@ -66,7 +66,7 @@ export const ARTIFACT_SCHEMA_VERSION = 1;
 
 export const DEFAULT_CONTEXT = 'https://schema.org';
 
-export const GENERATOR = '@anokye-labs/kbexplorer derive';
+export const GENERATOR = '@anokye-labs/kbx derive';
 
 
 function isScalar(v) {
@@ -211,7 +211,7 @@ export function buildArtifact(options = {}) {
     '@context': context,
     '@graph': graph,
     '@edges': graph.filter((m) => m['@type'] === 'Relationship'),
-    kbexplorer: {
+    kbx: {
       schemaVersion: ARTIFACT_SCHEMA_VERSION,
       generator: GENERATOR,
       title: title ?? source.title ?? source.path,
@@ -315,8 +315,8 @@ export function validateArtifact(artifact) {
     ids.add(id);
   }
 
-  // KBNode mirror + reversibility.
-  const kb = artifact.kbexplorer;
+  // KBNode mirror + reversibility. Accept both 'kbx' (new) and 'kbexplorer' (legacy artifacts).
+  const kb = artifact.kbx ?? artifact.kbexplorer;
   const sourcePath = kb?.source?.path;
   for (const node of Array.isArray(kb?.nodes) ? kb.nodes : []) {
     if (node.entityType !== node.jsonld?.['@type']) {

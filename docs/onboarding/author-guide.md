@@ -1,10 +1,10 @@
 # Knowledge Base Author Guide — kbexplorer-cli
 
-**Audience:** the person who **uses** kbexplorer to build a knowledge base over a repository (or
+**Audience:** the person who **uses** kbx to build a knowledge base over a repository (or
 a folder of markdown). You're comfortable running a command in a terminal, but you are *not*
 here to modify the CLI's source — you want to turn your content into a navigable, explorable
 graph and publish it. (If you want to hack on the CLI itself, read the
-[Contributor Guide](./contributor-guide.md); if you're standardizing kbexplorer across a whole
+[Contributor Guide](./contributor-guide.md); if you're standardizing kbx across a whole
 org, read the [Platform & Template Author Guide](./platform-guide.md).)
 
 Every claim links to source on `main` so you can verify behavior.
@@ -13,7 +13,7 @@ Every claim links to source on `main` so you can verify behavior.
 
 ## 1. What you can build
 
-kbexplorer turns a content store — a GitHub repo, or a directory of markdown — into an
+kbx turns a content store — a GitHub repo, or a directory of markdown — into an
 **interactive knowledge graph**: a constellation of clickable cards and a force-directed network
 you can explore, search, and read, instead of a flat wiki. You run one setup command, choose
 where the content comes from, preview it locally, and publish it as a static website you host
@@ -29,18 +29,18 @@ you write — rather than a doc someone forgot to update.
 
 ```mermaid
 graph LR
-    A([You want a<br>knowledge base]):::a --> B["kbexplorer init<br>(one-time setup)"]:::s
+    A([You want a<br>knowledge base]):::a --> B["kbx init<br>(one-time setup)"]:::s
     B --> C{"Where does<br>content come from?"}:::d
     C -->|From the repo| F["Repo-aware:<br>issues, PRs, README, folders"]:::s
     C -->|You write it| G["Authored:<br>markdown + frontmatter"]:::s
-    C -->|AI drafts it| H["kbexplorer generate<br>(agent-assisted)"]:::s
-    G --> G2["kbexplorer scaffold<br>(add one page safely)"]:::s
-    F --> P["kbexplorer dev<br>(preview locally)"]:::s
+    C -->|AI drafts it| H["kbx generate<br>(agent-assisted)"]:::s
+    G --> G2["kbx scaffold<br>(add one page safely)"]:::s
+    F --> P["kbx dev<br>(preview locally)"]:::s
     G2 --> P
     G --> P
     H --> P
-    P --> Q["kbexplorer audit + links<br>(health checks)"]:::s
-    Q --> R["kbexplorer build<br>(static site)"]:::s
+    P --> Q["kbx audit + links<br>(health checks)"]:::s
+    Q --> R["kbx build<br>(static site)"]:::s
     R --> S([Publish anywhere<br>e.g. GitHub Pages]):::a
 
     classDef a fill:#2d333b,stroke:#6d5dfc,color:#e6edf3
@@ -69,7 +69,7 @@ You run setup with a single command inside the repo you want to map:
 npx @anokye-labs/kbexplorer init
 ```
 
-`init` is an interactive wizard. It installs the explorer app into `.kbexplorer/`, copies in the
+`init` is an interactive wizard. It installs the explorer app into `.kbx/`, copies in the
 AI agents and skills, then asks you a short series of questions
 ([`src/commands/init.js:226-249`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L226-L249)):
 
@@ -81,7 +81,7 @@ AI agents and skills, then asks you a short series of questions
 | **Visual mode** | `emoji`, `sprites`, `heroes`, or `none` | `emoji` |
 | **Theme** | `dark`, `light`, or `sepia` | `dark` |
 
-When it finishes you'll have a `.env.kbexplorer` settings file, `kb:dev` / `kb:build` /
+When it finishes you'll have a `.env.kbx` settings file, `kb:dev` / `kb:build` /
 `kb:generate` npm scripts, and (if you chose an authored mode) a `content/` directory to write
 in ([`init.js:251-285`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/init.js#L251-L285)).
 
@@ -192,7 +192,7 @@ defined in your `config.yaml`. Write good connection descriptions — `"authenti
 
 ## 6. AI-assisted content generation
 
-If you don't want to write every page by hand, kbexplorer ships AI agents that draft pages from
+If you don't want to write every page by hand, kbx ships AI agents that draft pages from
 your code. You drive them from Copilot CLI; they are *agent-assisted*, not one-click — a person
 reviews the output ([`README.md:74-92`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/README.md#L74-L92)).
 
@@ -200,7 +200,7 @@ reviews the output ([`README.md:74-92`](https://github.com/anokye-labs/kbexplore
 # In Copilot CLI, after init:
 /kb:generate          # analyze the repo and produce a full knowledge graph
 # then, to refresh the data file:
-npx kbexplorer generate
+npx kbx generate
 ```
 
 The pipeline runs in stages ([`content-generation.md:104-114`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/content-generation.md#L104-L114)):
@@ -220,7 +220,7 @@ frontmatter, ask the kb-writer agent to flesh it out, and re-run the manifest st
 
 ## 7. Configure the look & feel
 
-These settings live in your `config.yaml` (and the `.env.kbexplorer` created at setup), and you
+These settings live in your `config.yaml` (and the `.env.kbx` created at setup), and you
 can change them **without touching any code**
 ([`configuration.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/configuration.md)):
 
@@ -246,8 +246,8 @@ full mapping and switching procedure lives in
 ## 8. Preview, build & publish
 
 ```bash
-npx kbexplorer dev      # start a local preview with hot reload (opens :5173)
-npx kbexplorer build    # produce a static site you can host
+npx kbx dev      # start a local preview with hot reload (opens :5173)
+npx kbx build    # produce a static site you can host
 ```
 
 `dev` regenerates the manifest and starts a local server so you can explore your graph as you
@@ -261,7 +261,7 @@ Pages, Netlify, an S3 bucket, or anywhere that serves static sites. If you publi
 sub-path (e.g. GitHub Pages project sites), pass `--base`:
 
 ```bash
-npx kbexplorer build --base /my-repo/
+npx kbx build --base /my-repo/
 ```
 
 <!-- Sources: src/commands/build.js:18-40 -->
@@ -273,8 +273,8 @@ npx kbexplorer build --base /my-repo/
 Two complementary checks run before you publish:
 
 ```bash
-npx kbexplorer audit        # hard structural lint (exits non-zero on errors)
-npx kbexplorer links        # soft graph-health report (advisory)
+npx kbx audit        # hard structural lint (exits non-zero on errors)
+npx kbx links        # soft graph-health report (advisory)
 ```
 
 `audit` enforces frontmatter integrity — duplicate ids, broken `parent:` references,
@@ -290,7 +290,7 @@ be linkified ([`src/commands/links.js`](https://github.com/anokye-labs/kbexplore
 When you want to add one new node without hand-writing frontmatter:
 
 ```bash
-npx kbexplorer scaffold my-new-topic --cluster getting-started
+npx kbx scaffold my-new-topic --cluster getting-started
 ```
 
 This creates `content/my-new-topic.md` with valid id / cluster / title / emoji
@@ -305,7 +305,7 @@ If your authored pages cite specific source files, you can map a git diff to the
 that need a refresh:
 
 ```bash
-npx kbexplorer affected HEAD~10
+npx kbx affected HEAD~10
 ```
 
 It walks the citations in every `content/*.md` file, intersects with the changed files,
@@ -319,10 +319,10 @@ and prints the impacted node ids ([`src/commands/affected.js`](https://github.co
 When a newer version of the explorer template is available, pull it with:
 
 ```bash
-npx kbexplorer update
+npx kbx update
 ```
 
-`update` reads the source record (`.kbexplorer.json`) written at setup and updates accordingly.
+`update` reads the source record (`.kbx.json`) written at setup and updates accordingly.
 If you installed the default submodule, it bumps the pin. If you installed a **one-time copy**
 (vendor mode) and customized it, `update` **never overwrites your edits silently** — it fetches
 the new version into a sibling folder for you to review, and only swaps it in (after backing up
@@ -360,12 +360,12 @@ and stores nothing on external servers — the only outbound calls are to GitHub
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Empty graph | Wrong owner/repo, or no issues/content | Check `.env.kbexplorer`; confirm the repo has issues or content files ([`references/setup.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/setup.md)) |
+| Empty graph | Wrong owner/repo, or no issues/content | Check `.env.kbx`; confirm the repo has issues or content files ([`references/setup.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/setup.md)) |
 | "Rate limit" errors fetching issues | Unauthenticated GitHub API (60/hr) | Run `gh auth login`, or set a `GITHUB_TOKEN` ([`references/setup.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/setup.md)) |
-| `kbexplorer not found` on `dev`/`build` | `.kbexplorer/` isn't installed | Run `kbexplorer init` first ([`dev.js:13-16`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/dev.js#L13-L16)) |
-| Build fails | Template dependencies missing | Run `npm install` inside `.kbexplorer/` |
+| `kbx not found` on `dev`/`build` | `.kbx/` isn't installed | Run `kbx init` first ([`dev.js:13-16`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/dev.js#L13-L16)) |
+| Build fails | Template dependencies missing | Run `npm install` inside `.kbx/` |
 | Config not loading | `config.yaml` missing or wrong path | Ensure `content/config.yaml` exists where the wizard set it ([`references/configuration.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/configuration.md)) |
-| `kbexplorer audit` reports errors | Duplicate ids, broken parents, dead connections | See [`references/audit.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/audit.md) for each rule and remediation |
+| `kbx audit` reports errors | Duplicate ids, broken parents, dead connections | See [`references/audit.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/audit.md) for each rule and remediation |
 
 ---
 
@@ -380,7 +380,7 @@ and stores nothing on external servers — the only outbound calls are to GitHub
 - **Frontmatter** — the `--- ... ---` header at the top of a markdown file that defines a node.
 - **Manifest** — the behind-the-scenes data file (`repo-manifest.json`) the map is drawn from.
 - **Catalogue** — the JSON the kb-architect agent produces before pages are written.
-- **Template / explorer app** — the visual web app (at `.kbexplorer/`) that renders your map.
+- **Template / explorer app** — the visual web app (at `.kbx/`) that renders your map.
 - **Visual mode / theme** — how cards look and the color scheme; pure config, no code.
 - **Agent** — an AI helper (kb-architect / kb-writer / kb-researcher) that drafts pages.
 
@@ -422,5 +422,6 @@ Comfortably typical repos. Very large ones currently show at most 200 issues and
 pagination is on the roadmap. Use authored pages for the parts that matter most.
 
 **Q: How do I know the AI-generated docs are accurate?**
-The agents are required to cite specific source files, and `kbexplorer links` flags broken
+The agents are required to cite specific source files, and `kbx links` flags broken
 links and orphan pages so you can spot gaps.
+

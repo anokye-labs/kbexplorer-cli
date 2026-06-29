@@ -32,7 +32,7 @@ function withTempDir(fn) {
 }
 
 function writeKbJson(dir, data) {
-  writeFileSync(join(dir, '.kbexplorer.json'), JSON.stringify(data, null, 2), 'utf-8');
+  writeFileSync(join(dir, '.kbx.json'), JSON.stringify(data, null, 2), 'utf-8');
 }
 
 // ── validateRuntimeBlock ─────────────────────────────────────────────────────
@@ -208,13 +208,13 @@ describe('validateRuntimeBlock — invalid shapes', () => {
 // ── loadRuntimeConfig ────────────────────────────────────────────────────────
 
 describe('loadRuntimeConfig', () => {
-  it('returns null when .kbexplorer.json is absent', () => {
+  it('returns null when .kbx.json is absent', () => {
     withTempDir((dir) => {
       assert.strictEqual(loadRuntimeConfig(dir), null);
     });
   });
 
-  it('returns null when .kbexplorer.json has no runtime block', () => {
+  it('returns null when .kbx.json has no runtime block', () => {
     withTempDir((dir) => {
       writeKbJson(dir, { template: 'https://example.com/t.git', mode: 'vendor' });
       assert.strictEqual(loadRuntimeConfig(dir), null);
@@ -324,13 +324,13 @@ describe('resolveRuntime — precedence chain', () => {
     assert.strictEqual(adapter, copilotAdapter);
   });
 
-  it('.kbexplorer.json config beats env var', () => {
+  it('.kbx.json config beats env var', () => {
     const config = { agent: 'claude' };
     const adapter = resolveRuntime({ flag: null, config, env: { [RUNTIME_ENV]: 'copilot' } });
     assert.strictEqual(adapter.name, 'claude');
   });
 
-  it('KBEXPLORER_RUNTIME env var beats default', () => {
+  it('KBX_RUNTIME env var beats default', () => {
     const adapter = resolveRuntime({ flag: null, config: null, env: { [RUNTIME_ENV]: 'claude' } });
     assert.strictEqual(adapter, claudeAdapter);
   });
@@ -546,3 +546,4 @@ describe('validateRuntimeBlock — mcp block (invalid shapes)', () => {
     );
   });
 });
+

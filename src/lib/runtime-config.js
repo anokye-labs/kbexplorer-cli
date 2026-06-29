@@ -1,16 +1,16 @@
 /**
- * Runtime configuration loader and adapter resolver for kbexplorer.
+ * Runtime configuration loader and adapter resolver for kbx.
  *
- * Loads and validates the optional `runtime` block from `.kbexplorer.json`,
+ * Loads and validates the optional `runtime` block from `.kbx.json`,
  * and implements the selection precedence:
  *
  *   1. Explicit `--runtime <name>` CLI flag
- *   2. `runtime` block in `.kbexplorer.json`
- *   3. `KBEXPLORER_RUNTIME` env var
+ *   2. `runtime` block in `.kbx.json`
+ *   3. `KBX_RUNTIME` env var
  *   4. Default: copilot
  *
  * Named adapters:  "copilot" | "claude" | "custom"
- * Binary overrides `KBEXPLORER_COPILOT_BIN` / `KBEXPLORER_CLAUDE_BIN` are
+ * Binary overrides `KBX_COPILOT_BIN` / `KBX_CLAUDE_BIN` are
  * honoured by the adapters themselves — this module does not re-implement them.
  */
 
@@ -24,7 +24,9 @@ import {
 import { readSourceRecord } from './source.js';
 
 /** Environment variable for selecting the runtime adapter by name. */
-export const RUNTIME_ENV = 'KBEXPLORER_RUNTIME';
+export const RUNTIME_ENV = 'KBX_RUNTIME';
+/** Deprecated predecessor of RUNTIME_ENV — accepted with a warning. */
+const LEGACY_RUNTIME_ENV = 'KBEXPLORER_RUNTIME';
 
 /** The known named agents. */
 export const KNOWN_AGENTS = Object.freeze(['copilot', 'claude', 'custom']);
@@ -37,7 +39,7 @@ export class RuntimeConfigError extends Error {
 }
 
 /**
- * Validate the `runtime` block from `.kbexplorer.json`.
+ * Validate the `runtime` block from `.kbx.json`.
  *
  * Accepted shape:
  * ```json
@@ -62,7 +64,7 @@ export class RuntimeConfigError extends Error {
 export function validateRuntimeBlock(runtime) {
   if (runtime == null || typeof runtime !== 'object' || Array.isArray(runtime)) {
     throw new RuntimeConfigError(
-      'runtime block in .kbexplorer.json must be a JSON object.',
+      'runtime block in .kbx.json must be a JSON object.',
     );
   }
 
@@ -253,7 +255,7 @@ export function validateRuntimeBlock(runtime) {
 }
 
 /**
- * Load and validate the `runtime` block from `.kbexplorer.json` in `cwd`.
+ * Load and Validate the `runtime` block from `.kbx.json` in `cwd`.
  * Returns `null` when the file doesn't exist or has no `runtime` block.
  *
  * @param {string} [cwd=process.cwd()]
@@ -295,7 +297,7 @@ export function adapterFromConfig(config) {
  * Resolve the runtime adapter using the precedence chain:
  *
  *   1. `flag`  — value of `--runtime <name>` (or null/undefined to skip)
- *   2. `config` — validated runtime block from `.kbexplorer.json` (or null to skip)
+ *   2. `config` — validated runtime block from `.kbx.json` (or null to skip)
  *   3. `env`   — `KBEXPLORER_RUNTIME` env var (or process.env by default)
  *   4. default — copilotAdapter
  *
@@ -323,14 +325,21 @@ export function resolveRuntime({ flag, config, env } = {}) {
     return adapterFromName(flag, 'CLI --runtime flag');
   }
 
-  // 2. .kbexplorer.json runtime block
+  // 2. .kbx.json runtime block
   if (config != null) {
     return adapterFromConfig(config);
   }
 
-  // 3. KBEXPLORER_RUNTIME env var (only reachable with no config block, so
+  // 3. KBX_RUNTIME env var (only reachable with no config block, so
   // "custom" here is always an error — there is no config to satisfy it).
-  const envVal = envMap[RUNTIME_ENV];
+  let envVal = envMap[RUNTIME_ENV];
+  if (!envVal) {
+    const legacyVal = envMap[LEGACY_RUNTIME_ENV];
+    if (legacyVal) {
+      process.stderr.write(`[kbx] ${LEGACY_RUNTIME_ENV} is deprecated; rename to ${RUNTIME_ENV}\n`);
+      envVal = legacyVal;
+    }
+  }
   if (envVal != null && envVal !== '') {
     return adapterFromName(envVal, `${RUNTIME_ENV} env var`);
   }
@@ -372,7 +381,7 @@ function adapterFromName(name, source) {
       return claudeAdapter;
     case 'custom':
       throw new RuntimeConfigError(
-        `"custom" requires a runtime block in .kbexplorer.json (${source} specified "custom" but no config was provided).`,
+        `"custom" requires a runtime block in .kbx.json (${source} specified "custom" but no config was provided).`,
       );
     default:
       throw new RuntimeConfigError(
@@ -380,3 +389,4 @@ function adapterFromName(name, source) {
       );
   }
 }
+

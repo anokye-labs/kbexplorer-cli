@@ -1,14 +1,14 @@
 /**
- * kbexplorer search — Semantic search over the knowledge graph.
+ * kbx search — Semantic search over the knowledge graph.
  *
  * Loads checked-in search artifacts and runs a cosine similarity query.
- * Returns kbexplorer-native results: node IDs, titles, clusters, paths,
+ * Returns kbx-native results: node IDs, titles, clusters, paths,
  * snippets, scores, and graph context.
  *
  * Usage:
- *   kbexplorer search "how does audit validation work?"
- *   kbexplorer search "deployment" --limit 10
- *   kbexplorer search "config" --cluster infra --json
+ *   kbx search "how does audit validation work?"
+ *   kbx search "deployment" --limit 10
+ *   kbx search "config" --cluster infra --json
  */
 
 import { resolve, relative } from 'node:path';
@@ -56,9 +56,9 @@ function parseArgs(args) {
 
 function printHelp() {
   console.log(`
-  kbexplorer search — Semantic search over the knowledge graph
+  kbx search — Semantic search over the knowledge graph
 
-  Usage: kbexplorer search <query> [options]
+  Usage: kbx search <query> [options]
 
   Loads checked-in search artifacts and runs a cosine similarity query.
 
@@ -90,14 +90,14 @@ export default async function search(args = []) {
   }
 
   if (!opts.query) {
-    console.error('✗ No query given. Usage: kbexplorer search <query> [options]');
+    console.error('✗ No query given. Usage: kbx search <query> [options]');
     process.exit(1);
   }
 
   const cwd = process.cwd();
   const artifactDir = resolve(cwd, opts.dir || DEFAULT_ARTIFACT_DIR);
 
-  // Lazy-import kbexplorer-search
+  // Lazy-import kbx-search
   let searchMod;
   try {
     searchMod = await import('@anokye-labs/kbexplorer-search');
@@ -105,7 +105,7 @@ export default async function search(args = []) {
     try {
       const { resolve: r } = await import('node:path');
       const { fileURLToPath } = await import('node:url');
-      const devPath = r(fileURLToPath(import.meta.url), '..', '..', '..', '..', 'kbexplorer-search', 'dist', 'index.js');
+      const devPath = r(fileURLToPath(import.meta.url), '..', '..', '..', '..', 'kbx-search', 'dist', 'index.js');
       searchMod = await import(devPath);
     } catch {
       console.error('✗ @anokye-labs/kbexplorer-search is not installed.');
@@ -121,7 +121,7 @@ export default async function search(args = []) {
   if (!artifact) {
     const relDir = relative(cwd, artifactDir);
     console.error(`✗ No search artifacts found in ${relDir}/`);
-    console.error(`  Run \`kbexplorer search-index\` to build them.`);
+    console.error(`  Run \`kbx search-index\` to build them.`);
     process.exit(1);
   }
 
@@ -174,3 +174,5 @@ export default async function search(args = []) {
     console.log('');
   }
 }
+
+

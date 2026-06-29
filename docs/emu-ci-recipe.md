@@ -5,7 +5,7 @@ A single, copy-paste GitHub Actions workflow for running KB Explorer in a
 
 1. **Blocking PR gates** — `audit` + `validate` + `derive --check`, all
    deterministic (no LLM, no `gh` auth).
-2. **Build + deploy** — `kbexplorer build` then an **Azure Static Web Apps**
+2. **Build + deploy** — `kbx build` then an **Azure Static Web Apps**
    deploy gated behind **Azure AD (AAD)** via `allowedRoles`.
 
 You adopt it by substituting **secrets/host values only** — no logic changes.
@@ -24,8 +24,8 @@ Everything sensitive is a repo **Secret** or **Variable** — never inlined:
 | Name | Kind | Example / meaning |
 |---|---|---|
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | secret | SWA deployment token (from the Azure SWA resource) |
-| `KBEXPLORER_GH_TOKEN` | secret | PAT with `repo:read` on your EMU/GHE host (used by the manifest build) |
-| `KBEXPLORER_GH_API_BASE` | variable | e.g. `https://github.example.com/api/v3` |
+| `KBX_GH_TOKEN` | secret | PAT with `repo:read` on your EMU/GHE host (used by the manifest build) |
+| `KBX_GH_API_BASE` | variable | e.g. `https://github.example.com/api/v3` |
 | `<tenant-id>` | in `staticwebapp.config.json` | your Azure AD tenant GUID |
 | `AAD_CLIENT_ID` / `AAD_CLIENT_SECRET` | SWA app settings | the AAD app registration (configured in Azure, not committed) |
 
@@ -36,9 +36,9 @@ checks in branch protection:
 
 | Step | Command | Fails the PR when |
 |---|---|---|
-| Audit | `kbexplorer audit` | `content/*.md` has duplicate ids, broken parents, cycles, dead connections, missing required frontmatter |
-| Validate | `kbexplorer validate` | `content-model/` descriptors have dangling FK refs, unknown kinds, missing required fields, duplicate ids per kind, off-taxonomy relations, or `reports-to` cycles |
-| Derive drift | `kbexplorer derive <sources> --check` | a committed `*.jsonld` is stale relative to its source (the step auto-skips if you have no derived sources) |
+| Audit | `kbx audit` | `content/*.md` has duplicate ids, broken parents, cycles, dead connections, missing required frontmatter |
+| Validate | `kbx validate` | `content-model/` descriptors have dangling FK refs, unknown kinds, missing required fields, duplicate ids per kind, off-taxonomy relations, or `reports-to` cycles |
+| Derive drift | `kbx derive <sources> --check` | a committed `*.jsonld` is stale relative to its source (the step auto-skips if you have no derived sources) |
 
 Mark `gates` as a required status check, and keep
 `required_conversation_resolution` on, exactly as the rest of this org's repos do.
@@ -48,11 +48,11 @@ Mark `gates` as a required status check, and keep
 Runs only on push to the default branch, only after `gates` passes:
 
 1. `actions/checkout@v4` with `submodules: recursive` — required for
-   submodule-mode `.kbexplorer` installs (vendor-mode installs work too; the
+   submodule-mode `.kbx` installs (vendor-mode installs work too; the
    flag is harmless when there is no submodule).
-2. `npm install` inside `.kbexplorer/`, then `kbexplorer build`. The manifest
+2. `npm install` inside `.kbx/`, then `kbx build`. The manifest
    step reads your EMU host's issues/PRs/releases through the **direct-HTTP
-   path** (`KBEXPLORER_GH_API_BASE` + `KBEXPLORER_GH_TOKEN`) — no `gh` auth
+   path** (`KBX_GH_API_BASE` + `KBX_GH_TOKEN`) — no `gh` auth
    handshake. See [`src/lib/gh-fetch.js`](../src/lib/gh-fetch.js) for the
    API-base + token precedence.
 3. Copy `staticwebapp.config.json` into `dist/kb/`, then deploy the pre-built
@@ -62,7 +62,7 @@ Runs only on push to the default branch, only after `gates` passes:
 ### EMU host wiring (two equivalent options)
 
 The recipe uses environment variables (shown above). Alternatively, persist the
-base in `.kbexplorer.json` so it travels with the repo and the workflow only
+base in `.kbx.json` so it travels with the repo and the workflow only
 needs the token secret:
 
 ```jsonc
@@ -73,7 +73,7 @@ needs the token secret:
 }
 ```
 
-Token precedence when a base is set: `KBEXPLORER_GH_TOKEN` → `GH_TOKEN` →
+Token precedence when a base is set: `KBX_GH_TOKEN` → `GH_TOKEN` →
 anonymous.
 
 ### AAD `allowedRoles`
@@ -97,3 +97,4 @@ cp <kbexplorer-cli>/docs/recipes/emu-kb-ci.yml .github/workflows/kb-explorer.yml
 
 See the full runbook in [`deploy-to-a-work-repo.md`](./deploy-to-a-work-repo.md)
 (§2.4 EMU API base, §3 content-model layout, §7.2 Azure SWA).
+

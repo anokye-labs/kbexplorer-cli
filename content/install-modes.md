@@ -15,24 +15,24 @@ connections:
     description: "the mode is recorded declaratively"
 ---
 
-kbexplorer can install the explorer template into a host repo in two modes:
+kbx can install the explorer template into a host repo in two modes:
 
 | Mode | When | How |
 |---|---|---|
-| **Submodule** (default) | Most cases; you want tag-pinned upstream + easy upgrades. | Git submodule at `.kbexplorer/`, pinned to a tag. |
+| **Submodule** (default) | Most cases; you want tag-pinned upstream + easy upgrades. | Git submodule at `.kbx/`, pinned to a tag. |
 | **Vendor** | You want to customize the template freely, or your environment cannot use submodules. | One-time copy with `.git` stripped; the files become yours. |
 
 ```bash
-npx kbexplorer init                              # submodule, latest tag
-npx kbexplorer init --vendor                     # vendor, latest tag
-npx kbexplorer init --vendor --ref main          # vendor, branch HEAD
-npx kbexplorer init --ref v1.2.0                 # submodule, pinned tag
+npx kbx init                              # submodule, latest tag
+npx kbx init --vendor                     # vendor, latest tag
+npx kbx init --vendor --ref main          # vendor, branch HEAD
+npx kbx init --ref v1.2.0                 # submodule, pinned tag
 ```
 
 ## The runtime cannot tell
 
 [lib-detect-repo](lib-detect-repo) treats both modes identically — once
-`.kbexplorer/package.json` exists, [dev / build / manifest](cmd-dev-build)
+`.kbx/package.json` exists, [dev / build / manifest](cmd-dev-build)
 run the same way. This is the architectural reason vendor mode required
 **zero changes** to runtime commands when it was added.
 
@@ -41,10 +41,11 @@ run the same way. This is the architectural reason vendor mode required
 | Action | Submodule | Vendor |
 |---|---|---|
 | `update` (no flag) | `git submodule update --remote` | Fetch into sibling review folder; report |
-| `update --force` | Same as above | Back up `.kbexplorer/` → `.kbexplorer.backup-<ts>`, swap in new version |
+| `update --force` | Same as above | Back up `.kbx/` → `.kbx.backup-<ts>`, swap in new version |
 
 The asymmetry is intentional. A submodule has no local edits to lose
 (the pin is the source of truth). A vendored install might have local
 edits, so [update](cmd-update) refuses to silently clobber them.
 
 <!-- Sources: src/commands/init.js, src/commands/update.js, src/lib/source.js, src/lib/detect-repo.js -->
+

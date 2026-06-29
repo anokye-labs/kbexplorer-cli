@@ -2,7 +2,7 @@
 
 ## Running the Site Locally
 
-This repo (`@anokye-labs/kbexplorer`) is the **CLI**, not the visual explorer app. The explorer is the separate `anokye-labs/kbexplorer-template` repo, which the CLI installs into `.kbexplorer/`. Because of this, `kbexplorer dev` only works once `.kbexplorer/` exists — otherwise it exits with ``✗ kbexplorer not found. Run `kbexplorer init` first.``
+This repo (`@anokye-labs/kbexplorer`) is the **CLI**, not the visual explorer app. The explorer is the separate `anokye-labs/kbexplorer-template` repo, which the CLI installs into `.kbx/`. Because of this, `kbx dev` only works once `.kbx/` exists — otherwise it exits with ``✗ kbx not found. Run `kbx init` first.``
 
 Requirements: Node >= 22 and network access (the one-time setup clones the template repo).
 
@@ -10,25 +10,25 @@ Requirements: Node >= 22 and network access (the one-time setup clones the templ
 # 1. Pull latest
 git pull
 
-# 2. One-time setup — only if .kbexplorer/ is absent
-npx kbexplorer init --vendor
+# 2. One-time setup — only if .kbx/ is absent
+npx kbx init --vendor
 
 # 3. Launch the dev server (opens http://localhost:5173)
-npx kbexplorer dev
+npx kbx dev
 ```
 
-**About step 2 (`init --vendor`):** it's an interactive wizard, but every prompt (owner / repo / branch / title / content mode / visual mode / theme) is pre-filled with values auto-detected from your git remote and branch — just press **Enter** through all of them to accept the defaults. It vendors a one-time copy of the template into `.kbexplorer/`, runs `npm install` there, and writes `.env.kbexplorer` (gitignored). Run it once per checkout; skip it if `.kbexplorer/` already exists.
+**About step 2 (`init --vendor`):** it's an interactive wizard, but every prompt (owner / repo / branch / title / content mode / visual mode / theme) is pre-filled with values auto-detected from your git remote and branch — just press **Enter** through all of them to accept the defaults. It vendors a one-time copy of the template into `.kbx/`, runs `npm install` there, and writes `.env.kbx` (gitignored). Run it once per checkout; skip it if `.kbx/` already exists.
 
 **About step 3 (`dev`):** it regenerates the manifest from local `content/`, the file tree, the README, and best-effort `gh` issues/PRs/commits, then starts Vite with `VITE_KB_LOCAL=true` and `--open`. The authored content in `content/` is what renders.
 
-**How it works / why:** `dev` requires `.kbexplorer/` because this repo isn't the template itself (its `package.json` name is `@anokye-labs/kbexplorer`, not `kbexplorer`/`kbexplorer-template`). If you hit ``kbexplorer not found. Run `kbexplorer init` first``, run the init step above.
+**How it works / why:** `dev` requires `.kbx/` because this repo isn't the template itself (its `package.json` name is `@anokye-labs/kbexplorer`, not `kbx`/`kbexplorer-template`). If you hit ``kbx not found. Run `kbx init` first``, run the init step above.
 
-- **Production build:** `npx kbexplorer build` (outputs to `dist/kb/`).
+- **Production build:** `npx kbx build` (outputs to `dist/kb/`).
 - **Headless verification:** with the dev server running, `node scripts/verify-self-kb.js` drives a headless browser and writes screenshots to `dist-screenshots/`.
 
 See the [README](README.md) "Dogfood" section for more detail.
 
-## Dogfooding kbexplorer on This Repo
+## Dogfooding kbx on This Repo
 
 This repo is its own test bed: the authored pages in `content/` describe the CLI itself, and the dev server above renders them. The full content lifecycle is driven by the CLI commands below. **Every command here can be — and should be — run against this checkout to verify changes.**
 
@@ -41,13 +41,13 @@ copilot --version
 which copilot                 # or: Get-Command copilot   (PowerShell)
 ```
 
-If the binary lives somewhere else, point the CLI at it with `KBEXPLORER_COPILOT_BIN=/full/path/to/copilot`. The deterministic commands (`scaffold`, `audit`, `affected`, `links`, `manifest`, `dev`, `build`, and `derive --check`) do **not** need Copilot and run fully offline.
+If the binary lives somewhere else, point the CLI at it with `KBX_COPILOT_BIN=/full/path/to/copilot`. The deterministic commands (`scaffold`, `audit`, `affected`, `links`, `manifest`, `dev`, `build`, and `derive --check`) do **not** need Copilot and run fully offline.
 
 Before invoking any fuzzy phase, preview the exact command the CLI will spawn — never run a Copilot-backed phase blind:
 
 ```bash
-npx kbexplorer generate --dry-run
-npx kbexplorer derive docs/samples/platform-squad.md --dry-run
+npx kbx generate --dry-run
+npx kbx derive docs/samples/platform-squad.md --dry-run
 ```
 
 The runtime adapter, router, and error codes (`BINARY_MISSING`, `TIMEOUT`, `NONZERO_EXIT`, `SPAWN_FAILED`, `INVALID_INPUT`) are documented in [`docs/copilot-runtime.md`](docs/copilot-runtime.md).
@@ -58,15 +58,15 @@ Run all of these from the repo root (no `init` needed for the deterministic ones
 
 | Command | When to use | Needs Copilot? |
 |---|---|---|
-| `npx kbexplorer generate` | First-time content bootstrap, or after a structural repo change. Drives `copilot -p` to build `catalogue.json`, then deterministically transforms it into `content/` + manifest. Use `--refresh` to force a re-run, `--no-agent` to only run the transform. | Yes (unless `--no-agent`) |
-| `npx kbexplorer scaffold <slug> --cluster <id> [--parent <id>] [--title …]` | Add **one** new page with valid frontmatter. Edit the body by hand or hand off to a writer playbook. | No |
-| `npx kbexplorer derive <source...>` | Extract entities/relationships from `.docx`/prose `.md`/`.txt` into committed `content/derived/*.jsonld`. Idempotent — re-running on an unchanged source reuses the embedded extraction and re-emits **byte-identical** output without calling the LLM. | Yes (first emit per source) |
-| `npx kbexplorer derive <source...> --check` | CI drift gate. Pass the **source** files (never the `.jsonld` outputs); exits non-zero if any artifact is missing, its source changed, or a fresh emit differs from the committed bytes. | No |
-| `npx kbexplorer affected <git-ref>` | After a code change, list which content nodes cite the changed files (`--json` for tooling). Tells you what to refresh. | No |
-| `npx kbexplorer audit` | Hard structural lint — duplicate ids, broken parents, parent cycles, dead connections, missing required frontmatter, undeclared clusters. **CI-grade**, exits non-zero on errors. `--json` for CI. | No |
-| `npx kbexplorer links` | Soft graph-health report — orphans, weak clusters, coverage gaps. Advisory only. | No |
-| `npx kbexplorer manifest` | Regenerate `public/manifest/local.json` from current `content/` without starting Vite. | No |
-| `npx kbexplorer update` | Pull the latest template version into `.kbexplorer/`. For vendored installs it never silently clobbers — `--force` backs up the current copy to `.kbexplorer.backup-<ts>`. | No |
+| `npx kbx generate` | First-time content bootstrap, or after a structural repo change. Drives `copilot -p` to build `catalogue.json`, then deterministically transforms it into `content/` + manifest. Use `--refresh` to force a re-run, `--no-agent` to only run the transform. | Yes (unless `--no-agent`) |
+| `npx kbx scaffold <slug> --cluster <id> [--parent <id>] [--title …]` | Add **one** new page with valid frontmatter. Edit the body by hand or hand off to a writer playbook. | No |
+| `npx kbx derive <source...>` | Extract entities/relationships from `.docx`/prose `.md`/`.txt` into committed `content/derived/*.jsonld`. Idempotent — re-running on an unchanged source reuses the embedded extraction and re-emits **byte-identical** output without calling the LLM. | Yes (first emit per source) |
+| `npx kbx derive <source...> --check` | CI drift gate. Pass the **source** files (never the `.jsonld` outputs); exits non-zero if any artifact is missing, its source changed, or a fresh emit differs from the committed bytes. | No |
+| `npx kbx affected <git-ref>` | After a code change, list which content nodes cite the changed files (`--json` for tooling). Tells you what to refresh. | No |
+| `npx kbx audit` | Hard structural lint — duplicate ids, broken parents, parent cycles, dead connections, missing required frontmatter, undeclared clusters. **CI-grade**, exits non-zero on errors. `--json` for CI. | No |
+| `npx kbx links` | Soft graph-health report — orphans, weak clusters, coverage gaps. Advisory only. | No |
+| `npx kbx manifest` | Regenerate `public/manifest/local.json` from current `content/` without starting Vite. | No |
+| `npx kbx update` | Pull the latest template version into `.kbx/`. For vendored installs it never silently clobbers — `--force` backs up the current copy to `.kbx.backup-<ts>`. | No |
 
 ### Keeping the Repo Content Up to Date (recommended loop)
 
@@ -74,22 +74,22 @@ After any code change in `src/`, `bin/`, or `scripts/`:
 
 ```bash
 # 1. Find which content nodes cite the changed files
-npx kbexplorer affected HEAD~1
+npx kbx affected HEAD~1
 
 # 2. Refresh those pages. For a single page, follow the writer playbook at
-#    .github/skills/kbexplorer/references/writer-playbook.md (or update-node.md).
+#    .github/skills/kbx/references/writer-playbook.md (or update-node.md).
 #    For multi-page diff-driven refresh, see incremental-refresh.md.
 
 # 3. If a .docx or prose source under a derived path changed, refresh its artifact
-npx kbexplorer derive path/to/source.md --refresh
+npx kbx derive path/to/source.md --refresh
 
 # 4. Validate structurally and as a graph
-npx kbexplorer audit
-npx kbexplorer links
-npx kbexplorer derive content/derived-sources/*.md --check   # drift gate
+npx kbx audit
+npx kbx links
+npx kbx derive content/derived-sources/*.md --check   # drift gate
 
 # 5. Confirm it renders
-npx kbexplorer dev
+npx kbx dev
 node scripts/verify-self-kb.js   # in a second shell while dev is running
 ```
 
@@ -210,3 +210,4 @@ If you cannot fully verify your work — due to missing tools, environment limit
 | File system / output | Direct inspection | Read and verify output files, logs, generated artifacts |
 
 **Bottom line:** Do as much as possible to verify. Ask for help if you can't. Be transparent about what remains unverified.
+

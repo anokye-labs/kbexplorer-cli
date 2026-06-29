@@ -26,16 +26,16 @@ satisfies the [node-type contract](node-type-contract).
 
 ```bash
 # Read .docx/.md/.txt, extract via `copilot -p`, emit content/derived/*.jsonld
-npx kbexplorer derive docs/org-chart.docx notes/teams.md
+npx kbx derive docs/org-chart.docx notes/teams.md
 
 # Runnable in THIS repo — re-emits content/derived/platform-squad.jsonld
-npx kbexplorer derive docs/samples/platform-squad.md
+npx kbx derive docs/samples/platform-squad.md
 
 # Preview the exact copilot command + planned outputs; run nothing
-npx kbexplorer derive docs/samples/platform-squad.md --dry-run
+npx kbx derive docs/samples/platform-squad.md --dry-run
 
 # CI drift gate: non-zero exit if any committed artifact is stale (no LLM call)
-npx kbexplorer derive docs/samples/platform-squad.md --check
+npx kbx derive docs/samples/platform-squad.md --check
 ```
 
 ## Pipeline
@@ -81,13 +81,14 @@ emit differs from the committed bytes. Like [audit](cmd-audit), it is safe to
 wire into CI; unlike audit it targets derived data rather than authored pages.
 
 ```bash
-npx kbexplorer derive docs/*.docx        # extract once, commit the *.jsonld
-npx kbexplorer derive docs/*.docx --check   # CI: re-read the sources; stays green until one changes
+npx kbx derive docs/*.docx        # extract once, commit the *.jsonld
+npx kbx derive docs/*.docx --check   # CI: re-read the sources; stays green until one changes
 ```
 
 The fuzzy phase needs the [Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli)
-on `PATH` (or `KBEXPLORER_COPILOT_BIN`); already-derived sources with unchanged
+on `PATH` (or `KBX_COPILOT_BIN`); already-derived sources with unchanged
 input do not. See [node-type-contract](node-type-contract) for the exact shape
 of an emitted artifact and how the engine renders it.
 
 <!-- Sources: src/commands/derive.js, src/lib/ingest.js, src/lib/docx.js, src/lib/extract.js, src/lib/jsonld.js -->
+

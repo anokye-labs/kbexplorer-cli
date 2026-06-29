@@ -17,9 +17,9 @@ connections:
 to hand-write the YAML or look up the schema.
 
 ```bash
-npx kbexplorer scaffold my-new-topic --cluster getting-started
-npx kbexplorer scaffold api-v2 --cluster engine --parent api --title "API v2"
-npx kbexplorer scaffold deep-dive --cluster engine --emoji Beaker --force
+npx kbx scaffold my-new-topic --cluster getting-started
+npx kbx scaffold api-v2 --cluster engine --parent api --title "API v2"
+npx kbx scaffold deep-dive --cluster engine --emoji Beaker --force
 ```
 
 ## Default frontmatter
@@ -43,7 +43,7 @@ connections: []
   numeric).
 - `--cluster` is required.
 - Refuses to overwrite an existing file unless `--force` is passed.
-- Respects `VITE_KB_PATH` from `.env.kbexplorer` for the content directory.
+- Respects `VITE_KB_PATH` from `.env.kbx` for the content directory.
 
 ## Where it fits
 
@@ -53,3 +53,4 @@ use [affected](cmd-affected). After scaffolding, always run
 [audit](cmd-audit) to confirm the new node is well-formed.
 
 <!-- Sources: src/commands/scaffold.js, src/lib/transform.js -->
+

@@ -35,7 +35,7 @@ Two libs carry disproportionate weight:
 - [lib-detect-repo](lib-detect-repo) — provides `getAppRoot()`, which lets
   every runtime command find the explorer app whether it was installed as a
   submodule, vendored, or self-hosted.
-- [lib-source](lib-source) — owns `.kbexplorer.json`, the declarative record
+- [lib-source](lib-source) — owns `.kbx.json`, the declarative record
   of where the template came from and how it should be updated.
 
 These two together let the rest of the codebase ignore install mode and
@@ -47,7 +47,7 @@ into one resolution function and one read-from-disk.
 Three libraries were added to support the lifecycle tooling:
 
 - [lib-frontmatter](lib-frontmatter) — zero-dep parser for the
-  kbexplorer YAML subset, plus citation extraction.
+  kbx YAML subset, plus citation extraction.
 - [lib-audit](lib-audit) — rules-based schema validator used by
   [audit](cmd-audit).
 - [lib-affected](lib-affected) — builds the citation index and computes
@@ -66,3 +66,4 @@ pure libs, documented under [derivation-overview](derivation-overview):
   canonical JSON-LD emitter + contract validator.
 
 <!-- Sources: src/lib/*.js -->
+

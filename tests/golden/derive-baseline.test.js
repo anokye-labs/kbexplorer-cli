@@ -41,7 +41,7 @@ describe('golden: derive drift gate fires on source change (T0c.2)', () => {
   const srcAbs = join(sandbox, SOURCE); // absolute: readSource resolves off the real FS
   const outDir = join(sandbox, 'content', 'derived');
   // Replay the committed embedded extraction instead of calling the LLM.
-  const extraction = JSON.parse(readFileSync(ARTIFACT, 'utf-8')).kbexplorer.extraction;
+  const extraction = JSON.parse(readFileSync(ARTIFACT, 'utf-8')).kbx.extraction;
 
   before(() => {
     mkdirSync(join(sandbox, 'docs', 'samples'), { recursive: true });

@@ -24,14 +24,14 @@ connections:
 | `checkoutRef(cwd, ref)` | Switch a submodule to the given ref. |
 
 All helpers shell out to `git`; none require `gh` or network access beyond
-what `git` itself uses. The `repoUrl` is always parametrized — kbexplorer's
+what `git` itself uses. The `repoUrl` is always parametrized — kbx's
 default template URL is a constant defined here, but every helper accepts
 an arbitrary URL so custom templates work identically.
 
 ## Backward compatibility
 
 When [lib-source](lib-source) was added, every helper was changed to
-**default** to the kbexplorer template URL rather than hardcode it. Callers
+**default** to the kbx template URL rather than hardcode it. Callers
 that don't pass a URL get the default; callers that do (like
 [init](cmd-init) with `--template`) get their own. No legacy call site
 broke.
@@ -40,7 +40,8 @@ broke.
 
 The constant lives at the top of the file and is the **only** hardcoded
 mention of the official template URL in the entire codebase. Everything
-else flows through [`.kbexplorer.json`](lib-source) or an explicit
+else flows through [`.kbx.json`](lib-source) or an explicit
 `--template` flag.
 
 <!-- Sources: src/lib/version.js, src/lib/source.js -->
+

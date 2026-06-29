@@ -17,14 +17,14 @@ function makeHostWithVendoredTemplate() {
   );
   writeFileSync(resolve(host, 'README.md'), '# host readme\n');
   // Vendored .kbexplorer skeleton
-  const app = resolve(host, '.kbexplorer');
+  const app = resolve(host, '.kbx');
   mkdirSync(resolve(app, 'src', 'generated'), { recursive: true });
   writeFileSync(resolve(app, 'package.json'), '{"name":"kbexplorer-template"}');
   return { host, app };
 }
 
 describe('dev command helpers', () => {
-  it('manifestOutPath points at .kbexplorer/src/generated/repo-manifest.json', () => {
+  it('manifestOutPath points at .kbx/src/generated/repo-manifest.json', () => {
     const { app } = makeHostWithVendoredTemplate();
     try {
       const p = manifestOutPath(app);
@@ -63,10 +63,11 @@ describe('dev command helpers', () => {
       const paths = watchPaths(host);
       assert.ok(paths.some((p) => p.endsWith('content')));
       assert.ok(paths.some((p) => p.endsWith('README.md')));
-      // .kbexplorer.json doesn't exist in this fixture → filtered out
-      assert.ok(!paths.some((p) => p.endsWith('.kbexplorer.json')));
+      // .kbx.json doesn't exist in this fixture → filtered out
+      assert.ok(!paths.some((p) => p.endsWith('.kbx.json')));
     } finally {
       rmSync(host, { recursive: true, force: true });
     }
   });
 });
+

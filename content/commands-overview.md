@@ -27,7 +27,7 @@ connections:
     description: "unstructured → JSON-LD entities"
 ---
 
-Eleven verbs cover the full kbexplorer lifecycle. Each one is a thin orchestration
+Eleven verbs cover the full kbx lifecycle. Each one is a thin orchestration
 module in `src/commands/`; the heavy lifting lives in [`src/lib/`](libs-overview).
 
 ## Lifecycle phases
@@ -57,18 +57,19 @@ weak clusters, coverage gaps, unlinkified mentions) and is advisory only.
 A realistic CI block:
 
 ```bash
-npx kbexplorer audit           # fail on any structural error
-npx kbexplorer links           # warn on graph health
-npx kbexplorer build           # produce dist/
+npx kbx audit           # fail on any structural error
+npx kbx links           # warn on graph health
+npx kbx build           # produce dist/
 ```
 
 A realistic refresh loop after a code change:
 
 ```bash
-npx kbexplorer affected HEAD~5     # which nodes cite the changed files?
+npx kbx affected HEAD~5     # which nodes cite the changed files?
 # edit those nodes
-npx kbexplorer audit               # validate
-npx kbexplorer dev                 # preview
+npx kbx audit               # validate
+npx kbx dev                 # preview
 ```
 
 <!-- Sources: src/commands/audit.js, src/commands/links.js, src/commands/affected.js -->
+

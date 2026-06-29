@@ -1,5 +1,5 @@
 /**
- * kbexplorer init — Add submodule, install agents/skills, configure.
+ * kbx init — Add submodule, install agents/skills, configure.
  */
 
 import { resolve, dirname } from 'node:path';
@@ -67,15 +67,15 @@ function copyAssets(cwd) {
   console.log(`✓ Installed agents to .github/agents/`);
 
   // Copy skills
-  const skillsDir = resolve(cwd, '.github', 'skills', 'kbexplorer', 'references');
+  const skillsDir = resolve(cwd, '.github', 'skills', 'kbx', 'references');
   mkdirSync(skillsDir, { recursive: true });
-  const skillsSrc = resolve(ASSETS_DIR, 'skills', 'kbexplorer');
-  copyFileSync(resolve(skillsSrc, 'SKILL.md'), resolve(cwd, '.github', 'skills', 'kbexplorer', 'SKILL.md'));
+  const skillsSrc = resolve(ASSETS_DIR, 'skills', 'kbx');
+  copyFileSync(resolve(skillsSrc, 'SKILL.md'), resolve(cwd, '.github', 'skills', 'kbx', 'SKILL.md'));
   const refsSrc = resolve(skillsSrc, 'references');
   for (const f of readdirSync(refsSrc)) {
     copyFileSync(resolve(refsSrc, f), resolve(skillsDir, f));
   }
-  console.log(`✓ Installed skills to .github/skills/kbexplorer/`);
+  console.log(`✓ Installed skills to .github/skills/kbx/`);
 }
 
 function safeRemove(p) {
@@ -97,19 +97,19 @@ function installSubmodule(cwd, templateUrl, ref) {
     resolvedRef = latestTag;
     pinDesc = latestTag ? ` (pinned to ${latestTag})` : '';
   }
-  console.log(`📦 Adding .kbexplorer submodule from ${templateUrl}${pinDesc}...`);
-  execSync(`git submodule add ${templateUrl} .kbexplorer`, { cwd, stdio: 'inherit' });
+  console.log(`📦 Adding .kbx submodule from ${templateUrl}${pinDesc}...`);
+  execSync(`git submodule add ${templateUrl} .kbx`, { cwd, stdio: 'inherit' });
   try {
     if (refType === 'release' && latestTag) {
       checkoutTag(latestTag, cwd);
     } else if (ref) {
       checkoutRef(ref, cwd);
     }
-    execSync('git add .kbexplorer .gitmodules', { cwd, stdio: 'pipe' });
+    execSync('git add .kbx .gitmodules', { cwd, stdio: 'pipe' });
   } catch (err) {
     console.warn(`⚠ Could not pin submodule to ${resolvedRef || ref}: ${err.message}`);
   }
-  const resolvedCommit = resolveHeadSha(resolve(cwd, '.kbexplorer'));
+  const resolvedCommit = resolveHeadSha(resolve(cwd, '.kbx'));
   console.log(
     resolvedRef
       ? `✓ Submodule added and pinned to ${resolvedRef}`
@@ -121,7 +121,7 @@ function installSubmodule(cwd, templateUrl, ref) {
 /**
  * Install the template as a one-time vendored copy (no submodule). Clones into a
  * sibling temp dir, strips .git, validates, then renames into place so a failed
- * clone never leaves a half-installed `.kbexplorer`.
+ * clone never leaves a half-installed `.kbx`.
  */
 function installVendor(cwd, templateUrl, ref) {
   const refType = classifyRef(ref);
@@ -130,7 +130,7 @@ function installVendor(cwd, templateUrl, ref) {
     resolvedRef = getLatestTag(templateUrl);
   }
   const branchArg = resolvedRef ? `--branch ${resolvedRef} ` : '';
-  const tmp = resolve(cwd, `.kbexplorer.tmp-${Date.now()}`);
+  const tmp = resolve(cwd, `.kbx.tmp-${Date.now()}`);
   console.log(`📦 Vendoring template from ${templateUrl}${resolvedRef ? ` @ ${resolvedRef}` : ''}...`);
   try {
     execSync(`git clone --depth 1 ${branchArg}${templateUrl} "${tmp}"`, { cwd, stdio: 'inherit' });
@@ -144,16 +144,16 @@ function installVendor(cwd, templateUrl, ref) {
     safeRemove(tmp);
     throw new Error('Cloned template has no package.json — aborting.');
   }
-  renameSync(tmp, resolve(cwd, '.kbexplorer'));
-  console.log(`✓ Vendored template into .kbexplorer/${resolvedRef ? ` (${resolvedRef})` : ''}`);
+  renameSync(tmp, resolve(cwd, '.kbx'));
+  console.log(`✓ Vendored template into .kbx/${resolvedRef ? ` (${resolvedRef})` : ''}`);
   return { ref: resolvedRef ?? null, refType, resolvedCommit };
 }
 
 function printInitHelp() {
   console.log(`
-  kbexplorer init — set up the knowledge base in this repo
+  kbx init — set up the knowledge base in this repo
 
-  Usage: kbexplorer init [options]
+  Usage: kbx init [options]
 
   Options:
     --template, -t <url>       Install from a custom template repo
@@ -181,10 +181,10 @@ function printInitHelp() {
     --config <file>            JSON file of defaults for any of the above
 
   Examples:
-    kbexplorer init
-    kbexplorer init --template https://github.com/my-org/my-template.git
-    kbexplorer init --vendor --ref main
-    kbexplorer init --yes --mode vendor --ref <sha> --owner acme --repo widgets --title "Acme KB"
+    kbx init
+    kbx init --template https://github.com/my-org/my-template.git
+    kbx init --vendor --ref main
+    kbx init --yes --mode vendor --ref <sha> --owner acme --repo widgets --title "Acme KB"
 `);
 }
 
@@ -272,7 +272,7 @@ function resolveHeadlessConfig(opts, cwd) {
   } else if (runtimeName === 'claude') {
     runtimeBlock = { agent: 'claude' };
   }
-  // copilot / skip → null (keeps .kbexplorer.json minimal, same as interactive)
+  // copilot / skip → null (keeps .kbx.json minimal, same as interactive)
 
   if (errors.length) {
     console.error('✗ Cannot run `init --yes` — missing or invalid configuration:');
@@ -302,7 +302,7 @@ export default async function init(args) {
 
   console.log('');
   console.log('╔══════════════════════════════════════════╗');
-  console.log('║     kbexplorer — Interactive Setup       ║');
+  console.log('║     kbx — Interactive Setup              ║');
   console.log('╚══════════════════════════════════════════╝');
   console.log('');
 
@@ -328,13 +328,13 @@ export default async function init(args) {
   } else if (selfHosted) {
     console.log('📍 Self-hosted mode (template repo)');
   } else {
-    // .kbexplorer already present — never reinstall or silently convert modes.
+    // .kbx already present — never reinstall or silently convert modes.
     const existing = readSourceRecord(cwd);
-    console.log('📍 .kbexplorer already present — skipping install.');
+    console.log('📍 .kbx already present — skipping install.');
     if (existing && existing.mode !== mode) {
       console.warn(
         `⚠ Existing install mode is "${existing.mode}", but "${mode}" was requested. ` +
-        'Mode conversion is not automatic — remove .kbexplorer first to reinstall.',
+        'Mode conversion is not automatic — remove .kbx first to reinstall.',
       );
     }
   }
@@ -398,7 +398,7 @@ export default async function init(args) {
         ...(outputFormat && outputFormat !== 'text' ? { outputFormat } : {}),
       };
     } else if (runtimeAgentName != null && runtimeAgentName !== 'copilot') {
-      // Only write the block when it differs from the default to keep .kbexplorer.json minimal
+      // Only write the block when it differs from the default to keep .kbx.json minimal
       runtimeBlock = { agent: runtimeAgentName };
     }
   }
@@ -412,10 +412,10 @@ export default async function init(args) {
   ];
   if (contentPath) envLines.push(`VITE_KB_PATH=${contentPath}`);
 
-  writeFileSync(resolve(cwd, '.env.kbexplorer'), envLines.join('\n') + '\n', 'utf-8');
-  console.log('✓ Created .env.kbexplorer');
+  writeFileSync(resolve(cwd, '.env.kbx'), envLines.join('\n') + '\n', 'utf-8');
+  console.log('✓ Created .env.kbx');
 
-  // Write runtime block into .kbexplorer.json (merge with existing record).
+  // Write runtime block into .kbx.json (merge with existing record).
   // Validate first — never persist a block derive/generate would reject.
   if (runtimeBlock != null) {
     try {
@@ -434,11 +434,11 @@ export default async function init(args) {
   const gitignorePath = resolve(cwd, '.gitignore');
   if (existsSync(gitignorePath)) {
     const content = readFileSync(gitignorePath, 'utf-8');
-    if (!content.includes('.env.kbexplorer')) {
-      writeFileSync(gitignorePath, content.trimEnd() + '\n.env.kbexplorer\n', 'utf-8');
+    if (!content.includes('.env.kbx')) {
+      writeFileSync(gitignorePath, content.trimEnd() + '\n.env.kbx\n', 'utf-8');
     }
   } else {
-    writeFileSync(gitignorePath, '.env.kbexplorer\n', 'utf-8');
+    writeFileSync(gitignorePath, '.env.kbx\n', 'utf-8');
   }
   console.log('✓ Updated .gitignore');
 
@@ -447,50 +447,51 @@ export default async function init(args) {
   if (existsSync(pkgPath)) {
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     pkg.scripts = pkg.scripts || {};
-    pkg.scripts['kb:dev'] = 'kbexplorer dev';
-    pkg.scripts['kb:build'] = 'kbexplorer build';
-    pkg.scripts['kb:generate'] = 'kbexplorer generate';
+    pkg.scripts['kb:dev'] = 'kbx dev';
+    pkg.scripts['kb:build'] = 'kbx build';
+    pkg.scripts['kb:generate'] = 'kbx generate';
     writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
     console.log('✓ Added kb:dev, kb:build, kb:generate scripts');
   }
 
   // Install deps in the template (submodule or vendored copy)
   if (!selfHosted && hasSubmodule(cwd)) {
-    console.log('\n📦 Installing kbexplorer dependencies...');
+    console.log('\n📦 Installing kbx dependencies...');
     try {
       execSync('npm install --no-audit --no-fund', {
-        cwd: resolve(cwd, '.kbexplorer'),
+        cwd: resolve(cwd, '.kbx'),
         stdio: 'inherit',
       });
       console.log('✓ Dependencies installed');
     } catch {
-      console.warn('⚠ npm install failed — run manually in .kbexplorer/');
+      console.warn('⚠ npm install failed — run manually in .kbx/');
     }
   }
 
   if (mode === 'vendor' && !selfHosted && hasSubmodule(cwd)) {
-    console.log('\nℹ Vendored template lives in .kbexplorer/ (one-time copy, not a submodule).');
+    console.log('\nℹ Vendored template lives in .kbx/ (one-time copy, not a submodule).');
     console.log('  • Commit it to version your customizations, or');
-    console.log('  • add ".kbexplorer/" to .gitignore to treat it as a re-fetchable dependency.');
-    console.log('  Run `kbexplorer update` to fetch a newer template version (never clobbers).');
+    console.log('  • add ".kbx/" to .gitignore to treat it as a re-fetchable dependency.');
+    console.log('  Run `kbx update` to fetch a newer template version (never clobbers).');
   }
 
   prompt?.close();
 
   console.log('\n───────────────────────────────────────────');
-  console.log('✅ kbexplorer is configured!');
+  console.log('✅ kbx is configured!');
   console.log('');
   console.log('  Get started:');
-  console.log('    npx kbexplorer dev               Start the dev server');
-  console.log('    npx kbexplorer generate          Build a catalogue + content');
+  console.log('    npx kbx dev               Start the dev server');
+  console.log('    npx kbx generate          Build a catalogue + content');
   console.log('');
   console.log('  Lifecycle helpers:');
-  console.log('    npx kbexplorer scaffold <slug> --cluster <id>   Add a single page');
-  console.log('    npx kbexplorer audit                            Validate frontmatter integrity');
-  console.log('    npx kbexplorer affected <git-ref>               Diff → impacted nodes');
-  console.log('    npx kbexplorer links                            Graph health report');
+  console.log('    npx kbx scaffold <slug> --cluster <id>   Add a single page');
+  console.log('    npx kbx audit                            Validate frontmatter integrity');
+  console.log('    npx kbx affected <git-ref>               Diff → impacted nodes');
+  console.log('    npx kbx links                            Graph health report');
   console.log('');
   console.log('  Skill docs:');
-  console.log('    .github/skills/kbexplorer/SKILL.md and references/');
+  console.log('    .github/skills/kbx/SKILL.md and references/');
   console.log('───────────────────────────────────────────\n');
 }
+

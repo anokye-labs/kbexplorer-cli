@@ -13,7 +13,7 @@ connections:
     description: "skill points at scaffold for single-node creation"
 ---
 
-The `kbexplorer` skill is installed at `.github/skills/kbexplorer/`. Its
+The `kbx` skill is installed at `.github/skills/kbx/`. Its
 `SKILL.md` is a **thin router** — when-to-use triggers, an intent →
 reference routing table, and a short list of universal invariants. The
 depth lives in `references/`.
@@ -34,7 +34,7 @@ depth lives in `references/`.
 
 A typical interaction:
 
-1. The user mentions kbexplorer or a related concept.
+1. The user mentions kbx or a related concept.
 2. The skill's when-to-use clause activates.
 3. The router maps the user's intent to one or two references.
 4. The model loads those references on demand and executes.
@@ -52,4 +52,5 @@ Three rules apply everywhere, restated in every reference:
    a content change is complete.
 3. **Names lie, read the code** — never paraphrase a file name; open it.
 
-<!-- Sources: src/assets/skills/kbexplorer/SKILL.md, src/assets/skills/kbexplorer/references/*.md -->
+<!-- Sources: src/assets/skills/kbx/SKILL.md, src/assets/skills/kbx/references/*.md -->
+

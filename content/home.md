@@ -27,7 +27,7 @@ in a set of Copilot agents and a routing skill, and provides eleven commands tha
 cover the full content lifecycle — from `init` and `generate` through `audit`,
 `affected`, `scaffold`, and `derive`.
 
-This knowledge base **dogfoods kbexplorer on its own source** — every node you
+This knowledge base **dogfoods kbx on its own source** — every node you
 see here is authored markdown that cites real files in this repository, and
 the graph is regenerated from the live repo each time you preview it.
 
@@ -37,15 +37,16 @@ the graph is regenerated from the live repo each time you preview it.
 - Curious how it works? See [cli-router](cli-router) and [libs-overview](libs-overview).
 - Writing content yourself? See [skill-overview](skill-overview).
 - Deriving entities from docs? See [derivation-overview](derivation-overview).
-- Standardizing kbexplorer across an org? Start with [install-modes](install-modes).
+- Standardizing kbx across an org? Start with [install-modes](install-modes).
 
 ## The two-seam design
 
 The codebase rests on two thin seams. `getAppRoot()` resolves the explorer
 app's location identically whether it was installed as a submodule or vendored
 — so [dev / build / manifest](cmd-dev-build) do not care which mode is in use.
-And `.kbexplorer.json` records the install source, so [update](cmd-update) and
+And `.kbx.json` records the install source, so [update](cmd-update) and
 [init](cmd-init) read from the host repo rather than a hardcoded constant.
 [lib-detect-repo](lib-detect-repo) and [lib-source](lib-source) hold both.
 
 <!-- Sources: bin/cli.js, src/lib/detect-repo.js, src/lib/source.js -->
+

@@ -1,5 +1,5 @@
 /**
- * kbexplorer links — Graph health analysis.
+ * kbx links — Graph health analysis.
  *
  * Analyzes the knowledge graph and reports:
  * - Orphan nodes (zero connections)
@@ -9,7 +9,7 @@
  * - Connection suggestions
  *
  * Note: broken references (connections.to → unknown id) are reported by
- * `kbexplorer audit`, not here.
+ * `kbx audit`, not here.
  */
 
 import { resolve } from 'node:path';
@@ -160,7 +160,7 @@ function analyzeGraph(manifest, cwd) {
   // ── 2. Broken references — DEPRECATED ────────────────────
   //
   // Broken `connections.to` targets are now hard errors enforced by
-  // `kbexplorer audit`. We skip detection here to avoid duplicating that
+  // `kbx audit`. We skip detection here to avoid duplicating that
   // signal; `report.brokenRefs` stays for backward-compatible JSON output
   // but will always be empty.
 
@@ -325,9 +325,9 @@ function printReport(report) {
   console.log(`  Edges: ${stats.totalEdges}`);
   console.log('');
 
-  // Broken refs (now reported by `kbexplorer audit`; kept for JSON parity but expected empty)
+  // Broken refs (now reported by `kbx audit`; kept for JSON parity but expected empty)
   if (report.brokenRefs.length > 0) {
-    console.log(`✗ Broken references (${report.brokenRefs.length}) — run \`kbexplorer audit\`:`);
+    console.log(`✗ Broken references (${report.brokenRefs.length}) — run \`kbx audit\`:`);
     for (const ref of report.brokenRefs) {
       console.log(`  ${ref.from} → ${ref.to} (${ref.description || 'no description'})`);
     }
@@ -432,3 +432,5 @@ export default async function links(args) {
     console.log(JSON.stringify(report, null, 2));
   }
 }
+
+

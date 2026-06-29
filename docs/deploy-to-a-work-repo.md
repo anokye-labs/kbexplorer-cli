@@ -14,7 +14,7 @@ This document records the path proven in the [pilot rehearsal](./pilot-rehearsal
 5. [Regenerate the manifest](#5-regenerate-the-manifest)
 6. [Production build](#6-production-build)
 7. [Hosting options](#7-hosting-options)
-8. [Troubleshooting with `kbexplorer doctor`](#8-troubleshooting-with-kbexplorer-doctor)
+8. [Troubleshooting with `kbx doctor`](#8-troubleshooting-with-kbexplorer-doctor)
 
 ---
 
@@ -58,7 +58,7 @@ configured agent runtime. One of the three must be available on your machine:
 |---------|--------|---------|
 | **Copilot** (default) | `copilot` | [GitHub Copilot CLI docs](https://docs.github.com/copilot/how-tos/copilot-cli) |
 | **Claude** | `claude` | [Claude Code](https://claude.ai/download) |
-| **Custom** | any | configure in `.kbexplorer.json` |
+| **Custom** | any | configure in `.kbx.json` |
 
 The fuzzy step runs **locally under your identity** — it is never invoked in CI.
 
@@ -68,7 +68,7 @@ If your agent needs MCP servers (e.g. ADO, SharePoint), install and configure
 them before running `generate` or `derive`. The CLI verifies declared servers
 via MCP preflight and exits early with actionable errors if they are missing.
 
-Declare the servers you need in `.kbexplorer.json` after `init`:
+Declare the servers you need in `.kbx.json` after `init`:
 
 ```jsonc
 {
@@ -104,20 +104,20 @@ npx @anokye-labs/kbexplorer init
 
 The interactive wizard walks through:
 
-1. **Template install** — adds `.kbexplorer/` as a pinned git submodule (default)
+1. **Template install** — adds `.kbx/` as a pinned git submodule (default)
    or a one-time vendored copy (`--vendor`).
 2. **Agents and skills** — copies `kb-architect`, `kb-writer`, and `kb-researcher`
-   to `.github/agents/`, and the `kbexplorer` skill to `.github/skills/kbexplorer/`.
-3. **Config** — writes `.env.kbexplorer` with owner/repo/branch/title and adds
+   to `.github/agents/`, and the `kbx` skill to `.github/skills/kbexplorer/`.
+3. **Config** — writes `.env.kbx` with owner/repo/branch/title and adds
    `kb:dev`, `kb:build`, `kb:generate` npm scripts.
-4. **Runtime selection** — records your chosen agent runtime in `.kbexplorer.json`.
+4. **Runtime selection** — records your chosen agent runtime in `.kbx.json`.
 
 #### Submodule vs. vendor mode
 
 | Mode | Flag | Best for |
 |------|------|----------|
-| **Submodule** (default) | _(none)_ | Track upstream as-is; `kbexplorer update` bumps the pin |
-| **Vendor** | `--vendor` | Copy-and-customize; `.kbexplorer/` committed to the work repo |
+| **Submodule** (default) | _(none)_ | Track upstream as-is; `kbx update` bumps the pin |
+| **Vendor** | `--vendor` | Copy-and-customize; `.kbx/` committed to the work repo |
 
 For most enterprise work repos where you do not plan to customize the template,
 the **submodule** mode is recommended.
@@ -136,15 +136,15 @@ npx @anokye-labs/kbexplorer init --ref v1.2.0
 #### Non-interactive / scripted init
 
 `init` requires a TTY for its interactive prompts. For scripted environments,
-run it interactively on a developer machine first to produce `.env.kbexplorer`
-and `.kbexplorer.json`, then commit those files.
+run it interactively on a developer machine first to produce `.env.kbx`
+and `.kbx.json`, then commit those files.
 
 ### 2.2 Commit the scaffold
 
 ```bash
-git add .kbexplorer .gitmodules .env.kbexplorer .kbexplorer.json \
+git add .kbx .gitmodules .env.kbx .kbx.json \
         .github/agents .github/skills package.json
-git commit -m "chore: add kbexplorer scaffold"
+git commit -m "chore: add kbx scaffold"
 ```
 
 ### 2.3 Verify the install
@@ -152,7 +152,7 @@ git commit -m "chore: add kbexplorer scaffold"
 Run `doctor` immediately after `init`:
 
 ```bash
-npx kbexplorer doctor
+npx kbx doctor
 ```
 
 All sections should be green (or warn-only). See [§8](#8-troubleshooting-with-kbexplorer-doctor) for remediation.
@@ -164,14 +164,14 @@ complexity, use the direct-HTTP path:
 
 ```bash
 # Runtime env var (one-off)
-KBEXPLORER_GH_API_BASE=https://github.example.com/api/v3 \
-KBEXPLORER_GH_TOKEN=<personal-access-token> \
-npx kbexplorer manifest
+KBX_GH_API_BASE=https://github.example.com/api/v3 \
+KBX_GH_TOKEN=<personal-access-token> \
+npx kbx manifest
 
-# Or persist it in .kbexplorer.json (travels with the repo)
+# Or persist it in .kbx.json (travels with the repo)
 ```
 
-Add to `.kbexplorer.json`:
+Add to `.kbx.json`:
 
 ```jsonc
 {
@@ -185,7 +185,7 @@ Token precedence (when `ghApiBase` is set):
 
 | Priority | Source |
 |----------|--------|
-| 1 | `KBEXPLORER_GH_TOKEN` env var |
+| 1 | `KBX_GH_TOKEN` env var |
 | 2 | `GH_TOKEN` env var |
 | 3 | Anonymous (no `Authorization` header) |
 
@@ -232,15 +232,15 @@ Start there, validate with `audit`, then expand.
 ### Adding unstructured sources
 
 For `.docx`, prose Markdown, or loosely-structured text files you want to extract
-entities from, use `kbexplorer derive`:
+entities from, use `kbx derive`:
 
 ```bash
-npx kbexplorer derive docs/org-chart.docx docs/team-charter.md
+npx kbx derive docs/org-chart.docx docs/team-charter.md
 ```
 
 This calls the configured agent runtime (LLM) once per source, extracts entities
 and relationships into `content/derived/*.jsonld`, and embeds the extraction for
-future reuse (no LLM call on unchanged input). See `kbexplorer derive --help`.
+future reuse (no LLM call on unchanged input). See `kbx derive --help`.
 
 ---
 
@@ -256,16 +256,16 @@ that CI can validate deterministically.
 
 ```bash
 # Step 1: (Optional) verify the environment first
-npx kbexplorer doctor
+npx kbx doctor
 
 # Step 2: Run the agent to produce catalogue.json, then transform → content/
-npx kbexplorer generate
+npx kbx generate
 
 # Step 3: Preview locally
-npx kbexplorer dev
+npx kbx dev
 
 # Step 4: Audit structural integrity
-npx kbexplorer audit
+npx kbx audit
 
 # Step 5: Commit catalogue.json + content/ when satisfied
 git add catalogue.json content/
@@ -279,26 +279,26 @@ The active runtime is resolved in this order (highest wins):
 | Priority | Source |
 |----------|--------|
 | 1 | `--runtime <name>` flag on the command |
-| 2 | `runtime` block in `.kbexplorer.json` |
-| 3 | `KBEXPLORER_RUNTIME` env var |
+| 2 | `runtime` block in `.kbx.json` |
+| 3 | `KBX_RUNTIME` env var |
 | 4 | Default: `copilot` |
 
 ```bash
 # Use Claude for this run only
-npx kbexplorer generate --runtime claude
+npx kbx generate --runtime claude
 
 # Preview what the agent command would look like without running it
-npx kbexplorer generate --dry-run
+npx kbx generate --dry-run
 ```
 
 ### Refresh an existing catalogue
 
 ```bash
 # Re-run analysis even if catalogue.json already exists
-npx kbexplorer generate --refresh
+npx kbx generate --refresh
 
 # Skip the agent step and just re-transform an existing catalogue
-npx kbexplorer generate --no-agent
+npx kbx generate --no-agent
 ```
 
 ### Binary path overrides
@@ -306,8 +306,8 @@ npx kbexplorer generate --no-agent
 If the runtime binary is not on `PATH`, set the relevant env var:
 
 ```bash
-KBEXPLORER_COPILOT_BIN=/usr/local/bin/copilot npx kbexplorer generate
-KBEXPLORER_CLAUDE_BIN=/opt/claude/bin/claude npx kbexplorer generate --runtime claude
+KBX_COPILOT_BIN=/usr/local/bin/copilot npx kbx generate
+KBX_CLAUDE_BIN=/opt/claude/bin/claude npx kbx generate --runtime claude
 ```
 
 ---
@@ -318,40 +318,40 @@ The manifest captures a snapshot of the repo's GitHub data (issues, PRs, release
 commits, file tree) for the explorer's in-app views.
 
 ```bash
-npx kbexplorer manifest
+npx kbx manifest
 ```
 
-The manifest is written to `.kbexplorer/src/generated/repo-manifest.json` (or the
+The manifest is written to `.kbx/src/generated/repo-manifest.json` (or the
 equivalent path in your install). It is regenerated automatically during `build`.
 
 ### GHE / EMU
 
 ```bash
-KBEXPLORER_GH_API_BASE=https://github.example.com/api/v3 \
-KBEXPLORER_GH_TOKEN=<pat> \
-npx kbexplorer manifest
+KBX_GH_API_BASE=https://github.example.com/api/v3 \
+KBX_GH_TOKEN=<pat> \
+npx kbx manifest
 ```
 
 ---
 
 ## 6. Production build
 
-`kbexplorer build` generates the manifest, then runs Vite to produce a static SPA.
+`kbx build` generates the manifest, then runs Vite to produce a static SPA.
 
 ```bash
-npx kbexplorer build
+npx kbx build
 ```
 
 Output: `dist/kb/` (relative to the work repo root for non-template repos).
 
 > **Note:** `build` requires the template's `node_modules` to be installed.
 > In vendored installs without `npm install`, run `npm install` inside
-> `.kbexplorer/` first, or use the submodule mode which installs deps during `init`.
+> `.kbx/` first, or use the submodule mode which installs deps during `init`.
 
 ### Custom base path (sub-directory hosting)
 
 ```bash
-npx kbexplorer build --base /my-kb/
+npx kbx build --base /my-kb/
 ```
 
 This passes `--base` to Vite. Use it when hosting under a path prefix (e.g.
@@ -406,10 +406,10 @@ jobs:
 
       - name: Install template deps
         run: npm install --no-audit --no-fund
-        working-directory: .kbexplorer
+        working-directory: .kbx
 
       - name: Build
-        run: npx kbexplorer build --base /${{ github.event.repository.name }}/
+        run: npx kbx build --base /${{ github.event.repository.name }}/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -488,20 +488,20 @@ location /kb-explorer/ {
 **Token / auth note:** The explorer itself is a static site — it does not make
 authenticated API calls at runtime. All GitHub data is baked into the manifest
 at build time. If the manifest build needs access to a private GHE repo, provide
-`KBEXPLORER_GH_TOKEN` as a CI secret (not a client-side variable).
+`KBX_GH_TOKEN` as a CI secret (not a client-side variable).
 
 ---
 
-## 8. Troubleshooting with `kbexplorer doctor`
+## 8. Troubleshooting with `kbx doctor`
 
-`kbexplorer doctor` is the first command to run when anything looks wrong. It
+`kbx doctor` is the first command to run when anything looks wrong. It
 diagnoses four sections and exits non-zero if any check fails.
 
 ```bash
-npx kbexplorer doctor
-npx kbexplorer doctor --runtime claude    # check a specific adapter
-npx kbexplorer doctor --json             # machine-readable output
-npx kbexplorer doctor --offline          # skip the latest-tag network check
+npx kbx doctor
+npx kbx doctor --runtime claude    # check a specific adapter
+npx kbx doctor --json             # machine-readable output
+npx kbx doctor --offline          # skip the latest-tag network check
 ```
 
 ### 8.1 What each section checks
@@ -516,8 +516,8 @@ npx kbexplorer doctor --offline          # skip the latest-tag network check
 - Required servers missing → `❌ fail`; optional servers missing → `⚠️ warn`
 
 **Template**
-- Whether `.kbexplorer.json` is present and parseable
-- (Submodule mode) Whether `.gitmodules` agrees with `.kbexplorer.json`
+- Whether `.kbx.json` is present and parseable
+- (Submodule mode) Whether `.gitmodules` agrees with `.kbx.json`
 - Whether the template is on a release tag, a branch, or tracking latest
 
 **Environment**
@@ -542,7 +542,7 @@ Runtime
 ```
 
 Fix: install the [GitHub Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli),
-or switch to the Claude adapter (`--runtime claude`), or set `KBEXPLORER_COPILOT_BIN`
+or switch to the Claude adapter (`--runtime claude`), or set `KBX_COPILOT_BIN`
 to the full path of an existing binary.
 
 #### `❌ Required server "ado": NOT configured for copilot`
@@ -561,17 +561,17 @@ MCP
 Fix: add the server entry to `~/.copilot/mcp-config.json` (copilot) or
 `.mcp.json` in the repo root (claude), then re-run `doctor` to confirm.
 
-#### `⚠️ .kbexplorer.json not found — run kbexplorer init`
+#### `⚠️ .kbx.json not found — run kbx init`
 
 `init` has not been run yet, or the file was deleted.
 
 ```
 Template
 ────────
-  ⚠️  .kbexplorer.json not found — run kbexplorer init to create it
+  ⚠️  .kbx.json not found — run kbx init to create it
 ```
 
-Fix: run `npx kbexplorer init`.
+Fix: run `npx kbx init`.
 
 #### `⚠️ Template tracks branch "main" — consider pinning to a release tag`
 
@@ -581,12 +581,12 @@ This is non-fatal but makes builds less reproducible.
 ```
 Template
 ────────
-  ✅ .kbexplorer.json present (mode: submodule, template: …)
+  ✅ .kbx.json present (mode: submodule, template: …)
   ⚠️  Template tracks branch "main" — consider pinning to a release tag for reproducibility
 ```
 
-Fix: run `npx kbexplorer update --ref <tag>` to pin to a specific release, or
-re-init with `npx kbexplorer init --ref v1.2.0`.
+Fix: run `npx kbx update --ref <tag>` to pin to a specific release, or
+re-init with `npx kbx init --ref v1.2.0`.
 
 #### `⚠️ A newer release tag exists: v1.0.0 → v1.1.0`
 
@@ -595,10 +595,10 @@ A newer template version is available.
 ```
 Template
 ────────
-  ⚠️  A newer release tag exists: v1.0.0 → v1.1.0 (run kbexplorer update)
+  ⚠️  A newer release tag exists: v1.0.0 → v1.1.0 (run kbx update)
 ```
 
-Fix: `npx kbexplorer update` to pull the latest template version.
+Fix: `npx kbx update` to pull the latest template version.
 
 #### `⚠️ repo-manifest.json may be stale`
 
@@ -610,7 +610,7 @@ Environment
   ⚠️  repo-manifest.json may be stale (generated 2026-01-01T00:00:00.000Z, HEAD is newer)
 ```
 
-Fix: run `npx kbexplorer manifest` to regenerate it.
+Fix: run `npx kbx manifest` to regenerate it.
 
 #### `⚠️ content/ directory not found`
 
@@ -622,7 +622,7 @@ Environment
   ⚠️  content/ directory not found
 ```
 
-Fix: run `npx kbexplorer generate` (or `npx kbexplorer generate --no-agent` if
+Fix: run `npx kbx generate` (or `npx kbx generate --no-agent` if
 `catalogue.json` already exists).
 
 #### `❌ Node v20.x.x is below required >=22`
@@ -633,9 +633,10 @@ Fix: install Node.js 22 or later (use `nvm`, `fnm`, or your system package manag
 
 #### `❌ Failed to resolve runtime adapter: …`
 
-The `.kbexplorer.json` has an invalid `runtime` block (unknown agent, missing
+The `.kbx.json` has an invalid `runtime` block (unknown agent, missing
 `command` for custom, etc.).
 
-Fix: edit `.kbexplorer.json` to correct the `runtime` block. Valid shapes are
+Fix: edit `.kbx.json` to correct the `runtime` block. Valid shapes are
 documented in the [Runtime Configuration](../README.md#runtime-configuration)
-section of the README. Or re-run `npx kbexplorer init` to rewrite it interactively.
+section of the README. Or re-run `npx kbx init` to rewrite it interactively.
+

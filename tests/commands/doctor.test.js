@@ -170,18 +170,18 @@ describe('checkRuntime — default (no config, no env, no flag)', () => {
 });
 
 describe('checkRuntime — env var selection', () => {
-  it('selects claude when KBEXPLORER_RUNTIME=claude', () => {
+  it('selects claude when KBX_RUNTIME=claude', () => {
     const spawnSync = fakeSpawnAvailable('claude');
     const { checks } = checkRuntime({
       flag: null,
       config: null,
-      env: { KBEXPLORER_RUNTIME: 'claude' },
+      env: { KBX_RUNTIME: 'claude' },
       spawnSync,
     });
     const selected = checks.find((c) => c.id === 'runtime.selected');
     assert.ok(selected);
     assert.match(selected.message, /claude/);
-    assert.match(selected.message, /KBEXPLORER_RUNTIME/);
+    assert.match(selected.message, /KBX_RUNTIME/);
   });
 });
 
@@ -197,7 +197,7 @@ describe('checkRuntime — config block selection', () => {
     const selected = checks.find((c) => c.id === 'runtime.selected');
     assert.ok(selected);
     assert.match(selected.message, /claude/);
-    assert.match(selected.message, /\.kbexplorer\.json/);
+    assert.match(selected.message, /\.kbx\.json/);
   });
 });
 
@@ -207,7 +207,7 @@ describe('checkRuntime — flag selection', () => {
     const { checks } = checkRuntime({
       flag: 'claude',
       config: { agent: 'copilot' },
-      env: { KBEXPLORER_RUNTIME: 'copilot' },
+      env: { KBX_RUNTIME: 'copilot' },
       spawnSync,
     });
     const selected = checks.find((c) => c.id === 'runtime.selected');
@@ -388,7 +388,7 @@ describe('checkMcp — adapter is null (runtime failed)', () => {
 
 // ── checkTemplate ─────────────────────────────────────────────────────────────
 
-describe('checkTemplate — no .kbexplorer.json', () => {
+describe('checkTemplate — no .kbx.json', () => {
   it('emits warn when source record is absent', () => {
     withTempDir((cwd) => {
       const checks = checkTemplate({ cwd, offline: true, getLatestTag: null });
@@ -397,10 +397,10 @@ describe('checkTemplate — no .kbexplorer.json', () => {
   });
 });
 
-describe('checkTemplate — invalid .kbexplorer.json', () => {
+describe('checkTemplate — invalid .kbx.json', () => {
   it('emits fail when file is not parseable JSON', () => {
     withTempDir((cwd) => {
-      writeFileSync(join(cwd, '.kbexplorer.json'), 'NOT JSON!!!', 'utf-8');
+      writeFileSync(join(cwd, '.kbx.json'), 'NOT JSON!!!', 'utf-8');
       const checks = checkTemplate({ cwd, offline: true, getLatestTag: null });
       assert.ok(checks.some((c) => c.status === 'fail' && c.id === 'template.source-record'));
     });
@@ -410,7 +410,7 @@ describe('checkTemplate — invalid .kbexplorer.json', () => {
 describe('checkTemplate — valid source record, submodule mode', () => {
   it('passes source-record check', () => {
     withTempDir((cwd) => {
-      writeJson(join(cwd, '.kbexplorer.json'), {
+      writeJson(join(cwd, '.kbx.json'), {
         template: 'https://github.com/anokye-labs/kbexplorer-template.git',
         ref: 'v1.0.0',
         refType: 'tag',
@@ -426,7 +426,7 @@ describe('checkTemplate — valid source record, submodule mode', () => {
 
   it('warns when .gitmodules is absent for submodule mode', () => {
     withTempDir((cwd) => {
-      writeJson(join(cwd, '.kbexplorer.json'), {
+      writeJson(join(cwd, '.kbx.json'), {
         template: 'https://github.com/anokye-labs/kbexplorer-template.git',
         ref: null,
         refType: 'release',
@@ -441,14 +441,14 @@ describe('checkTemplate — valid source record, submodule mode', () => {
 
   it('warns when .gitmodules url differs from source record', () => {
     withTempDir((cwd) => {
-      writeJson(join(cwd, '.kbexplorer.json'), {
+      writeJson(join(cwd, '.kbx.json'), {
         template: 'https://github.com/anokye-labs/kbexplorer-template.git',
         ref: null,
         refType: 'release',
         mode: 'submodule',
       });
       // Write a .gitmodules with a different URL
-      const gitmodules = `[submodule ".kbexplorer"]\n\tpath = .kbexplorer\n\turl = https://github.com/other-org/other-template.git\n`;
+      const gitmodules = `[submodule ".kbx"]\n\tpath = .kbx\n\turl = https://github.com/other-org/other-template.git\n`;
       writeFileSync(join(cwd, '.gitmodules'), gitmodules, 'utf-8');
       const checks = checkTemplate({ cwd, offline: true, getLatestTag: null });
       const gmCheck = checks.find((c) => c.id === 'template.gitmodules');
@@ -461,13 +461,13 @@ describe('checkTemplate — valid source record, submodule mode', () => {
   it('passes when .gitmodules url agrees with source record', () => {
     withTempDir((cwd) => {
       const url = 'https://github.com/anokye-labs/kbexplorer-template.git';
-      writeJson(join(cwd, '.kbexplorer.json'), {
+      writeJson(join(cwd, '.kbx.json'), {
         template: url,
         ref: null,
         refType: 'release',
         mode: 'submodule',
       });
-      const gitmodules = `[submodule ".kbexplorer"]\n\tpath = .kbexplorer\n\turl = ${url}\n`;
+      const gitmodules = `[submodule ".kbx"]\n\tpath = .kbx\n\turl = ${url}\n`;
       writeFileSync(join(cwd, '.gitmodules'), gitmodules, 'utf-8');
       const checks = checkTemplate({ cwd, offline: true, getLatestTag: null });
       const gmCheck = checks.find((c) => c.id === 'template.gitmodules');
@@ -480,7 +480,7 @@ describe('checkTemplate — valid source record, submodule mode', () => {
 describe('checkTemplate — pinned tag ref', () => {
   it('pass on pinned tag', () => {
     withTempDir((cwd) => {
-      writeJson(join(cwd, '.kbexplorer.json'), {
+      writeJson(join(cwd, '.kbx.json'), {
         template: 'https://github.com/anokye-labs/kbexplorer-template.git',
         ref: 'v1.2.3',
         refType: 'tag',
@@ -496,7 +496,7 @@ describe('checkTemplate — pinned tag ref', () => {
 
   it('warns when a newer tag is available (injected getLatestTag)', () => {
     withTempDir((cwd) => {
-      writeJson(join(cwd, '.kbexplorer.json'), {
+      writeJson(join(cwd, '.kbx.json'), {
         template: 'https://github.com/anokye-labs/kbexplorer-template.git',
         ref: 'v1.0.0',
         refType: 'tag',
@@ -513,7 +513,7 @@ describe('checkTemplate — pinned tag ref', () => {
 
   it('passes latest check when already on the latest tag', () => {
     withTempDir((cwd) => {
-      writeJson(join(cwd, '.kbexplorer.json'), {
+      writeJson(join(cwd, '.kbx.json'), {
         template: 'https://github.com/anokye-labs/kbexplorer-template.git',
         ref: 'v2.0.0',
         refType: 'tag',
@@ -529,7 +529,7 @@ describe('checkTemplate — pinned tag ref', () => {
 
   it('skips latest tag check when --offline', () => {
     withTempDir((cwd) => {
-      writeJson(join(cwd, '.kbexplorer.json'), {
+      writeJson(join(cwd, '.kbx.json'), {
         template: 'https://github.com/anokye-labs/kbexplorer-template.git',
         ref: 'v1.0.0',
         refType: 'tag',
@@ -549,7 +549,7 @@ describe('checkTemplate — pinned tag ref', () => {
 describe('checkTemplate — branch ref', () => {
   it('warns when tracking a branch (not pinned)', () => {
     withTempDir((cwd) => {
-      writeJson(join(cwd, '.kbexplorer.json'), {
+      writeJson(join(cwd, '.kbx.json'), {
         template: 'https://github.com/anokye-labs/kbexplorer-template.git',
         ref: 'main',
         refType: 'branch',
@@ -663,10 +663,10 @@ describe('checkEnvironment — content dir', () => {
 
 describe('checkEnvironment — manifest freshness', () => {
   // The manifest lives in the template app at <appRoot>/src/generated/repo-manifest.json;
-  // getAppRoot(cwd) finds the app via .kbexplorer/package.json.
+  // getAppRoot(cwd) finds the app via .kbx/package.json.
   function fixtureManifest(cwd, manifest) {
-    writeJson(join(cwd, '.kbexplorer', 'package.json'), { name: 'kbexplorer' });
-    writeJson(join(cwd, '.kbexplorer', 'src', 'generated', 'repo-manifest.json'), manifest);
+    writeJson(join(cwd, '.kbx', 'package.json'), { name: 'kbx' });
+    writeJson(join(cwd, '.kbx', 'src', 'generated', 'repo-manifest.json'), manifest);
   }
 
   it('emits pass when manifest has recent generatedAt', () => {
@@ -728,7 +728,7 @@ describe('doctor command — --help', () => {
       cap.restore();
     }
     const text = cap.lines.join('\n');
-    assert.match(text, /kbexplorer doctor/);
+    assert.match(text, /kbx doctor/);
     assert.match(text, /--json/);
     assert.match(text, /--offline/);
     assert.match(text, /--runtime/);
@@ -963,13 +963,13 @@ describe('doctor command — gitmodules mismatch reported', () => {
     withTempDir(async (cwd) => {
       const home = mkdtempSync(join(tmpdir(), 'kb-dr-home6-'));
       try {
-        writeJson(join(cwd, '.kbexplorer.json'), {
+        writeJson(join(cwd, '.kbx.json'), {
           template: 'https://github.com/anokye-labs/kbexplorer-template.git',
           ref: null,
           refType: 'release',
           mode: 'submodule',
         });
-        const gitmodules = `[submodule ".kbexplorer"]\n\tpath = .kbexplorer\n\turl = https://github.com/other/template.git\n`;
+        const gitmodules = `[submodule ".kbx"]\n\tpath = .kbx\n\turl = https://github.com/other/template.git\n`;
         writeFileSync(join(cwd, '.gitmodules'), gitmodules, 'utf-8');
         const spawnSync = fakeSpawnRouter({
           git: fakeSpawnAvailable('git'),
@@ -1003,3 +1003,4 @@ describe('doctor command — gitmodules mismatch reported', () => {
     });
   });
 });
+

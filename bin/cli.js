@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * kbexplorer CLI — turn any repo into a navigable knowledge graph.
+ * kbx CLI — turn any repo into a navigable knowledge graph.
  *
  * Commands:
- *   init       Add .kbexplorer submodule + install agents/skills + configure
+ *   init       Add .kbx submodule + install agents/skills + configure
  *   generate   Run architect → transform → writer content pipeline
  *   dev        Start dev server in local mode
  *   build      Production build
@@ -40,12 +40,12 @@ const COMMANDS = {
 
 function printUsage() {
   console.log(`
-  kbexplorer — Interactive Knowledge Base Explorer CLI
+  kbx — Interactive Knowledge Base Explorer CLI
 
-  Usage: kbexplorer <command> [options]
+  Usage: kbx <command> [options]
 
   Commands:
-    init        Add .kbexplorer submodule, install agents/skills, configure
+    init        Add .kbx submodule, install agents/skills, configure
     generate    Run content generation pipeline (architect → transform → writer)
     dev         Start dev server in local mode
     build       Production build
@@ -106,19 +106,19 @@ function printUsage() {
     --offline                  Skip network-dependent checks (latest tag lookup)
 
   Examples:
-    npx kbexplorer init
-    npx kbexplorer init --template https://github.com/my-org/my-template.git
-    npx kbexplorer init --vendor --ref main
-    npx kbexplorer generate
-    npx kbexplorer derive docs/org-chart.docx
-    npx kbexplorer derive docs/*.md --check
-    npx kbexplorer dev
-    npx kbexplorer build --base /docs/
-    npx kbexplorer validate
-    npx kbexplorer validate --json
-    npx kbexplorer doctor
-    npx kbexplorer doctor --runtime claude
-    npx kbexplorer doctor --json
+    npx kbx init
+    npx kbx init --template https://github.com/my-org/my-template.git
+    npx kbx init --vendor --ref main
+    npx kbx generate
+    npx kbx derive docs/org-chart.docx
+    npx kbx derive docs/*.md --check
+    npx kbx dev
+    npx kbx build --base /docs/
+    npx kbx validate
+    npx kbx validate --json
+    npx kbx doctor
+    npx kbx doctor --runtime claude
+    npx kbx doctor --json
 `);
 }
 
@@ -136,7 +136,7 @@ if (command === '--version' || command === '-v') {
 
 if (!COMMANDS[command]) {
   console.error(`Unknown command: ${command}`);
-  console.error(`Run "kbexplorer --help" for usage.`);
+  console.error(`Run "kbx --help" for usage.`);
   process.exit(1);
 }
 

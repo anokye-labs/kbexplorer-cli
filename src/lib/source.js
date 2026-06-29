@@ -1,5 +1,5 @@
 /**
- * Template source record (`.kbexplorer.json`).
+ * Template source record (`.kbx.json`).
  *
  * The CLI-owned source of truth for where the explorer template came from and
  * how it was installed. Lives at the host repo root so both submodule and vendor
@@ -18,7 +18,8 @@
 import { resolve } from 'node:path';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 
-export const SOURCE_FILE = '.kbexplorer.json';
+export const SOURCE_FILE = '.kbx.json';
+const LEGACY_SOURCE_FILE = '.kbexplorer.json';
 
 /**
  * Classify a ref string into an update policy.
@@ -36,12 +37,21 @@ export function classifyRef(ref) {
 
 /**
  * Read the source record from a host repo. Returns null when absent or invalid.
+ * Falls back to the legacy `.kbexplorer.json` name with a deprecation warning.
  * @param {string} cwd
  * @returns {object|null}
  */
 export function readSourceRecord(cwd = process.cwd()) {
-  const file = resolve(cwd, SOURCE_FILE);
-  if (!existsSync(file)) return null;
+  let file = resolve(cwd, SOURCE_FILE);
+  if (!existsSync(file)) {
+    const legacyFile = resolve(cwd, LEGACY_SOURCE_FILE);
+    if (existsSync(legacyFile)) {
+      process.stderr.write(`[kbx] ${LEGACY_SOURCE_FILE} is deprecated; rename it to ${SOURCE_FILE}\n`);
+      file = legacyFile;
+    } else {
+      return null;
+    }
+  }
   try {
     const data = JSON.parse(readFileSync(file, 'utf-8'));
     return data && typeof data === 'object' ? data : null;
@@ -61,3 +71,4 @@ export function writeSourceRecord(cwd, record) {
   writeFileSync(file, JSON.stringify(record, null, 2) + '\n', 'utf-8');
   return file;
 }
+

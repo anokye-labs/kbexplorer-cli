@@ -1,5 +1,5 @@
 /**
- * kbexplorer update — Check for template updates, ask before upgrading.
+ * kbx update — Check for template updates, ask before upgrading.
  */
 
 import { resolve, dirname } from 'node:path';
@@ -31,15 +31,15 @@ function refreshAssets(cwd) {
   }
   console.log('✓ Refreshed agents in .github/agents/');
 
-  const skillsDir = resolve(cwd, '.github', 'skills', 'kbexplorer', 'references');
+  const skillsDir = resolve(cwd, '.github', 'skills', 'kbx', 'references');
   mkdirSync(skillsDir, { recursive: true });
-  const skillsSrc = resolve(ASSETS_DIR, 'skills', 'kbexplorer');
-  copyFileSync(resolve(skillsSrc, 'SKILL.md'), resolve(cwd, '.github', 'skills', 'kbexplorer', 'SKILL.md'));
+  const skillsSrc = resolve(ASSETS_DIR, 'skills', 'kbx');
+  copyFileSync(resolve(skillsSrc, 'SKILL.md'), resolve(cwd, '.github', 'skills', 'kbx', 'SKILL.md'));
   const refsSrc = resolve(skillsSrc, 'references');
   for (const f of readdirSync(refsSrc)) {
     copyFileSync(resolve(refsSrc, f), resolve(skillsDir, f));
   }
-  console.log('✓ Refreshed skills in .github/skills/kbexplorer/');
+  console.log('✓ Refreshed skills in .github/skills/kbx/');
 }
 
 function safeRemove(p) {
@@ -91,13 +91,13 @@ export default async function update(args) {
  */
 async function updateSubmodule(cwd, record, force) {
   const url = record.template;
-  const submodulePath = resolve(cwd, '.kbexplorer');
+  const submodulePath = resolve(cwd, '.kbx');
 
   // Warn if .gitmodules disagrees with the CLI-owned source record.
   const gmUrl = getSubmoduleUrl(cwd);
   if (gmUrl && url && gmUrl !== url) {
-    console.warn(`\n⚠ .kbexplorer.json template (${url}) differs from .gitmodules (${gmUrl}).`);
-    console.warn('  Using .kbexplorer.json — reconcile these to avoid updating from the wrong remote.');
+    console.warn(`\n⚠ .kbx.json template (${url}) differs from .gitmodules (${gmUrl}).`);
+    console.warn('  Using .kbx.json — reconcile these to avoid updating from the wrong remote.');
   }
 
   const refType = record.refType || classifyRef(record.ref);
@@ -108,7 +108,7 @@ async function updateSubmodule(cwd, record, force) {
   console.log(`  Current: ${currentTag || 'unknown'}`);
 
   if (refType === 'tag') {
-    console.log(`  ⓘ Pinned to ${record.ref}. Re-run \`kbexplorer init --ref <tag>\` to move.`);
+    console.log(`  ⓘ Pinned to ${record.ref}. Re-run \`kbx init --ref <tag>\` to move.`);
     return;
   }
 
@@ -122,7 +122,7 @@ async function updateSubmodule(cwd, record, force) {
     }
     try {
       checkoutRef(record.ref, cwd);
-      execSync('git add .kbexplorer', { cwd, stdio: 'pipe' });
+      execSync('git add .kbx', { cwd, stdio: 'pipe' });
       execSync('npm install --no-audit --no-fund', { cwd: submodulePath, stdio: 'inherit' });
       writeSourceRecord(cwd, { ...record, template: url, resolvedCommit: resolveHeadSha(submodulePath) });
       console.log(`  ✓ Updated to latest ${record.ref}`);
@@ -170,7 +170,7 @@ async function updateSubmodule(cwd, record, force) {
 
   try {
     checkoutRef(latestTag, cwd);
-    execSync('git add .kbexplorer', { cwd, stdio: 'pipe' });
+    execSync('git add .kbx', { cwd, stdio: 'pipe' });
     execSync('npm install --no-audit --no-fund', { cwd: submodulePath, stdio: 'inherit' });
     writeSourceRecord(cwd, {
       ...record,
@@ -186,7 +186,7 @@ async function updateSubmodule(cwd, record, force) {
 }
 
 /**
- * Update a vendored (one-time copy) install. Never clobbers `.kbexplorer/`:
+ * Update a vendored (one-time copy) install. Never clobbers `.kbx/`:
  * fetches the new version into a sibling review dir; with --force, backs up the
  * current install before swapping the new one into place.
  */
@@ -199,7 +199,7 @@ async function updateVendor(cwd, record, force) {
   console.log(`  Current: ${record.ref || record.resolvedCommit?.slice(0, 7) || 'unknown'}`);
 
   if (refType === 'tag') {
-    console.log(`  ⓘ Pinned to ${record.ref}. Re-run \`kbexplorer init --vendor --ref <tag>\` to move.`);
+    console.log(`  ⓘ Pinned to ${record.ref}. Re-run \`kbx init --vendor --ref <tag>\` to move.`);
     return;
   }
 
@@ -214,7 +214,7 @@ async function updateVendor(cwd, record, force) {
   }
 
   const branchArg = targetRef ? `--branch ${targetRef} ` : '';
-  const reviewDir = resolve(cwd, `.kbexplorer-update-${timestamp()}`);
+  const reviewDir = resolve(cwd, `.kbx-update-${timestamp()}`);
   try {
     execSync(`git clone --depth 1 ${branchArg}${url} "${reviewDir}"`, { cwd, stdio: 'inherit' });
   } catch (err) {
@@ -235,25 +235,25 @@ async function updateVendor(cwd, record, force) {
     const from = (record.resolvedCommit || '').slice(0, 7) || '?';
     console.log(`\n  New template content available (${from} → ${newSha ? newSha.slice(0, 7) : '?'}).`);
     console.log(`  Fetched to: ${reviewDir}`);
-    console.log(`  Review:  git diff --no-index .kbexplorer "${reviewDir}"`);
-    console.log('  Apply:   kbexplorer update --force   (backs up .kbexplorer, then swaps)');
+    console.log(`  Review:  git diff --no-index .kbx "${reviewDir}"`);
+    console.log('  Apply:   kbx update --force   (backs up .kbx, then swaps)');
     return;
   }
 
   // --force: back up the current install, then swap. Never delete before success.
-  const backup = resolve(cwd, `.kbexplorer.backup-${timestamp()}`);
+  const backup = resolve(cwd, `.kbx.backup-${timestamp()}`);
   try {
-    renameSync(resolve(cwd, '.kbexplorer'), backup);
-    renameSync(reviewDir, resolve(cwd, '.kbexplorer'));
+    renameSync(resolve(cwd, '.kbx'), backup);
+    renameSync(reviewDir, resolve(cwd, '.kbx'));
   } catch (err) {
     console.error('  ✗ Swap failed:', err.message);
     safeRemove(reviewDir);
     return;
   }
   try {
-    execSync('npm install --no-audit --no-fund', { cwd: resolve(cwd, '.kbexplorer'), stdio: 'inherit' });
+    execSync('npm install --no-audit --no-fund', { cwd: resolve(cwd, '.kbx'), stdio: 'inherit' });
   } catch {
-    console.warn('  ⚠ npm install failed — run manually in .kbexplorer/');
+    console.warn('  ⚠ npm install failed — run manually in .kbx/');
   }
   writeSourceRecord(cwd, {
     ...record,
@@ -264,3 +264,5 @@ async function updateVendor(cwd, record, force) {
   });
   console.log(`  ✓ Updated. Previous install backed up to ${backup}`);
 }
+
+

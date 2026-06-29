@@ -6,16 +6,16 @@
 #
 # What it does:
 #   • PR gate (blocking, deterministic — no LLM, no `gh` auth):
-#       kbexplorer audit         — content/*.md structural integrity
-#       kbexplorer validate      — content-model/ descriptor FK refs/kinds/cycles
-#       kbexplorer derive --check — committed *.jsonld are in sync with sources
+#       kbx audit         — content/*.md structural integrity
+#       kbx validate      — content-model/ descriptor FK refs/kinds/cycles
+#       kbx derive --check — committed *.jsonld are in sync with sources
 #   • On push to the default branch: build the static SPA and deploy it to an
 #     Azure Static Web App gated behind Azure AD (allowedRoles).
 #
 # Substitutions you must make (all are repo Secrets/Variables — never inline):
 #   secrets.AZURE_STATIC_WEB_APPS_API_TOKEN  — SWA deployment token
-#   secrets.KBEXPLORER_GH_TOKEN              — PAT (repo:read) on your EMU/GHE host
-#   vars.KBEXPLORER_GH_API_BASE              — e.g. https://github.example.com/api/v3
+#   secrets.KBX_GH_TOKEN              — PAT (repo:read) on your EMU/GHE host
+#   vars.KBX_GH_API_BASE              — e.g. https://github.example.com/api/v3
 #
 # The build's manifest step reads your EMU host's issues/PRs/releases through the
 # direct-HTTP path (ghApiBase + token); no `gh` auth handshake is needed.
@@ -48,7 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive   # required for submodule-mode .kbexplorer installs
+          submodules: recursive   # required for submodule-mode .kbx installs
 
       - uses: actions/setup-node@v4
         with:
@@ -56,13 +56,13 @@ jobs:
 
       - name: Install template deps
         run: npm install --no-audit --no-fund
-        working-directory: .kbexplorer
+        working-directory: .kbx
 
       - name: Audit content/ (structural integrity)
-        run: npx kbexplorer audit
+        run: npx kbx audit
 
       - name: Validate content-model/ (FK refs, kinds, reports-to cycles)
-        run: npx kbexplorer validate
+        run: npx kbx validate
 
       - name: Derive drift check (committed *.jsonld in sync with sources)
         shell: bash
@@ -72,7 +72,7 @@ jobs:
           if [ ${#sources[@]} -eq 0 ]; then
             echo "No derived sources found — skipping derive --check."
           else
-            npx kbexplorer derive "${sources[@]}" --check
+            npx kbx derive "${sources[@]}" --check
           fi
 
   # ───────────────────────────────────────────────────────────────────────────
@@ -85,8 +85,8 @@ jobs:
     runs-on: ubuntu-latest   # or [self-hosted, emu]
     env:
       # EMU/GHE host wiring for the manifest build (direct-HTTP path).
-      KBEXPLORER_GH_API_BASE: ${{ vars.KBEXPLORER_GH_API_BASE }}
-      KBEXPLORER_GH_TOKEN: ${{ secrets.KBEXPLORER_GH_TOKEN }}
+      KBX_GH_API_BASE: ${{ vars.KBX_GH_API_BASE }}
+      KBX_GH_TOKEN: ${{ secrets.KBX_GH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,10 +98,10 @@ jobs:
 
       - name: Install template deps
         run: npm install --no-audit --no-fund
-        working-directory: .kbexplorer
+        working-directory: .kbx
 
       - name: Build static SPA (manifest reads the EMU host via ghApiBase/token)
-        run: npx kbexplorer build
+        run: npx kbx build
 
       - name: Stage the SWA + AAD config alongside the build output
         run: cp docs/recipes/staticwebapp.config.json dist/kb/staticwebapp.config.json
@@ -113,4 +113,5 @@ jobs:
           action: upload
           app_location: dist/kb       # pre-built static output
           output_location: ''         # nothing for Oryx to build
-          skip_app_build: true        # we already ran `kbexplorer build`
+          skip_app_build: true        # we already ran `kbx build`
+

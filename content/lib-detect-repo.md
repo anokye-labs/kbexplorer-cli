@@ -22,8 +22,8 @@ questions for every command:
 The single function every runtime command depends on:
 
 - If `cwd` is the template repo itself (its `package.json#name` is
-  `kbexplorer` or `kbexplorer-template`), return `cwd`. **Self-hosted mode.**
-- Else if `cwd/.kbexplorer/package.json` exists, return `cwd/.kbexplorer`.
+  `kbx` or `kbexplorer-template`), return `cwd`. **Self-hosted mode.**
+- Else if `cwd/.kbx/package.json` exists, return `cwd/.kbx`.
   **Host-repo mode** — could be a submodule **or** a vendored copy; the
   function does not care, and neither does any caller.
 - Else return `null`. Nothing is installed.
@@ -36,7 +36,7 @@ required **zero changes** to [dev / build / manifest](cmd-dev-build).
 | Function | Returns |
 |---|---|
 | `isTemplateRepo(cwd)` | true when in self-hosted mode |
-| `isSubmoduleInstall(cwd)` | true when `.kbexplorer/` is a submodule (parses `.gitmodules`) |
+| `isSubmoduleInstall(cwd)` | true when `.kbx/` is a submodule (parses `.gitmodules`) |
 | `getSubmoduleUrl(cwd)` | the registered submodule URL, if any |
 | `hasTemplate(cwd)` | true when a template install of any kind is present |
 | `detectGitOrigin(cwd)` | `{ owner, repo }` parsed from `git remote get-url origin` |
@@ -46,3 +46,4 @@ The submodule helpers are used only by [update](cmd-update) and [init](cmd-init)
 runtime code never branches on install mode.
 
 <!-- Sources: src/lib/detect-repo.js -->
+

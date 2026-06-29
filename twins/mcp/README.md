@@ -89,7 +89,7 @@ for Claude:
 }
 ```
 
-Then declare them in `.kbexplorer.json` so preflight enforces them:
+Then declare them in `.kbx.json` so preflight enforces them:
 
 ```json
 {
@@ -130,3 +130,4 @@ Run them with the repo's test command:
 ```bash
 npm test
 ```
+

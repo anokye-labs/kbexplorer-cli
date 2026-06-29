@@ -1,10 +1,10 @@
 /**
- * kbexplorer doctor — diagnose local runtime, MCP, and template setup.
+ * kbx doctor — diagnose local runtime, MCP, and template setup.
  *
  * Sections:
  *   1. Runtime   — which adapter is selected and why, binary path, availability, version.
  *   2. MCP       — per-server check for each required/optional server in the config.
- *   3. Template  — .kbexplorer.json source record, .gitmodules agreement, pinned ref vs latest tag.
+ *   3. Template  — .kbx.json source record, .gitmodules agreement, pinned ref vs latest tag.
  *   4. Environment — node version, git/gh on PATH, content dir, manifest freshness.
  *
  * Output: human-readable with ✅/⚠️/❌ per check, grouped by section.
@@ -56,7 +56,7 @@ function resolveRuntimeSource(flag, config, env) {
     return { source: `--runtime flag (${flag})`, adapterName: flag };
   }
   if (config != null) {
-    return { source: `.kbexplorer.json runtime block (agent: "${config.agent}")`, adapterName: config.agent };
+    return { source: `.kbx.json runtime block (agent: "${config.agent}")`, adapterName: config.agent };
   }
   const envVal = env[RUNTIME_ENV];
   if (envVal != null && envVal !== '') {
@@ -242,7 +242,7 @@ function checkTemplate({ cwd, offline, getLatestTag: getLatestTagImpl }) {
 
   const sourceFilePath = resolve(cwd, SOURCE_FILE);
   if (!existsSync(sourceFilePath)) {
-    checks.push(warn('template.source-record', `${SOURCE_FILE} not found — run kbexplorer init to create it`));
+    checks.push(warn('template.source-record', `${SOURCE_FILE} not found — run kbx init to create it`));
     return checks;
   }
 
@@ -258,7 +258,7 @@ function checkTemplate({ cwd, offline, getLatestTag: getLatestTagImpl }) {
   if (record.mode === 'submodule') {
     const gmUrl = getSubmoduleUrl(cwd);
     if (!gmUrl) {
-      checks.push(warn('template.gitmodules', '.gitmodules not found or does not contain a .kbexplorer entry'));
+      checks.push(warn('template.gitmodules', '.gitmodules not found or does not contain a .kbx entry'));
     } else if (record.template && gmUrl !== record.template) {
       checks.push(
         warn(
@@ -281,7 +281,7 @@ function checkTemplate({ cwd, offline, getLatestTag: getLatestTagImpl }) {
         const latest = getLatestTagImpl(record.template);
         if (latest && latest !== record.ref) {
           checks.push(
-            warn('template.latest', `A newer release tag exists: ${record.ref} → ${latest} (run kbexplorer update)`),
+            warn('template.latest', `A newer release tag exists: ${record.ref} → ${latest} (run kbx update)`),
           );
         } else if (latest) {
           checks.push(pass('template.latest', `Template is on the latest release tag (${latest})`));
@@ -513,9 +513,9 @@ export default async function doctor(args, {
 
   if (opts.help) {
     console.log(`
-  kbexplorer doctor — diagnose local runtime, MCP, and template setup
+  kbx doctor — diagnose local runtime, MCP, and template setup
 
-  Usage: kbexplorer doctor [options]
+  Usage: kbx doctor [options]
 
   Options:
     --runtime <name>   Check a specific adapter ("copilot" | "claude" | "custom")
@@ -602,3 +602,5 @@ export default async function doctor(args, {
 
 // Export section runners for testing
 export { checkRuntime, checkMcp, checkTemplate, checkEnvironment };
+
+

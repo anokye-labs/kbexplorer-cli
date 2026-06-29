@@ -3,7 +3,7 @@
  * descriptor tree (person / team / workstream / priority / system-of-record).
  *
  * `audit.js` only covers `content/*.md`. This module is the standalone gate for
- * the structured org-layer descriptors that `kbexplorer audit` never sees — the
+ * the structured org-layer descriptors that `kbx audit` never sees — the
  * data the template's manifest build consumes. It enforces, per kind:
  *
  *   • required/optional field contracts (extra fields pass through, never error)
@@ -522,3 +522,4 @@ export const _internal = {
   listDescriptorFiles,
   asRefList,
 };
+

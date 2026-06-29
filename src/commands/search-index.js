@@ -1,7 +1,7 @@
 /**
- * kbexplorer search-index — Build or check semantic search artifacts.
+ * kbx search-index — Build or check semantic search artifacts.
  *
- * Reads the kbexplorer content model, derives SearchUnits from the knowledge
+ * Reads the kbx content model, derives SearchUnits from the knowledge
  * graph, generates embeddings via a pluggable provider, and writes checked-in
  * search artifacts (index-meta.json, units.json, vectors.json).
  *
@@ -9,11 +9,11 @@
  * current graph — no embedding API calls, pure deterministic comparison.
  *
  * Usage:
- *   kbexplorer search-index                  # build/update artifacts
- *   kbexplorer search-index --check          # CI drift gate
- *   kbexplorer search-index --provider openai --model text-embedding-3-small
- *   kbexplorer search-index --dir .search    # custom artifact directory
- *   kbexplorer search-index --dry-run        # show plan without writing
+ *   kbx search-index                  # build/update artifacts
+ *   kbx search-index --check          # CI drift gate
+ *   kbx search-index --provider openai --model text-embedding-3-small
+ *   kbx search-index --dir .search    # custom artifact directory
+ *   kbx search-index --dry-run        # show plan without writing
  */
 
 import { resolve, relative } from 'node:path';
@@ -57,9 +57,9 @@ function parseArgs(args) {
 
 function printHelp() {
   console.log(`
-  kbexplorer search-index — Build or check semantic search artifacts
+  kbx search-index — Build or check semantic search artifacts
 
-  Usage: kbexplorer search-index [options]
+  Usage: kbx search-index [options]
 
   Reads content/, extracts SearchUnits from the knowledge graph, generates
   embeddings, and writes checked-in artifacts to the artifact directory.
@@ -96,7 +96,7 @@ export default async function searchIndex(args = []) {
     process.exit(1);
   }
 
-  // Lazy-import kbexplorer-search to avoid hard dependency at CLI load time.
+  // Lazy-import kbx-search to avoid hard dependency at CLI load time.
   // Falls back to a local path if the package isn't installed.
   let search;
   try {
@@ -106,7 +106,7 @@ export default async function searchIndex(args = []) {
     try {
       const { resolve: r } = await import('node:path');
       const { fileURLToPath } = await import('node:url');
-      const devPath = r(fileURLToPath(import.meta.url), '..', '..', '..', '..', 'kbexplorer-search', 'dist', 'index.js');
+      const devPath = r(fileURLToPath(import.meta.url), '..', '..', '..', '..', 'kbx-search', 'dist', 'index.js');
       search = await import(devPath);
     } catch {
       console.error('✗ @anokye-labs/kbexplorer-search is not installed.');
@@ -155,7 +155,7 @@ export default async function searchIndex(args = []) {
       if (result.staleUnits.length > 0) {
         console.error(`  Stale units: ${result.staleUnits.join(', ')}`);
       }
-      console.error(`\n  Run \`kbexplorer search-index\` to update.`);
+      console.error(`\n  Run \`kbx search-index\` to update.`);
     }
 
     process.exit(result.fresh ? 0 : 1);
@@ -200,3 +200,5 @@ export default async function searchIndex(args = []) {
   console.log(`✅ Search artifacts written to ${relDir}/`);
   console.log(`   index-meta.json  units.json  vectors.json`);
 }
+
+

@@ -1,5 +1,5 @@
 /**
- * Minimal zero-dependency frontmatter parser tuned for kbexplorer content files.
+ * Minimal zero-dependency frontmatter parser tuned for kbx content files.
  *
  * Supports a deliberate subset of YAML — id, title, emoji, cluster, parent,
  * image, sprite, and a list of {to, description} connections. This is NOT a
@@ -18,12 +18,12 @@ import { resolve } from 'node:path';
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
 /**
- * Load `.env.kbexplorer` from the given cwd and return the parsed keys.
+ * Load `.env.kbx` from the given cwd and return the parsed keys.
  * Minimal parser: `KEY=value` lines, ignores blanks and `#`-comments.
  * Does NOT mutate `process.env`. Returns `{}` if the file is missing.
  */
 export function loadKbEnv(cwd) {
-  const envPath = resolve(cwd, '.env.kbexplorer');
+  const envPath = resolve(cwd, '.env.kbx');
   if (!existsSync(envPath)) return {};
   const out = {};
   const raw = readFileSync(envPath, 'utf-8');
@@ -44,8 +44,8 @@ export function loadKbEnv(cwd) {
 }
 
 /**
- * Resolve the kbexplorer content directory for a given cwd.
- * Priority: explicit override → process.env.VITE_KB_PATH → .env.kbexplorer → 'content'.
+ * Resolve the kbx content directory for a given cwd.
+ * Priority: explicit override → process.env.VITE_KB_PATH → .env.kbx → 'content'.
  * Returns `{ contentDir: absolute, contentPath: relative }`.
  */
 export function resolveContentDir(cwd, override) {
@@ -184,3 +184,4 @@ export function extractCitedFiles(body) {
 
   return [...files];
 }
+

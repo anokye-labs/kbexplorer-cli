@@ -31,9 +31,9 @@ describe('EMU CI recipe (#77)', () => {
 
   it('wires the three deterministic blocking gates', () => {
     const yml = readFileSync(RECIPE, 'utf-8');
-    assert.match(yml, /kbexplorer audit/);
-    assert.match(yml, /kbexplorer validate/);
-    assert.match(yml, /kbexplorer derive .* --check/);
+    assert.match(yml, /kbx audit/);
+    assert.match(yml, /kbx validate/);
+    assert.match(yml, /kbx derive .* --check/);
   });
 
   it('gates run before deploy and deploy is gated to push on the default branch', () => {
@@ -49,8 +49,8 @@ describe('EMU CI recipe (#77)', () => {
 
   it('wires the EMU host (ghApiBase + token) for the manifest build', () => {
     const yml = readFileSync(RECIPE, 'utf-8');
-    assert.match(yml, /KBEXPLORER_GH_API_BASE:\s*\$\{\{\s*vars\.KBEXPLORER_GH_API_BASE\s*\}\}/);
-    assert.match(yml, /KBEXPLORER_GH_TOKEN:\s*\$\{\{\s*secrets\.KBEXPLORER_GH_TOKEN\s*\}\}/);
+    assert.match(yml, /KBX_GH_API_BASE:\s*\$\{\{\s*vars\.KBX_GH_API_BASE\s*\}\}/);
+    assert.match(yml, /KBX_GH_TOKEN:\s*\$\{\{\s*secrets\.KBX_GH_TOKEN\s*\}\}/);
   });
 
   it('deploys the pre-built output to Azure Static Web Apps', () => {
@@ -77,3 +77,6 @@ describe('EMU CI recipe (#77)', () => {
     assert.match(md, /recipes\/staticwebapp\.config\.json/);
   });
 });
+
+
+

@@ -18,9 +18,9 @@ markdown-only). It runs with **no LLM and no `gh` auth**, so it is safe to wire
 into CI as a blocking PR check. It exits **non-zero on errors**.
 
 ```bash
-npx kbexplorer validate                          # default: scan content-model/
-npx kbexplorer validate --content-model my-dir   # custom descriptor dir
-npx kbexplorer validate --json                   # machine-readable output
+npx kbx validate                          # default: scan content-model/
+npx kbx validate --content-model my-dir   # custom descriptor dir
+npx kbx validate --json                   # machine-readable output
 ```
 
 ## What it catches
@@ -61,3 +61,4 @@ fast, single-purpose, and independently wireable in CI — the EMU CI recipe run
 `audit` **and** `validate` as two blocking gates.
 
 <!-- Sources: src/commands/validate.js, src/lib/content-model.js, docs/templates/person.yaml -->
+

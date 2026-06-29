@@ -6,20 +6,20 @@ cluster: commands
 parent: commands-overview
 connections:
   - to: "lib-source"
-    description: "reads .kbexplorer.json to know what to update"
+    description: "reads .kbx.json to know what to update"
   - to: "lib-version"
     description: "remote tag / SHA lookups"
   - to: "install-modes"
     description: "different behavior per mode"
 ---
 
-`update` refreshes a previously-installed kbexplorer. Crucially, it
+`update` refreshes a previously-installed kbx. Crucially, it
 **never silently clobbers local customizations** — the vendor mode path
 always backs up before overwriting.
 
 ```bash
-npx kbexplorer update           # check + apply if safe
-npx kbexplorer update --force   # back up and swap (vendor only)
+npx kbx update           # check + apply if safe
+npx kbx update --force   # back up and swap (vendor only)
 ```
 
 ## What it updates
@@ -27,19 +27,19 @@ npx kbexplorer update --force   # back up and swap (vendor only)
 Always:
 
 - Agents in `.github/agents/` — they ship with the CLI npm package.
-- The skill at `.github/skills/kbexplorer/` — same reason.
+- The skill at `.github/skills/kbx/` — same reason.
 
 Conditionally, based on the install mode recorded in
-[.kbexplorer.json](lib-source):
+[.kbx.json](lib-source):
 
 | Install mode | `update` does |
 |---|---|
 | `submodule` | `git submodule update --remote` to the new ref. |
-| `vendor` | Fetches the new version into a sibling review folder; with `--force` backs up the current install to `.kbexplorer.backup-<ts>` and swaps. |
+| `vendor` | Fetches the new version into a sibling review folder; with `--force` backs up the current install to `.kbx.backup-<ts>` and swaps. |
 
 ## Reproducibility
 
-`update` compares the `resolvedCommit` in `.kbexplorer.json` against the
+`update` compares the `resolvedCommit` in `.kbx.json` against the
 remote SHA for the configured ref. If they match, it reports "Already up to
 date" without re-downloading. This is why `init` always records the resolved
 SHA rather than just the symbolic ref.
@@ -53,3 +53,4 @@ SHA rather than just the symbolic ref.
   to vendor or vice versa. Re-init explicitly to switch.
 
 <!-- Sources: src/commands/update.js, src/lib/source.js, src/lib/version.js -->
+

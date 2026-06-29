@@ -64,7 +64,7 @@ describe('generate command', () => {
     } finally {
       cap.restore();
     }
-    assert.match(cap.out.join('\n'), /kbexplorer generate/);
+    assert.match(cap.out.join('\n'), /kbx generate/);
   });
 });
 
@@ -130,3 +130,4 @@ describe('generate.js — fix #39: VITE_KB_HOST_ROOT in manifest regeneration', 
     assert.ok(!block.includes('execSync('), 'Phase 2b must NOT use execSync (it throws on failure)');
   });
 });
+

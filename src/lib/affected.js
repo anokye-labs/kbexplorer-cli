@@ -1,8 +1,8 @@
 /**
- * Map a set of changed source files to the kbexplorer content nodes that
+ * Map a set of changed source files to the kbx content nodes that
  * cite them. Pure computation — no LLM, no network.
  *
- * Powers `kbexplorer affected <git-ref>`. The skill's incremental-refresh
+ * Powers `kbx affected <git-ref>`. The skill's incremental-refresh
  * playbook uses the JSON output of this to drive a focused page-by-page
  * refresh after a code change.
  */
@@ -135,3 +135,4 @@ export function affected({ ref, contentDir, cwd, files }) {
     ),
   };
 }
+

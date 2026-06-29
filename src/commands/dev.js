@@ -58,7 +58,7 @@ export function watchPaths(cwd, contentDir = 'content') {
     resolve(cwd, 'README.md'),
     resolve(cwd, 'config.yaml'),
     resolve(cwd, contentDir, 'config.yaml'),
-    resolve(cwd, '.kbexplorer.json'),
+    resolve(cwd, '.kbx.json'),
   ].filter((p) => existsSync(p));
 }
 
@@ -69,7 +69,12 @@ export default async function dev(args) {
   const viteArgs = args.filter((a) => a !== '--no-watch');
 
   if (!appRoot) {
-    console.error('✗ kbexplorer not found. Run `kbexplorer init` first.');
+    const { hasLegacyDir } = await import('../lib/detect-repo.js');
+    if (hasLegacyDir(cwd)) {
+      console.error('✗ Found legacy .kbexplorer/ directory. Rename it to .kbx/ or re-run `kbx init`.');
+    } else {
+      console.error('✗ kbx not found. Run `kbx init` first.');
+    }
     process.exit(1);
   }
 
@@ -140,3 +145,4 @@ export default async function dev(args) {
   process.on('SIGINT', () => cleanup(0));
   process.on('SIGTERM', () => cleanup(0));
 }
+

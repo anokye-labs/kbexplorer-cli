@@ -57,6 +57,7 @@ describe('validate command (end-to-end CLI exit codes)', () => {
   it('prints help with --help', () => {
     const r = runValidate(['--help']);
     assert.equal(r.status, 0);
-    assert.match(r.stdout, /kbexplorer validate/);
+    assert.match(r.stdout, /kbx validate/);
   });
 });
+

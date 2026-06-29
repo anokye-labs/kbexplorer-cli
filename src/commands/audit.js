@@ -1,5 +1,5 @@
 /**
- * kbexplorer audit — Schema and structural integrity check.
+ * kbx audit — Schema and structural integrity check.
  *
  * Reports hard errors and warnings that the soft `links` analysis doesn't
  * cover: duplicate ids, malformed frontmatter, missing required fields,
@@ -7,9 +7,9 @@
  * clusters.
  *
  * Usage:
- *   kbexplorer audit                # human report, exits 1 on any error
- *   kbexplorer audit --json         # machine-readable JSON to stdout
- *   kbexplorer audit --content X    # override content directory
+ *   kbx audit                # human report, exits 1 on any error
+ *   kbx audit --json         # machine-readable JSON to stdout
+ *   kbx audit --content X    # override content directory
  */
 
 import { resolve } from 'node:path';
@@ -91,3 +91,5 @@ export default async function auditCommand(args) {
     process.exit(1);
   }
 }
+
+

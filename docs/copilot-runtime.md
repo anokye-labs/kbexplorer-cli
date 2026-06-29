@@ -1,6 +1,6 @@
 # Copilot programmatic-mode runtime
 
-`kbexplorer` runs **fuzzy** (LLM / agentic) work through GitHub Copilot CLI's
+`kbx` runs **fuzzy** (LLM / agentic) work through GitHub Copilot CLI's
 non-interactive mode — `copilot -p "<prompt>"` — and **deterministic** work
 through pure, in-process computation (the catalogue → content transform, manifest
 regeneration, etc.). A small **router** sends each task to the right place so
@@ -28,7 +28,7 @@ to `copilot`.
 ## Requirements
 
 - [Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli) installed
-  and on your `PATH`, **or** the `KBEXPLORER_COPILOT_BIN` environment variable
+  and on your `PATH`, **or** the `KBX_COPILOT_BIN` environment variable
   pointing at the binary.
 - Non-interactive runs need auto-approval of tools: pass `--allow-all-tools`
   (trusted flows) or a scoped allowlist via `--allow-tool` (see below).
@@ -37,22 +37,22 @@ to `copilot`.
 
 | Setting | Where | Notes |
 |---|---|---|
-| Binary path | `KBEXPLORER_COPILOT_BIN` env, or `binary` option | Defaults to `copilot` on `PATH`. |
+| Binary path | `KBX_COPILOT_BIN` env, or `binary` option | Defaults to `copilot` on `PATH`. |
 | Tool permissions | `--allow-tool` / `--allow-all-tools` (CLI), `allowTools` / `allowAllTools` (API) | A scoped `--allow-tool` opts out of the implicit `--allow-all-tools`. |
 | Model | `--model` (CLI), `model` (API) | Forwarded to `copilot --model`. |
 | Time budget | `--timeout <ms>` (CLI), `timeoutMs` (API) | Default 600000 ms (10 min). |
 | Output format | `outputFormat: 'text' \| 'json'` (API) | `json` is JSONL (one event per line). |
 
-## `kbexplorer generate`
+## `kbx generate`
 
 ```bash
-kbexplorer generate                       # copilot -p → catalogue.json → content/ → manifest
-kbexplorer generate --dry-run             # print the assembled copilot command, run nothing
-kbexplorer generate --prompt "…"          # override the architect prompt
-kbexplorer generate --allow-tool 'shell(git)' --allow-tool 'write'   # scoped permissions
-kbexplorer generate --model gpt-5.2
-kbexplorer generate --refresh             # re-run analysis even if catalogue.json exists
-kbexplorer generate --no-agent            # transform an existing catalogue only
+kbx generate                       # copilot -p → catalogue.json → content/ → manifest
+kbx generate --dry-run             # print the assembled copilot command, run nothing
+kbx generate --prompt "…"          # override the architect prompt
+kbx generate --allow-tool 'shell(git)' --allow-tool 'write'   # scoped permissions
+kbx generate --model gpt-5.2
+kbx generate --refresh             # re-run analysis even if catalogue.json exists
+kbx generate --no-agent            # transform an existing catalogue only
 ```
 
 The fuzzy step defaults to `--allow-all-tools` (trusted local analysis of your
@@ -86,7 +86,7 @@ try {
   console.log(res.ok, res.exitCode, res.response);
 } catch (err) {
   if (err instanceof CopilotRuntimeError && err.code === RuntimeErrorCode.BINARY_MISSING) {
-    // actionable: install Copilot CLI or set KBEXPLORER_COPILOT_BIN
+    // actionable: install Copilot CLI or set KBX_COPILOT_BIN
   }
 }
 ```
@@ -141,7 +141,7 @@ try {
 | Export | Description |
 |---|---|
 | `buildCopilotArgs(options)` | Pure argv assembly (no binary). Deterministic — easy to unit-test. |
-| `resolveBinary(options)` | Resolve the binary: explicit → `KBEXPLORER_COPILOT_BIN` → `copilot`. |
+| `resolveBinary(options)` | Resolve the binary: explicit → `KBX_COPILOT_BIN` → `copilot`. |
 | `isCopilotAvailable(options)` | `true` if `copilot --version` runs (binary present). Never throws. |
 | `parseJsonl(text)` | Parse JSONL into events, skipping non-JSON lines. |
 | `extractResponseText(events, raw)` | Best-effort final assistant text; falls back to raw stdout. |
@@ -189,7 +189,7 @@ npm test
 
 ## See also
 
-- **F8 build-time derivation** — `kbexplorer derive` reuses `runCopilot(...)`
+- **F8 build-time derivation** — `kbx derive` reuses `runCopilot(...)`
   through the router to turn `.docx`/prose into committed `*.jsonld`. See the
   "Build-time Derivation" section of the [README](../README.md) and
   `src/commands/derive.js`.
@@ -198,3 +198,4 @@ npm test
   [kbexplorer-template#148](https://github.com/anokye-labs/kbexplorer-template/issues/148)):
   `kg://` `@id` URNs, an open `@type`, and the six-relation taxonomy
   `leads | staffs | reports-to | structural | derived | deprecated`.
+
