@@ -255,7 +255,7 @@ committed artifact.
 ### Diagnosing local setup (`kbx doctor`)
 
 When regeneration fails, run `kbx doctor` before filing a bug. It
-checks all four layers in one command and tells you exactly what is wrong:
+checks all five layers in one command and tells you exactly what is wrong:
 
 ```bash
 kbx doctor                   # full diagnosis against the repo's config
@@ -267,8 +267,9 @@ kbx doctor --offline         # skip the latest-tag network call
 Sections reported: **Runtime** (adapter selected, why, binary, version),
 **MCP** (per-server check for each required/optional server),
 **Template** (`.kbx.json` vs `.gitmodules`, pinned ref vs latest tag),
+**Adoption readiness** (structured-content path visibility, local/remote
+parity risks, and template capability/protocol metadata when advertised),
 **Environment** (node version, `git`/`gh` on PATH, content dir, manifest freshness).
 
 Exit code `0` means all checks passed or warned. Exit code `1` means at least
 one check failed — safe to use as a CI gate.
-

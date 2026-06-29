@@ -495,7 +495,7 @@ at build time. If the manifest build needs access to a private GHE repo, provide
 ## 8. Troubleshooting with `kbx doctor`
 
 `kbx doctor` is the first command to run when anything looks wrong. It
-diagnoses four sections and exits non-zero if any check fails.
+diagnoses five sections and exits non-zero if any check fails.
 
 ```bash
 npx kbx doctor
@@ -519,6 +519,15 @@ npx kbx doctor --offline          # skip the latest-tag network check
 - Whether `.kbx.json` is present and parseable
 - (Submodule mode) Whether `.gitmodules` agrees with `.kbx.json`
 - Whether the template is on a release tag, a branch, or tracking latest
+
+**Adoption readiness**
+- Which structured-content path is configured (future `.kbx.json` fields,
+  `VITE_KB_CONTENT_MODEL`, `.env.kbx`, then the default `content-model/`)
+- Whether that path exists and contains YAML descriptors
+- Whether likely misnamed descriptor folders exist elsewhere
+- Local/remote parity risks, such as non-committed env-only path overrides
+- Template capability/protocol metadata when advertised, or a warning that the
+  template has not advertised it yet
 
 **Environment**
 - Node.js version meets the `>=22` requirement
@@ -639,4 +648,3 @@ The `.kbx.json` has an invalid `runtime` block (unknown agent, missing
 Fix: edit `.kbx.json` to correct the `runtime` block. Valid shapes are
 documented in the [Runtime Configuration](../README.md#runtime-configuration)
 section of the README. Or re-run `npx kbx init` to rewrite it interactively.
-
