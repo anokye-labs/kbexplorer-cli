@@ -20,10 +20,16 @@ const EXPECTED = [
   'audit',
   'llm_context',
   'derive',
+  'start_generate',
+  'get_job_status',
+  'cancel_job',
+  'preview_changes',
+  'apply_changes',
+  'create_pr',
 ];
 
 describe('registry', () => {
-  it('exposes the seven do-seam operations in canonical order', () => {
+  it('exposes the do-seam operations in canonical order', () => {
     assert.deepEqual(
       listAffordances().map((a) => a.name),
       EXPECTED
