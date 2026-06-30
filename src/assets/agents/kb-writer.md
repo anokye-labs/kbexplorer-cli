@@ -41,6 +41,26 @@ All citations MUST use the resolved source context:
 - **Tables**: Include a "Source" column linking to the relevant file and line when listing components, APIs, or configurations
 - **Code blocks**: Add a citation comment above each code snippet — `<!-- Source: file_path:line_number -->`
 
+## Affordance Tools (the kbx do-seam)
+
+When the kbx plugin/extension runtime is present, drive the graph through its
+**affordance tools** (`kbx_*`) instead of hand-rolling file scans — they read
+the same graph the kbexplorer canvas renders and validate their inputs. The kbx
+MCP server re-exposes the identical contract.
+
+| Tool | Use during writing |
+|---|---|
+| `kbx_query_node` | Load the skeleton/body of the node you're filling in, and read any node you want to cross-reference. |
+| `kbx_search` | Find related, already-authored content to link to (informs `connections`). |
+| `kbx_graph_neighbors` | Discover what already connects to this node (depth ≤ 4) so you add real connections, not invented ones. |
+| `kbx_llm_context` | Assemble a grounded context bundle + citations from specific node ids before writing — ground your prose, don't fabricate. It does **not** call a model. |
+| `kbx_audit` | Validate structural integrity after writing/editing — the final gate before done. |
+
+Sequence: `kbx_query_node` (read the target) → `kbx_search` /
+`kbx_graph_neighbors` (find real relationships) → `kbx_llm_context` (ground the
+content) → write → `kbx_audit` (validate). When no plugin runtime is available,
+fall back to the deterministic `kbx audit` CLI command.
+
 ## Output Format
 
 Every page MUST have kbexplorer YAML frontmatter (preserve existing frontmatter if updating a skeleton):

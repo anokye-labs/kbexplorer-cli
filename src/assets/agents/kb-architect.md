@@ -62,6 +62,26 @@ Before generating the catalogue, you MUST:
 4. **Ask the user** about existing content: _"I found existing documentation at [paths]. Should I reference it as-is in the graph, migrate it into content/, or generate fresh content?"_
 5. **Output a `gaps` array** alongside `nodes` showing uncovered areas
 
+## Affordance Tools (the kbx do-seam)
+
+When the kbx plugin/extension runtime is present, drive the graph through its
+**affordance tools** (`kbx_*`) instead of hand-rolling file scans — they read
+the same graph the kbexplorer canvas renders and validate their inputs. The kbx
+MCP server re-exposes the identical contract, so the same calls apply there.
+
+| Tool | Use during cataloguing |
+|---|---|
+| `kbx_search` | Find whether a module/topic already has a node before you propose a new one. |
+| `kbx_query_node` | Read an existing node's frontmatter + body to reuse its id/cluster rather than duplicating it. |
+| `kbx_graph_neighbors` | Inspect a node's existing connections so the catalogue's `connections` reflect the real graph, not guesses. |
+| `kbx_affected` | After a structural repo change, see which existing nodes cite the changed files — feed this into your `gaps` analysis. |
+| `kbx_audit` | Validate structural integrity (ids, parents, cycles, dead connections) before declaring the catalogue done. |
+
+Use `kbx_search` + `kbx_query_node` to build the **Existing Content Awareness**
+coverage map above; use `kbx_audit` as the final gate. When no plugin runtime is
+available, fall back to the deterministic `kbx audit` / `kbx affected` CLI
+commands — they compute the same answers offline.
+
 ## Output Format: kbexplorer Catalogue
 
 Output a JSON catalogue where each entry maps to a kbexplorer node:

@@ -39,6 +39,8 @@ follow them.
 | Refresh content after a code change | `references/incremental-refresh.md` (uses `kbx affected`) |
 | Validate content integrity | `references/audit.md` (uses `kbx audit`) |
 | Reorganize the graph (rename/move/merge/split nodes, recolor clusters) | `references/graph-curation.md` |
+| Search/query/inspect the graph through plugin tools (`kbx_*`) | `references/search.md` |
+| Present or focus the graph on the kbexplorer canvas | `references/canvas.md` |
 | Decide what connects to what, and how to phrase it | `references/connections.md` |
 | Change the visual mode, theme, or fonts | `references/presentation.md` |
 | Wire sprite or hero images to nodes | `references/assets-pipeline.md` |
@@ -73,6 +75,28 @@ Prefer shelling out to them over reasoning through the same logic.
 | `kbx links` | Soft graph-health analysis (orphans, weak clusters, coverage gaps). |
 | `kbx generate` | Run the architect → transform → writer pipeline; see `references/content-generation.md`. |
 | `kbx dev` / `kbx build` | Start the dev server / production build. |
+
+## Affordance tools — when a kbx plugin is installed
+
+When the kbx plugin/extension runtime is present, the graph also exposes a
+**protocol-neutral action surface** (the "do-seam"): seven operations delivered
+as Copilot CLI tools named `kbx_<action>`. Drive the graph through these tools
+rather than ad-hoc file scanning — they read the same graph the kbexplorer
+canvas renders, and inputs are schema-validated.
+
+| Tool | Class | Use for | Reference |
+|---|---|---|---|
+| `kbx_search` | read | Ranked semantic search over the graph | `references/search.md` |
+| `kbx_query_node` | read | Fetch one node (frontmatter + body) by id | `references/search.md` |
+| `kbx_graph_neighbors` | read | BFS neighbours of a node (depth ≤ 4) | `references/search.md` |
+| `kbx_affected` | read | Nodes whose citations touch a changed git ref | `references/incremental-refresh.md` |
+| `kbx_audit` | read | Structural integrity audit of `content/` | `references/audit.md` |
+| `kbx_llm_context` | sample | Assemble a grounded context bundle (no model call) | `references/search.md` |
+| `kbx_derive` | write | Extract entities into committed JSON-LD | `references/content-generation.md` |
+
+The kbexplorer **canvas** (id `kbexplorer`) presents the graph these tools act
+on — see `references/canvas.md`. When no plugin runtime is available, fall back
+to the deterministic CLI helpers above; they compute the same answers offline.
 
 ## Invariants — true in every workflow
 
