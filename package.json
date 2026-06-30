@@ -39,6 +39,6 @@
     "README.md"
   ],
   "dependencies": {
-    "@anokye-labs/kbexplorer-core": "git+https://github.com/anokye-labs/kbexplorer-core.git#3fb5086ee8596c1a9a7b12914007d13576747000"
+    "@anokye-labs/kbexplorer-core": "github:anokye-labs/kbexplorer-core#v0.1.0"
   }
 }
