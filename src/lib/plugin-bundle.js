@@ -109,8 +109,7 @@ export const BUNDLE_COMPONENTS = Object.freeze([
     kind: 'dir',
     from: 'commands',
     to: 'commands',
-    required: false,
-    pending: 'anokye-labs/kbexplorer-cli#146',
+    required: true,
   },
   {
     id: 'extension',

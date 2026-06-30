@@ -17,22 +17,21 @@ function byId(checks) {
 }
 
 describe('checkPlugin', () => {
-  it('passes manifest, gist-share, agents, skill and scope against shipped assets', () => {
+  it('passes manifest, gist-share, agents, skill, commands and scope against shipped assets', () => {
     const checks = checkPlugin({ cwd: '/repo' });
     const map = byId(checks);
     assert.equal(map['plugin.manifest'].status, 'pass');
     assert.equal(map['plugin.share'].status, 'pass');
     assert.equal(map['plugin.agents'].status, 'pass');
     assert.equal(map['plugin.skill'].status, 'pass');
+    assert.equal(map['plugin.commands'].status, 'pass');
     assert.equal(map['plugin.scope'].status, 'pass');
     assert.match(map['plugin.scope'].message, /\.github[\\/]plugins[\\/]kbx/);
   });
 
   it('warns (not fails) on components still pending sibling issues', () => {
     const map = byId(checkPlugin({ cwd: '/repo' }));
-    assert.equal(map['plugin.commands'].status, 'warn');
     assert.equal(map['plugin.extension'].status, 'warn');
-    assert.match(map['plugin.commands'].message, /#146/);
     assert.match(map['plugin.extension'].message, /#428/);
   });
 

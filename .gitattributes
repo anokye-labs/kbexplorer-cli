@@ -8,3 +8,9 @@
 # Windows checkouts and the content goldens fail on a pure line-ending diff.
 *.golden.json text eol=lf
 
+
+# Plugin command assets are deterministically rendered with LF newlines from
+# src/lib/command-surface.js (see scripts/emit-commands.js --check). Pin them to
+# LF so autocrlf can't rewrite line endings on Windows checkouts and trip the
+# command-surface drift gate.
+src/assets/commands/*.md text eol=lf
