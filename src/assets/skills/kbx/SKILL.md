@@ -79,7 +79,7 @@ Prefer shelling out to them over reasoning through the same logic.
 ## Affordance tools — when a kbx plugin is installed
 
 When the kbx plugin/extension runtime is present, the graph also exposes a
-**protocol-neutral action surface** (the "do-seam"): seven operations delivered
+**protocol-neutral action surface** (the "do-seam"): graph operations delivered
 as Copilot CLI tools named `kbx_<action>`. Drive the graph through these tools
 rather than ad-hoc file scanning — they read the same graph the kbexplorer
 canvas renders, and inputs are schema-validated.
@@ -97,6 +97,28 @@ canvas renders, and inputs are schema-validated.
 The kbexplorer **canvas** (id `kbexplorer`) presents the graph these tools act
 on — see `references/canvas.md`. When no plugin runtime is available, fall back
 to the deterministic CLI helpers above; they compute the same answers offline.
+
+### Job layer — long-running work
+
+The stateless tools above can't express long-running generation/write-back, so
+the do-seam also includes a **protocol-neutral job layer** delivered through the
+same `kbx_<action>` tool surface. A job is started, polled, then reviewed and
+applied:
+
+| Tool | Class | Use for |
+|---|---|---|
+| `kbx_start_generate` | sample | Begin a long-running generation job; returns a job id (resumable) |
+| `kbx_get_job_status` | read | Poll a job's status, progress, and any late-credential prompt |
+| `kbx_cancel_job` | write | Abort a running (or credential-paused) job |
+| `kbx_preview_changes` | read | List the files a succeeded job would write (no disk writes) |
+| `kbx_apply_changes` | write | Write the job's change set back verbatim (partial-failure recovery) |
+| `kbx_create_pr` | write | Open a pull request once the changes are applied |
+
+Typical flow: `kbx_start_generate` → poll `kbx_get_job_status` until it succeeds
+(or `kbx_cancel_job` to stop it) → `kbx_preview_changes` to review → review the
+diff, `kbx_apply_changes` to write back → `kbx_create_pr`. Job state is a runtime
+concern (no timestamps); the model and git/PR runtimes are injected by the host,
+never owned by the contract.
 
 ## Invariants — true in every workflow
 

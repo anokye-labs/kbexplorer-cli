@@ -14,6 +14,13 @@ const EXPECTED = [
   'audit',
   'llm_context',
   'derive',
+  // Job layer (PE3-F2) — picked up generically by the adapter, no source changes.
+  'start_generate',
+  'get_job_status',
+  'cancel_job',
+  'preview_changes',
+  'apply_changes',
+  'create_pr',
 ];
 
 describe('affordance → tool binding', () => {

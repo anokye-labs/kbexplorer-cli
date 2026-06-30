@@ -1,10 +1,17 @@
 /**
  * Affordance registry — the assembled, protocol-neutral DO-seam (PE3-F1).
  *
- * Collects the seven graph operations into a single contract surface that both
- * delivery adapters bind to:
+ * Collects the stateless graph operations (PE3-F1) **and** the workflow/job
+ * layer (PE3-F2) into a single contract surface that both delivery adapters bind
+ * to:
  *
  *   search · query_node · graph_neighbors · affected · audit · llm_context · derive
+ *   start_generate · get_job_status · cancel_job · preview_changes · apply_changes · create_pr
+ *
+ * The job operations are ordinary affordances classified with the same
+ * ACTION_CLASSES (start_generate=sample, get_job_status/preview_changes=read,
+ * cancel_job/apply_changes/create_pr=write), so the extension-tool adapter and a
+ * future MCP adapter expose them automatically with no adapter changes.
  *
  * The registry is the spine of the dependency arrow `affordances → {adapters}`.
  * It exposes:
@@ -38,8 +45,19 @@ import affected from './operations/affected.js';
 import audit from './operations/audit.js';
 import llmContext from './operations/llm-context.js';
 import derive from './operations/derive.js';
+import startGenerate from './jobs/start-generate.js';
+import getJobStatus from './jobs/get-job-status.js';
+import cancelJob from './jobs/cancel-job.js';
+import previewChanges from './jobs/preview-changes.js';
+import applyChanges from './jobs/apply-changes.js';
+import createPr from './jobs/create-pr.js';
 
-/** Canonical ordering of the do-seam operations. */
+/**
+ * Canonical ordering of the do-seam operations. The first seven are the stateless
+ * graph actions (PE3-F1); the trailing six are the workflow/job layer (PE3-F2)
+ * for long-running work — registered here so **both** delivery adapters pick them
+ * up generically, with no adapter changes.
+ */
 const AFFORDANCE_LIST = Object.freeze([
   search,
   queryNode,
@@ -48,6 +66,12 @@ const AFFORDANCE_LIST = Object.freeze([
   audit,
   llmContext,
   derive,
+  startGenerate,
+  getJobStatus,
+  cancelJob,
+  previewChanges,
+  applyChanges,
+  createPr,
 ]);
 
 const AFFORDANCES = new Map(AFFORDANCE_LIST.map((a) => [a.name, a]));
