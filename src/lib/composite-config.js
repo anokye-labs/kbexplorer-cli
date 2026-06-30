@@ -36,6 +36,8 @@
  * @module lib/composite-config
  */
 
+import { normalizeAccessLabel } from './access-label.js';
+
 /** Stable error codes for composite-config validation failures. */
 export const CompositeConfigErrorCode = Object.freeze({
   INVALID: 'KBX_COMPOSITE_INVALID',
@@ -180,6 +182,16 @@ function normalizeSource(entry, index, env) {
       code: CompositeConfigErrorCode.INVALID,
     });
   }
+  // Optional access label (a KBAccessLabel): every node/edge this source produces
+  // inherits it unless the node/edge already carries its own label. Label-only —
+  // the host enforces. An empty/garbage block normalizes away to no label.
+  if (entry.access != null && !isPlainObject(entry.access)) {
+    throw new CompositeConfigError(
+      `Source "${sourceId}": "access" must be a KBAccessLabel object when set.`,
+      { code: CompositeConfigErrorCode.INVALID }
+    );
+  }
+  const access = normalizeAccessLabel(entry.access);
   const { resolved, envNames, warnings } = resolveCredentials(sourceId, entry.credentials, env);
   return {
     source: {
@@ -189,6 +201,7 @@ function normalizeSource(entry, index, env) {
       options: entry.options ? { ...entry.options } : {},
       cluster: typeof entry.cluster === 'string' ? entry.cluster : undefined,
       name: typeof entry.name === 'string' ? entry.name : undefined,
+      ...(access ? { access } : {}),
       credentials: resolved,
       credentialEnv: envNames,
     },
