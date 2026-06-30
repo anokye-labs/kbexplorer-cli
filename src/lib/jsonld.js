@@ -44,6 +44,7 @@ import {
   ID_RE,
   TYPE_RE,
 } from '@anokye-labs/kbexplorer-core';
+import { normalizeAccessLabel, mergeAccessLabels } from './access-label.js';
 
 /**
  * Identity + relation primitives come from the shared contract package
@@ -114,6 +115,10 @@ export function normalizeExtraction(intermediate, options = {}) {
         : {};
     const data = { name, ...sortObject(props) };
 
+    // Carry an access label set at the source onto the node (and its LD member).
+    // Accept it on the entity itself or inside its properties; absent → unlabeled.
+    const entityAccess = normalizeAccessLabel(entity.access ?? props.access);
+
     const node = byId.get(id) ?? {
       id,
       identity: id,
@@ -126,13 +131,25 @@ export function normalizeExtraction(intermediate, options = {}) {
         '@type': type,
         name,
         ...ldProperties(data),
+        ...(entityAccess ? { access: entityAccess } : {}),
       },
       data,
+      ...(entityAccess ? { access: entityAccess } : {}),
     };
     // Merge data for duplicate ids (later props win), refresh jsonld scalars.
     if (byId.has(id)) {
       node.data = { ...node.data, ...data };
-      node.jsonld = { ...node.jsonld, name: node.data.name, ...ldProperties(node.data) };
+      // Combine duplicate-id labels most-restrictively (never broaden).
+      const merged = mergeAccessLabels([node.access, entityAccess]);
+      if (merged) node.access = merged;
+      else delete node.access;
+      node.jsonld = {
+        ...node.jsonld,
+        name: node.data.name,
+        ...ldProperties(node.data),
+        ...(node.access ? { access: node.access } : {}),
+      };
+      if (!node.access) delete node.jsonld.access;
     }
     byId.set(id, node);
 
@@ -167,6 +184,8 @@ export function normalizeExtraction(intermediate, options = {}) {
     const edge = { id, source: fromId, target: toId, relation };
     if (raw && raw !== relation) edge.relationRaw = raw;
     if (rel.label && String(rel.label).trim()) edge.label = String(rel.label).trim();
+    const edgeAccess = normalizeAccessLabel(rel.access);
+    if (edgeAccess) edge.access = edgeAccess;
     edgeById.set(id, edge);
   }
   const edges = [...edgeById.values()];
@@ -181,6 +200,7 @@ export function normalizeExtraction(intermediate, options = {}) {
       from: { '@id': e.source },
       to: { '@id': e.target },
       ...(e.label ? { name: e.label } : {}),
+      ...(e.access ? { access: e.access } : {}),
     })),
   ];
 

@@ -63,6 +63,7 @@
 import { buildEdgeId, mapRelation } from '@anokye-labs/kbexplorer-core';
 import { canonicalStringify } from './jsonld.js';
 import { buildResolutionIndex, resolveLinkedRef } from './edge-mint.js';
+import { mergeAccessLabels, normalizeAccessLabel } from './access-label.js';
 
 /** Versioned id of the deriving process, recorded on every conflated node. */
 export const CONFLATE_GENERATOR = 'conflate@1';
@@ -299,6 +300,10 @@ export function conflateReferents(graph, opts = {}) {
     });
 
     const allSourceRefs = uniqueSorted(members.flatMap((m) => m.sourceRefs ?? []));
+    // A conflated referent's access is the MOST-RESTRICTIVE label among its
+    // members (intersect / never broaden). Member labels are not lost — each is
+    // preserved on its `conflatedFrom[]` entry.
+    const mergedAccess = mergeAccessLabels(members.map((m) => m.access));
     const conflated = {
       ...rep,
       sourceRefs: allSourceRefs,
@@ -311,11 +316,15 @@ export function conflateReferents(graph, opts = {}) {
         if (m.identity) entry.identity = m.identity;
         if (m.sourceId != null) entry.sourceId = m.sourceId;
         if (m.sourceRefs?.length) entry.sourceRefs = uniqueSorted(m.sourceRefs);
+        const memberAccess = normalizeAccessLabel(m.access);
+        if (memberAccess) entry.access = memberAccess;
         entry.attributes = snapshotAttributes(m);
         return entry;
       }),
       derivation: { mode: 'derived', generator, inputs: allSourceRefs },
     };
+    if (mergedAccess) conflated.access = mergedAccess;
+    else delete conflated.access;
     // Drop empty unioned arrays so absent-everywhere fields stay absent (keeps
     // singletons-vs-conflated output shapes consistent and re-runs byte-stable).
     for (const key of ['sourceRefs', 'evidence', 'identityClaims', 'linkedRefs']) {
@@ -373,9 +382,26 @@ export function conflateReferents(graph, opts = {}) {
           ...(repointed.derivation?.inputs ?? []),
         ]),
       };
+    // Collapsing two edges into one must never broaden access: merge labels
+    // most-restrictively.
+    if (repointed.access || existing.access) {
+      const mergedEdgeAccess = mergeAccessLabels([existing.access, repointed.access]);
+      if (mergedEdgeAccess) existing.access = mergedEdgeAccess;
+      else delete existing.access;
+    }
   }
   const edgesDeduped = edges.length - edgesDropped - edgeByKey.size;
   const outEdges = [...edgeByKey.values()].sort(edgeComparator);
+
+  // Edge access carries its OWN label; an unlabeled edge derives the
+  // most-restrictive label of its (post-conflation) endpoints. Never broadens.
+  const accessByNodeId = new Map(outNodes.map((n) => [n.id, n.access]));
+  for (const edge of outEdges) {
+    if (normalizeAccessLabel(edge.access)) continue;
+    const derived = mergeAccessLabels([accessByNodeId.get(edge.from), accessByNodeId.get(edge.to)]);
+    if (derived) edge.access = derived;
+    else delete edge.access;
+  }
 
   warnings.sort();
 

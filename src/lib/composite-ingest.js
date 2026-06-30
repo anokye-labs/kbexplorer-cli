@@ -39,6 +39,7 @@ import {
 } from '@anokye-labs/kbexplorer-core';
 import { canonicalStringify } from './jsonld.js';
 import { normalizeCompositeConfig } from './composite-config.js';
+import { inheritAccess } from './access-label.js';
 
 /** Capabilities this host engine advertises to loadable providers. */
 export const HOST_CAPABILITIES = Object.freeze(['graph:nodes', 'graph:edges', 'sources']);
@@ -290,7 +291,7 @@ function cmp(a, b) {
  * KBGraph. No dedupe / no minting — all nodes & edges are kept and tagged with
  * provenance (`node.provider` falls back to the originating sourceId).
  *
- * @param {Array<{ sourceId:string, nodes:object[], edges:object[] }>} fragments
+ * @param {Array<{ sourceId:string, nodes:object[], edges:object[], access?:object }>} fragments
  * @returns {{ nodes:object[], edges:object[], clusters:object[], related:Record<string,string[]> }}
  */
 export function mergeSourceQualified(fragments) {
@@ -300,10 +301,20 @@ export function mergeSourceQualified(fragments) {
     for (const node of frag.nodes ?? []) {
       // Source-qualify with `sourceId` (additive provenance) WITHOUT clobbering
       // the provider's own `provider` claim; fall back to sourceId when unset.
-      nodes.push({ ...node, sourceId: frag.sourceId, provider: node.provider ?? frag.sourceId });
+      // A node keeps its OWN access label; only an unlabeled node inherits the
+      // composite source's label (never broadens).
+      const access = inheritAccess(node.access, frag.access);
+      const qualified = { ...node, sourceId: frag.sourceId, provider: node.provider ?? frag.sourceId };
+      if (access) qualified.access = access;
+      else delete qualified.access;
+      nodes.push(qualified);
     }
     for (const edge of frag.edges ?? []) {
-      edges.push({ ...edge, sourceId: frag.sourceId });
+      const access = inheritAccess(edge.access, frag.access);
+      const qualified = { ...edge, sourceId: frag.sourceId };
+      if (access) qualified.access = access;
+      else delete qualified.access;
+      edges.push(qualified);
     }
   }
   nodes.sort(
@@ -480,12 +491,16 @@ export async function loadCompositeKnowledgeBase(rawConfig, opts = {}) {
         nodes,
         edges,
         cached: s.cached,
+        ...(s.entry.source.access ? { access: s.entry.source.access } : {}),
       });
       for (const node of nodes) {
         accumulatedNodes.push({
           ...node,
           sourceId: s.entry.sourceId,
           provider: node.provider ?? s.entry.sourceId,
+          ...(inheritAccess(node.access, s.entry.source.access)
+            ? { access: inheritAccess(node.access, s.entry.source.access) }
+            : {}),
         });
       }
     }
