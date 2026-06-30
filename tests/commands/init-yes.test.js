@@ -131,7 +131,12 @@ describe('init --yes (non-interactive onboarding)', () => {
         ['VITE_KB_OWNER=acme', 'VITE_KB_REPO=widgets', 'VITE_KB_BRANCH=main', 'VITE_KB_TITLE=widgets Knowledge Base'].join('\n') + '\n',
       );
       assert.doesNotMatch(env, /VITE_KB_PATH/);
-      assert.equal(record, null, 'copilot/default runtime must not write a runtime block');
+      // Presentation is always recorded so the wizard's visual/theme choice
+      // sticks; the default copilot runtime still writes no runtime block.
+      assert.ok(record, 'init must always persist a presentation block');
+      const parsed = JSON.parse(record);
+      assert.deepEqual(parsed.presentation, { visual: 'emoji', theme: 'dark' });
+      assert.equal(parsed.runtime, undefined, 'copilot/default runtime must not write a runtime block');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -186,6 +191,67 @@ describe('init --yes (non-interactive onboarding)', () => {
       const r = runInit(dir, ['--yes', '--owner', 'a', '--repo', 'b', '--mode', 'nonsense']);
       assert.equal(r.status, 1);
       assert.match(r.stderr, /Invalid --mode/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('persists the wizard visual/theme to .kbx.json and applies them to an existing config.yaml (#150)', () => {
+    const dir = makeRepo();
+    try {
+      // A repo that already has authored content with default presentation.
+      mkdirSync(resolve(dir, 'content'), { recursive: true });
+      writeFileSync(
+        resolve(dir, 'content', 'config.yaml'),
+        [
+          'title: "Existing"',
+          '',
+          'clusters:',
+          '  e:',
+          '    name: "E"',
+          '    color: "#fff"',
+          '',
+          'visuals:',
+          '  mode: emoji',
+          '  fallback: emoji',
+          '',
+          'theme:',
+          '  default: dark',
+          '',
+        ].join('\n'),
+        'utf-8',
+      );
+
+      const r = runInit(dir, [
+        '--yes', '--owner', 'a', '--repo', 'b', '--kb-branch', 'main',
+        '--visual', 'sprites', '--theme', 'light',
+      ]);
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+
+      // Persisted to the CLI source-of-truth record…
+      const { record } = readScaffold(dir);
+      assert.deepEqual(JSON.parse(record).presentation, { visual: 'sprites', theme: 'light' });
+
+      // …and applied to the existing config.yaml the build reads, so the choice sticks.
+      const config = readFileSync(resolve(dir, 'content', 'config.yaml'), 'utf-8');
+      assert.match(config, /visuals:\s*\n\s*mode: sprites/);
+      assert.match(config, /theme:\s*\n\s*default: light/);
+      // Unrelated content is preserved.
+      assert.match(config, /title: "Existing"/);
+      assert.match(config, /fallback: emoji/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('surfaces the first-run no-git-remote preflight warning in an interactive run (#152)', async () => {
+    const dir = makeRepo(); // self-hosted, but NOT a git repo → no origin remote
+    try {
+      // owner, repo, branch, title, content-mode(1=repo), visual(1), theme(1), runtime(1=copilot)
+      const r = await runInteractive(dir, ['o', 'r', 'main', 'T', '1', '1', '1', '1']);
+      assert.equal(r.status, 0, r.output);
+      assert.match(r.output, /No git `origin` remote detected/);
+      assert.match(r.output, /git remote add origin/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

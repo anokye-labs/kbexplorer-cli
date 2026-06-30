@@ -21,6 +21,7 @@ import { getLatestTag, checkoutTag, checkoutRef, resolveHeadSha, TEMPLATE_REPO }
 import { parseInitArgs } from '../lib/args.js';
 import { writeSourceRecord, readSourceRecord, classifyRef, SOURCE_FILE } from '../lib/source.js';
 import { validateRuntimeBlock, RuntimeConfigError } from '../lib/runtime-config.js';
+import { runInitPreflight, formatPreflightDiagnostics, explainInstallFailure } from '../lib/preflight.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = resolve(__dirname, '..', 'assets');
@@ -82,6 +83,47 @@ function safeRemove(p) {
   try {
     rmSync(p, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   } catch { /* best effort */ }
+}
+
+/**
+ * Patch an existing `content/config.yaml` so its `visuals.mode` and
+ * `theme.default` reflect the wizard's choice. No-op (returns false) when the
+ * file is absent — a fresh repo gets its values from `.kbx.json` when generate
+ * first writes config.yaml. Best-effort textual edit that preserves the rest of
+ * the file; only the two scalar values under the existing blocks are replaced.
+ *
+ * @param {string} cwd
+ * @param {{ visual: string, theme: string }} presentation
+ * @returns {boolean} true when the file existed and was rewritten
+ */
+function applyPresentationToConfig(cwd, presentation) {
+  const configPath = resolve(cwd, 'content', 'config.yaml');
+  if (!existsSync(configPath)) return false;
+  let text;
+  try {
+    text = readFileSync(configPath, 'utf-8');
+  } catch {
+    return false;
+  }
+  const setBlockScalar = (src, block, key, value) => {
+    // Match `block:` header then the first `  key: <val>` line within it.
+    const re = new RegExp(`(^${block}:[^\\S\\r\\n]*\\r?\\n(?:[^\\S\\r\\n].*\\r?\\n)*?[^\\S\\r\\n]+${key}:[^\\S\\r\\n]*)([^\\r\\n]*)`, 'm');
+    if (re.test(src)) {
+      return src.replace(re, `$1${value}`);
+    }
+    // Block exists but key missing — append the key under the block header.
+    const headerRe = new RegExp(`(^${block}:[^\\S\\r\\n]*\\r?\\n)`, 'm');
+    if (headerRe.test(src)) {
+      return src.replace(headerRe, `$1  ${key}: ${value}\n`);
+    }
+    // Block missing entirely — append a fresh block at end of file.
+    return src.replace(/\r?\n?$/, `\n\n${block}:\n  ${key}: ${value}\n`);
+  };
+  let next = setBlockScalar(text, 'visuals', 'mode', presentation.visual);
+  next = setBlockScalar(next, 'theme', 'default', presentation.theme);
+  if (next === text) return false;
+  writeFileSync(configPath, next, 'utf-8');
+  return true;
 }
 
 /**
@@ -211,7 +253,7 @@ const RUNTIME_NAMES = ['copilot', 'claude', 'custom', 'skip'];
  * Exits 1 with a clear, aggregated error list when a required value is missing
  * or an enum value is invalid.
  *
- * @returns {{ owner, repo, branch, title, contentPath: string|undefined, runtimeBlock: object|null }}
+ * @returns {{ owner, repo, branch, title, contentPath: string|undefined, visual: string, theme: string, runtimeBlock: object|null }}
  */
 function resolveHeadlessConfig(opts, cwd) {
   const fileCfg = opts.config ? loadInitConfigFile(resolve(cwd, opts.config)) : {};
@@ -280,7 +322,7 @@ function resolveHeadlessConfig(opts, cwd) {
     process.exit(1);
   }
 
-  return { owner, repo, branch, title, contentPath, runtimeBlock };
+  return { owner, repo, branch, title, contentPath, visual, theme, runtimeBlock };
 }
 
 export default async function init(args) {
@@ -299,12 +341,32 @@ export default async function init(args) {
   const isVendor = mode === 'vendor';
   const prompt = opts.yes ? null : createPrompt();
   const selfHosted = isTemplateRepo(cwd);
+  const templateAlreadyPresent = hasSubmodule(cwd);
 
   console.log('');
   console.log('╔══════════════════════════════════════════╗');
   console.log('║     kbx — Interactive Setup              ║');
   console.log('╚══════════════════════════════════════════╝');
   console.log('');
+
+  // Step 0: First-run preflight (#152). Surface clear diagnostics + recovery for
+  // the common first-run failures (old Node, no git remote, read-only cwd, no
+  // npm) before doing any work. Hard blockers stop here; warnings are advisory.
+  const { ok: preflightOk, diagnostics } = runInitPreflight({
+    cwd,
+    selfHosted,
+    hasTemplate: templateAlreadyPresent,
+    yes: opts.yes,
+  });
+  if (diagnostics.length) {
+    for (const line of formatPreflightDiagnostics(diagnostics)) console.log(line);
+    console.log('');
+  }
+  if (!preflightOk) {
+    console.error('✗ Preflight found a blocking problem — resolve it and re-run `kbx init`.');
+    prompt?.close();
+    process.exit(1);
+  }
 
   // Step 1: Install the template (submodule by default, or a vendored copy)
   if (!selfHosted && !hasSubmodule(cwd)) {
@@ -322,6 +384,9 @@ export default async function init(args) {
       console.log(`✓ Recorded template source in ${SOURCE_FILE}`);
     } catch (err) {
       console.error(`✗ ${err.message}`);
+      const { message, recovery } = explainInstallFailure(err, { templateUrl });
+      console.error(`  ${message}`);
+      for (const r of recovery) console.error(`  → ${r}`);
       prompt?.close();
       process.exit(1);
     }
@@ -348,10 +413,12 @@ export default async function init(args) {
   let branch;
   let title;
   let contentPath;
+  let visual = 'emoji';
+  let theme = 'dark';
   let runtimeBlock = null;
 
   if (opts.yes) {
-    ({ owner, repo, branch, title, contentPath, runtimeBlock } = resolveHeadlessConfig(opts, cwd));
+    ({ owner, repo, branch, title, contentPath, visual, theme, runtimeBlock } = resolveHeadlessConfig(opts, cwd));
     console.log(
       `✓ Non-interactive config (owner=${owner}, repo=${repo}, branch=${branch}, mode=${mode})`,
     );
@@ -374,10 +441,12 @@ export default async function init(args) {
     }
 
     const visualModes = ['emoji', 'sprites', 'heroes', 'none'];
-    await prompt.choose('Visual mode:', visualModes, 0);
+    const visualIdx = await prompt.choose('Visual mode:', visualModes, 0);
+    visual = visualModes[visualIdx];
 
     const themes = ['dark', 'light', 'sepia'];
-    await prompt.choose('Default theme:', themes, 0);
+    const themeIdx = await prompt.choose('Default theme:', themes, 0);
+    theme = themes[themeIdx];
 
     // Step 3b: Optional runtime block
     const runtimeAgentIdx = await prompt.choose(
@@ -414,6 +483,18 @@ export default async function init(args) {
 
   writeFileSync(resolve(cwd, '.env.kbx'), envLines.join('\n') + '\n', 'utf-8');
   console.log('✓ Created .env.kbx');
+
+  // Persist the chosen visual mode + theme so the choice sticks across
+  // generate/build (which read it back from .kbx.json). Always written, merged
+  // into any existing record. Apply it to an existing content/config.yaml too,
+  // so a repo that already has authored content reflects the choice immediately.
+  const presentation = { visual, theme };
+  const recordBeforePresentation = readSourceRecord(cwd) ?? {};
+  writeSourceRecord(cwd, { ...recordBeforePresentation, presentation });
+  console.log(`✓ Recorded presentation (visual: ${visual}, theme: ${theme}) in ${SOURCE_FILE}`);
+  if (applyPresentationToConfig(cwd, presentation)) {
+    console.log('✓ Applied visual/theme to content/config.yaml');
+  }
 
   // Write runtime block into .kbx.json (merge with existing record).
   // Validate first — never persist a block derive/generate would reject.
@@ -463,8 +544,20 @@ export default async function init(args) {
         stdio: 'inherit',
       });
       console.log('✓ Dependencies installed');
-    } catch {
-      console.warn('⚠ npm install failed — run manually in .kbx/');
+    } catch (err) {
+      // Don't fail init — the scaffold is still valid — but explain the likely
+      // cause and the exact recovery command (#152).
+      const { message, recovery } = explainInstallFailure(err);
+      console.warn('⚠ npm install failed in .kbx/ — the explorer cannot run until deps are installed.');
+      console.warn(`  ${message}`);
+      for (const r of recovery) console.warn(`  → ${r}`);
+      console.warn('  → Then run: `npm install` inside .kbx/');
+    }
+    // Verify the install actually produced node_modules; warn clearly if not,
+    // so a silently skipped/partial install doesn't surface later as a cryptic
+    // "kbx not found" at dev/build time.
+    if (!existsSync(resolve(cwd, '.kbx', 'node_modules'))) {
+      console.warn('⚠ .kbx/node_modules is missing — run `npm install` inside .kbx/ before `kbx dev`.');
     }
   }
 

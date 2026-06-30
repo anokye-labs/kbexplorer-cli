@@ -73,6 +73,81 @@ describe('transformCatalogue', () => {
     assert.ok(config.includes('Engine'));
   });
 
+  it('config.yaml defaults presentation to emoji/dark when nothing is persisted', () => {
+    const config = readFileSync(join(OUT, 'config.yaml'), 'utf-8');
+    assert.match(config, /visuals:\s*\n\s*mode: emoji/);
+    assert.match(config, /theme:\s*\n\s*default: dark/);
+  });
+
+  it('threads the persisted visual/theme (#150) from .kbx.json into config.yaml', () => {
+    // Simulate `kbx init --visual sprites --theme light` having persisted the
+    // choice: transform must emit it so the wizard answer survives a build.
+    const root = join(tmpdir(), `kbe-test-present-${Date.now()}`);
+    const out = join(root, 'content');
+    mkdirSync(out, { recursive: true });
+    writeFileSync(
+      join(root, '.kbx.json'),
+      JSON.stringify({ presentation: { visual: 'sprites', theme: 'light' } }),
+      'utf-8',
+    );
+    try {
+      transformCatalogue(
+        { title: 'KB', clusters: { e: { name: 'E', color: '#fff' } }, nodes: [] },
+        out,
+      );
+      const config = readFileSync(join(out, 'config.yaml'), 'utf-8');
+      assert.match(config, /visuals:\s*\n\s*mode: sprites/);
+      assert.match(config, /theme:\s*\n\s*default: light/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('honours an explicit opts.presentation over the persisted record', () => {
+    const root = join(tmpdir(), `kbe-test-present-opt-${Date.now()}`);
+    const out = join(root, 'content');
+    mkdirSync(out, { recursive: true });
+    writeFileSync(
+      join(root, '.kbx.json'),
+      JSON.stringify({ presentation: { visual: 'sprites', theme: 'light' } }),
+      'utf-8',
+    );
+    try {
+      transformCatalogue(
+        { title: 'KB', clusters: { e: { name: 'E', color: '#fff' } }, nodes: [] },
+        out,
+        { presentation: { visual: 'heroes', theme: 'sepia' } },
+      );
+      const config = readFileSync(join(out, 'config.yaml'), 'utf-8');
+      assert.match(config, /mode: heroes/);
+      assert.match(config, /default: sepia/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to defaults for an invalid persisted value', () => {
+    const root = join(tmpdir(), `kbe-test-present-bad-${Date.now()}`);
+    const out = join(root, 'content');
+    mkdirSync(out, { recursive: true });
+    writeFileSync(
+      join(root, '.kbx.json'),
+      JSON.stringify({ presentation: { visual: 'bogus', theme: 'neon' } }),
+      'utf-8',
+    );
+    try {
+      transformCatalogue(
+        { title: 'KB', clusters: { e: { name: 'E', color: '#fff' } }, nodes: [] },
+        out,
+      );
+      const config = readFileSync(join(out, 'config.yaml'), 'utf-8');
+      assert.match(config, /mode: emoji/);
+      assert.match(config, /default: dark/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('skeleton has correct frontmatter', () => {
     const content = readFileSync(join(OUT, 'graph.md'), 'utf-8');
     assert.ok(content.includes('id: "graph"'));
