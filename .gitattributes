@@ -2,3 +2,9 @@
 # timestamps) so `kbexplorer derive --check` is deterministic. Pin them to LF so
 # autocrlf can't rewrite line endings on checkout and trip a false drift.
 *.jsonld text eol=lf
+
+# Golden snapshots are compared byte-for-byte against `canonicalStringify` output
+# (always LF). Pin them to LF too, otherwise autocrlf rewrites them to CRLF on
+# Windows checkouts and the content goldens fail on a pure line-ending diff.
+*.golden.json text eol=lf
+
