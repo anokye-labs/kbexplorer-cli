@@ -26,6 +26,14 @@ import { getSubmoduleUrl, getAppRoot } from '../lib/detect-repo.js';
 import { manifestOutPath } from './dev.js';
 import { parseDoctorArgs } from '../lib/args.js';
 import { loadKbEnv } from '../lib/frontmatter.js';
+import {
+  loadPluginManifest,
+  loadExtensionDescriptor,
+  validatePluginManifest,
+  validateExtensionDescriptor,
+  resolveBundle,
+  resolveScopeRoot,
+} from '../lib/plugin-bundle.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -762,6 +770,64 @@ function checkAdoption({ cwd, env }) {
   return checks;
 }
 
+// ── Plugin section ──────────────────────────────────────────────────────────────
+
+/**
+ * Build checks for the Plugin section: verify the kbx plugin bundle resolves —
+ * a valid manifest, a valid gist-share descriptor, every required component
+ * present, and scope resolution working.
+ */
+function checkPlugin({ assetsRoot, cwd } = {}) {
+  const checks = [];
+
+  const { manifest, error: mErr } = loadPluginManifest(assetsRoot);
+  if (mErr) {
+    checks.push(fail('plugin.manifest', `Plugin manifest unreadable: ${mErr}`));
+  } else {
+    const v = validatePluginManifest(manifest);
+    if (v.valid) {
+      checks.push(pass('plugin.manifest', `Manifest valid (${manifest.name}@${manifest.version})`));
+    } else {
+      checks.push(fail('plugin.manifest', `Manifest invalid: ${v.errors.join('; ')}`));
+    }
+  }
+
+  const { descriptor, error: dErr } = loadExtensionDescriptor(assetsRoot);
+  if (dErr) {
+    checks.push(fail('plugin.share', `Gist-share descriptor (copilot-extension.json) missing: ${dErr}`));
+  } else {
+    const v = validateExtensionDescriptor(descriptor);
+    if (v.valid) {
+      checks.push(pass('plugin.share', 'Gist-share descriptor (copilot-extension.json) valid'));
+    } else {
+      checks.push(fail('plugin.share', `Gist-share descriptor invalid: ${v.errors.join('; ')}`));
+    }
+  }
+
+  const { components } = resolveBundle({ assetsRoot });
+  for (const c of components) {
+    if (c.id === 'manifest' || c.id === 'extension-descriptor' || c.id === 'readme') continue;
+    if (c.exists) {
+      checks.push(pass(`plugin.${c.id}`, `${c.label} resolves`));
+    } else if (c.required) {
+      checks.push(fail(`plugin.${c.id}`, `${c.label} missing (${c.source})`));
+    } else {
+      checks.push(
+        warn(`plugin.${c.id}`, `${c.label} not yet bundled${c.pending ? ` (pending ${c.pending})` : ''}`),
+      );
+    }
+  }
+
+  try {
+    const project = resolveScopeRoot('project', { cwd: cwd ?? process.cwd() });
+    checks.push(pass('plugin.scope', `Install scopes resolve (project → ${project})`));
+  } catch (err) {
+    checks.push(fail('plugin.scope', `Scope resolution failed: ${err.message}`));
+  }
+
+  return checks;
+}
+
 // ── Environment section ───────────────────────────────────────────────────────
 
 /**
@@ -1014,6 +1080,8 @@ export default async function doctor(args, {
 
   const adoptionChecks = checkAdoption({ cwd, env });
 
+  const pluginChecks = checkPlugin({ cwd });
+
   const envChecks = checkEnvironment({ cwd, env, spawnSync: spawnSyncImpl });
 
   const sections = [
@@ -1021,6 +1089,7 @@ export default async function doctor(args, {
     { name: 'MCP', checks: mcpChecks },
     { name: 'Template', checks: templateChecks },
     { name: 'Adoption readiness', checks: adoptionChecks },
+    { name: 'Plugin', checks: pluginChecks },
     { name: 'Environment', checks: envChecks },
   ];
 
@@ -1046,4 +1115,4 @@ export default async function doctor(args, {
 }
 
 // Export section runners for testing
-export { checkRuntime, checkMcp, checkTemplate, checkAdoption, checkEnvironment };
+export { checkRuntime, checkMcp, checkTemplate, checkAdoption, checkPlugin, checkEnvironment };

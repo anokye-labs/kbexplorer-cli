@@ -1,0 +1,11 @@
+{
+  "name": "kbx",
+  "description": "Turn any repository into a navigable, interactive knowledge graph. Bundles the kbx command surface, the kb-architect/kb-researcher/kb-writer agents, the kbx skill, and the kbexplorer canvas extension over a single engine — so a user never needs to drop to the terminal.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Anokye Labs"
+  },
+  "homepage": "https://github.com/anokye-labs/kbexplorer-cli/tree/main/src/assets/plugin/kbx",
+  "repository": "https://github.com/anokye-labs/kbexplorer-cli",
+  "license": "MIT"
+}
