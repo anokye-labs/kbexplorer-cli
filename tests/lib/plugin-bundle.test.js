@@ -29,7 +29,7 @@ const {
 
 // ── Synthetic assets root ───────────────────────────────────────────────────────
 
-function buildAssets(dir, { withCommands = false, withExtension = false } = {}) {
+function buildAssets(dir, { withExtension = false } = {}) {
   const bundle = join(dir, 'plugin', PLUGIN_NAME);
   mkdirSync(join(bundle, '.claude-plugin'), { recursive: true });
   writeFileSync(
@@ -48,10 +48,9 @@ function buildAssets(dir, { withCommands = false, withExtension = false } = {}) 
   mkdirSync(join(dir, 'skills', PLUGIN_NAME), { recursive: true });
   writeFileSync(join(dir, 'skills', PLUGIN_NAME, 'SKILL.md'), '---\nname: kbx\n---\n');
 
-  if (withCommands) {
-    mkdirSync(join(dir, 'commands'), { recursive: true });
-    writeFileSync(join(dir, 'commands', 'audit.md'), '# audit');
-  }
+  mkdirSync(join(dir, 'commands'), { recursive: true });
+  writeFileSync(join(dir, 'commands', 'audit.md'), '# audit');
+
   if (withExtension) {
     mkdirSync(join(dir, 'extensions'), { recursive: true });
     writeFileSync(join(dir, 'extensions', 'index.js'), '// canvas');
@@ -164,8 +163,8 @@ describe('resolveBundle', () => {
     const byId = Object.fromEntries(components.map((c) => [c.id, c]));
     assert.equal(byId.agents.exists, true);
     assert.equal(byId.skill.exists, true);
-    assert.equal(byId.commands.exists, false);
-    assert.equal(byId.commands.required, false);
+    assert.equal(byId.commands.exists, true);
+    assert.equal(byId.commands.required, true);
     assert.equal(byId.extension.exists, false);
     assert.ok(byId.extension.pending);
   });
@@ -198,18 +197,18 @@ describe('assembleBundle', () => {
     assert.ok(installed.includes('manifest'));
     assert.ok(installed.includes('agents'));
     assert.ok(installed.includes('skill'));
-    assert.ok(skipped.some((s) => s.id === 'commands'));
+    assert.ok(installed.includes('commands'));
     assert.ok(skipped.some((s) => s.id === 'extension'));
 
     assert.ok(existsSync(join(dest, PLUGIN_MANIFEST_PATH)));
     assert.ok(existsSync(join(dest, EXTENSION_DESCRIPTOR_FILE)));
     assert.ok(existsSync(join(dest, 'agents', 'kb-architect.md')));
     assert.ok(existsSync(join(dest, 'skills', 'kbx', 'SKILL.md')));
-    assert.ok(!existsSync(join(dest, 'commands')));
+    assert.ok(existsSync(join(dest, 'commands', 'audit.md')));
   });
 
   it('includes optional components once present', () => {
-    buildAssets(tmp, { withCommands: true, withExtension: true });
+    buildAssets(tmp, { withExtension: true });
     const dest = join(tmp, 'out');
     const { installed } = assembleBundle(dest, { assetsRoot: tmp });
     assert.ok(installed.includes('commands'));
