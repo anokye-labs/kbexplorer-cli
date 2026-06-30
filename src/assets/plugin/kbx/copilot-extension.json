@@ -1,0 +1,15 @@
+{
+  "name": "kbx",
+  "displayName": "kbexplorer",
+  "description": "Turn any repository into a navigable, interactive knowledge graph. Aggregates the kbx commands, agents, skill, and canvas extension into one installable Copilot plugin.",
+  "version": "0.1.0",
+  "type": "plugin",
+  "entry": ".claude-plugin/plugin.json",
+  "extension": {
+    "kind": "canvas",
+    "path": "extensions"
+  },
+  "publisher": "anokye-labs",
+  "repository": "https://github.com/anokye-labs/kbexplorer-cli",
+  "license": "MIT"
+}

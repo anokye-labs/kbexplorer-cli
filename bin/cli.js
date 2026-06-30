@@ -34,6 +34,7 @@ const COMMANDS = {
   scaffold: '../src/commands/scaffold.js',
   derive: '../src/commands/derive.js',
   doctor: '../src/commands/doctor.js',
+  plugin: '../src/commands/plugin.js',
   'search-index': '../src/commands/search-index.js',
   search: '../src/commands/search.js',
 };
@@ -60,6 +61,7 @@ function printUsage() {
     search      Semantic search over the knowledge graph
     update      Pull latest template + refresh agents/skills
     doctor      Diagnose local runtime, MCP, template setup, and adoption readiness
+    plugin      Install or share the kbx Copilot plugin bundle (install/share/resolve)
 
   Options:
     --help      Show this help message
@@ -119,6 +121,8 @@ function printUsage() {
     npx kbx doctor
     npx kbx doctor --runtime claude
     npx kbx doctor --json
+    npx kbx plugin install --scope user
+    npx kbx plugin share
 `);
 }
 
