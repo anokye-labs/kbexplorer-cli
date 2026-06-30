@@ -67,6 +67,31 @@ describe('conflateReferents — acceptance: same person across two sources → o
       members: ['dir-ada', 'gh-ada'],
     });
   });
+
+  it('snapshots each member\'s scalar attributes into conflatedFrom (lossless for #139)', () => {
+    const ghAda = node('gh-ada', {
+      sourceId: 'github',
+      identity: 'kg://person/ada',
+      title: 'Ada (GitHub)',
+      identityClaims: [claim('same-as', 'kg://person/ada-dir')],
+    });
+    const dirAda = node('dir-ada', {
+      sourceId: 'directory',
+      identity: 'kg://person/ada-dir',
+      title: 'Ada Lovelace',
+    });
+    const { graph } = conflateReferents({ nodes: [ghAda, dirAda] });
+    const cf = graph.nodes[0].conflatedFrom;
+    const dir = cf.find((m) => m.id === 'dir-ada');
+    const gh = cf.find((m) => m.id === 'gh-ada');
+    // Non-representative member's distinct title is preserved (would be dropped otherwise).
+    assert.equal(dir.attributes.title, 'Ada Lovelace');
+    assert.equal(gh.attributes.title, 'Ada (GitHub)');
+    // Structural/identity fields are NOT snapshotted.
+    assert.ok(!('id' in dir.attributes));
+    assert.ok(!('identity' in dir.attributes));
+    assert.ok(!('sourceId' in dir.attributes));
+  });
 });
 
 describe('conflateReferents — equivalent-to does NOT merge', () => {

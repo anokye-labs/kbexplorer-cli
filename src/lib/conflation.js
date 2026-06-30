@@ -70,6 +70,55 @@ export const CONFLATE_GENERATOR = 'conflate@1';
 /** Canonical fallback relation when an edge carries no usable relation. */
 const FALLBACK_RELATION = 'structural';
 
+/**
+ * Node fields that are structural / identity / already-unioned-provenance and
+ * are therefore NEVER snapshotted as resolvable attribute values. Everything
+ * else on a member node (title, cluster, content, rawContent, emoji, image,
+ * sprite, display, data, and any custom attribute) is captured so the
+ * SoR-precedence engine (#139) can rank competing values per field.
+ */
+const NON_ATTRIBUTE_FIELDS = new Set([
+  'id',
+  'identity',
+  'source',
+  'sourceId',
+  'provider',
+  'parent',
+  'nodeType',
+  'connections',
+  'sourceRefs',
+  'evidence',
+  'identityClaims',
+  'linkedRefs',
+  'derivation',
+  'derived',
+  'conflatedFrom',
+  'precedence',
+  'entityType',
+  'jsonld',
+  'access',
+  'pageTheme',
+]);
+
+/**
+ * Snapshot a member node's precedence-eligible attribute values (a shallow copy
+ * of every own field except the structural/identity set above), with keys in
+ * stable sorted order. Lossless: this preserves the scalar values that would
+ * otherwise be dropped when a non-representative member is conflated away, so
+ * #139 can resolve conflicting attributes deterministically.
+ *
+ * @param {object} node
+ * @returns {Record<string, unknown>}
+ */
+export function snapshotAttributes(node) {
+  const out = {};
+  for (const key of Object.keys(node).sort()) {
+    if (NON_ATTRIBUTE_FIELDS.has(key)) continue;
+    out[key] = node[key];
+  }
+  return out;
+}
+
 /** Stable comparator helper. */
 function cmp(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -262,6 +311,7 @@ export function conflateReferents(graph, opts = {}) {
         if (m.identity) entry.identity = m.identity;
         if (m.sourceId != null) entry.sourceId = m.sourceId;
         if (m.sourceRefs?.length) entry.sourceRefs = uniqueSorted(m.sourceRefs);
+        entry.attributes = snapshotAttributes(m);
         return entry;
       }),
       derivation: { mode: 'derived', generator, inputs: allSourceRefs },
