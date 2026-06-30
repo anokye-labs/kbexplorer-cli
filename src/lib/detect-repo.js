@@ -5,24 +5,49 @@
 import { resolve } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { resolveForgeRef, resolveRepositoryRef } from './forge-adapter.js';
 
 /**
- * Detect the git remote owner/repo from the current directory.
+ * Read the `origin` remote URL from a git repo, or null when absent.
+ * @param {string} [cwd=process.cwd()]
+ * @returns {string|null}
  */
-export function detectGitRemote(cwd = process.cwd()) {
+function readOriginUrl(cwd = process.cwd()) {
   try {
-    const remote = execSync('git remote get-url origin', {
+    return execSync('git remote get-url origin', {
       cwd,
       encoding: 'utf-8',
     }).trim();
+  } catch {
+    return null; // not a git repo or no remote
+  }
+}
 
-    const sshMatch = remote.match(/git@[^:]+:([^/]+)\/([^/.]+)/);
-    if (sshMatch) return { owner: sshMatch[1], repo: sshMatch[2] };
+/**
+ * Detect the git remote owner/repo from the current directory.
+ *
+ * Resolution now flows through the host-neutral {@link resolveForgeRef} seam;
+ * GitHub is the sole registered adapter, so the returned `{ owner, repo }` is
+ * identical to the previous inline parsing.
+ *
+ * @param {string} [cwd=process.cwd()]
+ * @returns {{ owner: string, repo: string }|null}
+ */
+export function detectGitRemote(cwd = process.cwd()) {
+  const ref = resolveForgeRef(readOriginUrl(cwd));
+  return ref ? { owner: ref.owner, repo: ref.repo } : null;
+}
 
-    const httpsMatch = remote.match(/github\.com\/([^/]+)\/([^/.]+)/);
-    if (httpsMatch) return { owner: httpsMatch[1], repo: httpsMatch[2] };
-  } catch { /* not a git repo or no remote */ }
-  return null;
+/**
+ * Detect a host-neutral {@link RepositoryRef} for the current repo's `origin`
+ * remote. Carries the raw git remote plus the resolved host identity (or null
+ * host for a bare git remote). Returns null when there is no origin remote.
+ *
+ * @param {string} [cwd=process.cwd()]
+ * @returns {import('./forge-adapter.js').RepositoryRef|null}
+ */
+export function detectRepositoryRef(cwd = process.cwd()) {
+  return resolveRepositoryRef(readOriginUrl(cwd));
 }
 
 /**
