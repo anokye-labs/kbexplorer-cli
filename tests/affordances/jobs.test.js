@@ -37,7 +37,12 @@ let dir;
 let store;
 /** Build a context with a fresh store + injectable runtime seams per test. */
 function ctxWith(seams = {}) {
-  return createAffordanceContext({ cwd: dir, seams: { jobStore: store, ...seams } });
+  // Default to the documented non-interactive consent opt-in so these lifecycle
+  // tests drive write/sample ops without a prompt; per-test seams can override.
+  return createAffordanceContext({
+    cwd: dir,
+    seams: { jobStore: store, consentPolicy: 'allow', ...seams },
+  });
 }
 
 beforeEach(() => {

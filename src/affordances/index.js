@@ -21,11 +21,14 @@
  *     introspects to answer "what actions are available, with what typed
  *     inputs/outputs?" (the extension-tool adapter turns these into `tools`;
  *     the MCP adapter turns them into MCP tool registrations).
- *   - {@link executeAffordance} — validate input against the contract, run the
- *     handler with the given context, and surface failures as typed
- *     {@link AffordanceError}s.
+ *   - {@link executeAffordance} — validate input against the contract, enforce
+ *     consent for write/sample-class actions (PE3-F3), run the handler with the
+ *     given context, and surface failures as typed {@link AffordanceError}s.
  *
- * Nothing here imports MCP, JSON-RPC, or any canvas/transport code.
+ * The consent gate is enforced **here, at the action core**, not in any adapter,
+ * so the extension-tool adapter and a future MCP adapter inherit identical
+ * approval/disclosure behaviour. Nothing here imports MCP, JSON-RPC, or any
+ * canvas/transport code.
  *
  * @module src/affordances
  */
@@ -38,6 +41,20 @@ import {
   describeAffordance,
 } from './contract.js';
 import { createAffordanceContext } from './context.js';
+import {
+  enforceConsent,
+  requiresConsent,
+  isReadOnlyInvocation,
+  buildConsentRequest,
+  buildDisclosure,
+  CONSENT_REQUIRED_CLASSES,
+} from './consent.js';
+import {
+  buildDerivation,
+  stampProvenance,
+  sampledSourceRef,
+  SAMPLE_GENERATOR,
+} from './provenance.js';
 import search from './operations/search.js';
 import queryNode from './operations/query-node.js';
 import graphNeighbors from './operations/graph-neighbors.js';
@@ -103,15 +120,18 @@ export function describeAffordances() {
 
 /**
  * Execute an affordance by name: validate the raw input against the contract,
- * then run the handler with `context`.
+ * **enforce consent** for write/sample-class actions, then run the handler with
+ * `context`. The consent gate (PE3-F3) lives here — at the action core — so both
+ * delivery adapters inherit identical enforcement; read-class actions skip it
+ * with zero overhead.
  *
  * @param {string} name           Affordance name.
  * @param {object} [input={}]     Raw input (validated/coerced against the schema).
  * @param {object} [context]      An {@link createAffordanceContext} result. When
  *        omitted a default context over `process.cwd()` is created.
  * @returns {Promise<*>} The affordance's typed result.
- * @throws {AffordanceError} UNKNOWN_AFFORDANCE / INVALID_INPUT / or a typed
- *         failure raised by the handler.
+ * @throws {AffordanceError} UNKNOWN_AFFORDANCE / INVALID_INPUT / CONSENT_REQUIRED /
+ *         CONSENT_DENIED / or a typed failure raised by the handler.
  */
 export async function executeAffordance(name, input = {}, context = undefined) {
   const affordance = AFFORDANCES.get(name);
@@ -133,7 +153,17 @@ export async function executeAffordance(name, input = {}, context = undefined) {
   }
 
   const ctx = context ?? createAffordanceContext();
-  return affordance.execute(ctx, value);
+
+  // Consent gate: refuse or prompt for write/sample actions before any side
+  // effect or model call. A host may thread freshly-supplied credentials back
+  // through the decision; merge them into the input the handler sees.
+  const { decision } = await enforceConsent(affordance, value, ctx);
+  const effectiveInput =
+    decision && decision.credentials && typeof decision.credentials === 'object'
+      ? { ...value, credentials: { ...(value.credentials ?? {}), ...decision.credentials } }
+      : value;
+
+  return affordance.execute(ctx, effectiveInput);
 }
 
 export {
@@ -142,4 +172,16 @@ export {
   ACTION_CLASSES,
   createAffordanceContext,
   describeAffordance,
+  // Consent gate (PE3-F3) — enforced here at the action core for every adapter.
+  enforceConsent,
+  requiresConsent,
+  isReadOnlyInvocation,
+  buildConsentRequest,
+  buildDisclosure,
+  CONSENT_REQUIRED_CLASSES,
+  // Sampled-content provenance (PE3-F3).
+  buildDerivation,
+  stampProvenance,
+  sampledSourceRef,
+  SAMPLE_GENERATOR,
 };

@@ -29,6 +29,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { stampProvenance } from '../provenance.js';
 
 /**
  * Lifecycle states a job can occupy. A job is *settled* once it is no longer
@@ -88,6 +89,10 @@ function snapshot(job) {
     needs: job.needs ?? null,
     partial: job.partial ?? null,
     error: job.error ?? null,
+    // Sampled-content provenance (PE3-F3): the deterministic Derivation a
+    // sample-class job was started with, so previews/clients can disclose what
+    // model + inputs produced the pending changes. Null for non-sampled jobs.
+    derivation: job.derivation ?? null,
   };
 }
 
@@ -161,11 +166,14 @@ export class JobStore {
    * @param {string} spec.operation                 Logical op name (e.g. `generate`).
    * @param {object} spec.request                   Opaque, serialisable job request.
    * @param {object} [spec.credentials]             Name→value credential bag.
+   * @param {object} [spec.derivation]              Deterministic sampled-content
+   *        provenance ({@link module:src/affordances/provenance}); recorded on the
+   *        job and stamped onto its generated changes. Omitted for non-sampled work.
    * @param {(args: {request: object, signal: AbortSignal, onProgress: Function, getCredential: Function}) => Promise<{changes?: object[], partial?: object[]}>} spec.run
    *        The injected runtime (e.g. `context.seams.runGenerate`).
    * @returns {object} The created job snapshot (`status: running`).
    */
-  start({ operation, request, credentials = {}, run }) {
+  start({ operation, request, credentials = {}, derivation = null, run }) {
     const id = this._nextId(operation, request);
     const controller = new AbortController();
     const job = {
@@ -175,6 +183,7 @@ export class JobStore {
       progress: { phase: 'starting', completed: 0, total: 0, message: '' },
       request,
       credentials: { ...credentials },
+      derivation: derivation ?? null,
       changes: null,
       partial: null,
       applied: false,
@@ -228,7 +237,13 @@ export class JobStore {
       )
       .then((result) => {
         if (job.status !== JOB_STATUS.RUNNING) return; // already cancelled
-        job.changes = Array.isArray(result?.changes) ? result.changes : [];
+        const rawChanges = Array.isArray(result?.changes) ? result.changes : [];
+        // Stamp sampled-content provenance (PE3-F3) onto every generated change
+        // so the model + inputs that produced it travel with the bytes through
+        // preview_changes / apply_changes. Non-mutating, deterministic, no clock.
+        job.changes = job.derivation
+          ? rawChanges.map((c) => stampProvenance(c, job.derivation))
+          : rawChanges;
         job.partial = Array.isArray(result?.partial) ? result.partial : null;
         job.progress = { ...job.progress, phase: 'done', message: 'completed' };
         job.status = JOB_STATUS.SUCCEEDED;

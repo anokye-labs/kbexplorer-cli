@@ -23,6 +23,16 @@ export default defineAffordance({
   summary:
     'Open a pull request for a job whose changes have been applied; the git/GitHub runtime is injected, not owned by the contract.',
   actionClass: ACTION_CLASSES.WRITE,
+  consent: {
+    // Write-class: opening a PR uses the GitHub credential and pushes a branch.
+    credentials: ['GITHUB_TOKEN'],
+    disclose: (input) => ({
+      writes: [
+        ...(input?.branch ? [`branch:${input.branch}`] : []),
+        ...(input?.title ? [`pr:${input.title}`] : []),
+      ],
+    }),
+  },
   input: defineSchema({
     id: { type: 'string', required: true, description: 'Job id whose applied changes to publish.' },
     title: { type: 'string', required: true, description: 'Pull request title.' },

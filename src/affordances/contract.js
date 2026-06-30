@@ -49,6 +49,13 @@ export const ERROR_CODES = Object.freeze({
   EXECUTION_FAILED: 'EXECUTION_FAILED',
   /** No affordance is registered under the requested name. */
   UNKNOWN_AFFORDANCE: 'UNKNOWN_AFFORDANCE',
+  /** A write/sample-class action was invoked but no approval seam is wired to
+   *  obtain consent. Fail-closed: the action is refused rather than run silently
+   *  (PE3-F3). */
+  CONSENT_REQUIRED: 'CONSENT_REQUIRED',
+  /** The approval seam was consulted and the user/host declined the action
+   *  (PE3-F3). */
+  CONSENT_DENIED: 'CONSENT_DENIED',
 });
 
 /**
@@ -246,8 +253,29 @@ export function validateInput(schema, input = {}) {
  * @property {'read'|'write'|'sample'} actionClass  Consent classification.
  * @property {SchemaDescriptor} input   Typed input contract.
  * @property {SchemaDescriptor} [output]  Advisory output shape (documentation).
+ * @property {ConsentDescriptor} [consent]  Optional disclosure metadata used by
+ *           the consent layer (PE3-F3) to tell the user what a write/sample
+ *           action will touch (credentials, written paths, model cost). Purely
+ *           additive — affordances without it disclose only their class/summary.
  * @property {(context: object, input: object) => Promise<*>|*} execute
  *           Pure-of-protocol handler: typed context in, typed result out.
+ */
+
+/**
+ * @typedef {object} ConsentDescriptor
+ * @property {string[]} [credentials]  Credential NAMES (never values) the action
+ *           may consume, e.g. `['GITHUB_TOKEN']`.
+ * @property {{kind?: 'sample'|'none', runtime?: string, model?: string, estimate?: string}} [cost]
+ *           For sample-class actions: which model/runtime is invoked. Advisory.
+ * @property {string[]} [writes]  Static list of paths/targets a write touches.
+ * @property {(input: object, context?: object) => {credentials?: string[], writes?: string[], cost?: object}} [disclose]
+ *           Optional input-derived disclosure merged over the static fields.
+ *           Must be deterministic and timestamp-free.
+ * @property {(input: object) => boolean} [readOnlyWhen]
+ *           Optional, explicit opt-in predicate marking specific invocations of a
+ *           write/sample action as side-effect-free so they skip the consent gate
+ *           (e.g. `derive --check`). Omitting it means the action is always gated
+ *           (fail-closed; never fail-open by omission).
  */
 
 /**
@@ -261,11 +289,12 @@ export function validateInput(schema, input = {}) {
  * @param {'read'|'write'|'sample'} spec.actionClass
  * @param {SchemaDescriptor} spec.input
  * @param {SchemaDescriptor} [spec.output]
+ * @param {ConsentDescriptor} [spec.consent]
  * @param {(context: object, input: object) => Promise<*>|*} spec.execute
  * @returns {Affordance}
  */
 export function defineAffordance(spec) {
-  const { name, title, summary, actionClass, input, output, execute } = spec ?? {};
+  const { name, title, summary, actionClass, input, output, consent, execute } = spec ?? {};
   if (typeof name !== 'string' || !name.trim()) {
     throw new TypeError('defineAffordance: "name" is required');
   }
@@ -280,6 +309,15 @@ export function defineAffordance(spec) {
   if (!input || typeof input !== 'object' || !input.fields) {
     throw new TypeError(`defineAffordance(${name}): "input" must be a schema descriptor`);
   }
+  if (consent !== undefined && (typeof consent !== 'object' || consent === null)) {
+    throw new TypeError(`defineAffordance(${name}): "consent" must be an object when provided`);
+  }
+  if (consent?.disclose !== undefined && typeof consent.disclose !== 'function') {
+    throw new TypeError(`defineAffordance(${name}): "consent.disclose" must be a function`);
+  }
+  if (consent?.readOnlyWhen !== undefined && typeof consent.readOnlyWhen !== 'function') {
+    throw new TypeError(`defineAffordance(${name}): "consent.readOnlyWhen" must be a function`);
+  }
   if (typeof execute !== 'function') {
     throw new TypeError(`defineAffordance(${name}): "execute" must be a function`);
   }
@@ -290,6 +328,7 @@ export function defineAffordance(spec) {
     actionClass,
     input,
     output: output ?? undefined,
+    consent: consent ? Object.freeze({ ...consent }) : undefined,
     execute,
   });
 }
@@ -300,7 +339,7 @@ export function defineAffordance(spec) {
  * to answer "what actions are available, with what typed inputs/outputs?".
  *
  * @param {Affordance} affordance
- * @returns {{name: string, title: string, summary: string, actionClass: string, input: SchemaDescriptor, output: SchemaDescriptor|null}}
+ * @returns {{name: string, title: string, summary: string, actionClass: string, input: SchemaDescriptor, output: SchemaDescriptor|null, consent: object|null}}
  */
 export function describeAffordance(affordance) {
   return {
@@ -310,5 +349,15 @@ export function describeAffordance(affordance) {
     actionClass: affordance.actionClass,
     input: affordance.input,
     output: affordance.output ?? null,
+    // Static disclosure only — the dynamic `disclose` function is intentionally
+    // omitted (non-serialisable); adapters obtain input-derived disclosure at
+    // call time via buildConsentRequest.
+    consent: affordance.consent
+      ? {
+          ...(affordance.consent.credentials ? { credentials: affordance.consent.credentials } : {}),
+          ...(affordance.consent.cost ? { cost: affordance.consent.cost } : {}),
+          ...(affordance.consent.writes ? { writes: affordance.consent.writes } : {}),
+        }
+      : null,
   };
 }

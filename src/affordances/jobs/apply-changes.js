@@ -36,6 +36,26 @@ export default defineAffordance({
   summary:
     'Write a succeeded job\'s pending changes to disk verbatim (deterministic, no timestamps) with per-file partial-failure recovery.',
   actionClass: ACTION_CLASSES.WRITE,
+  consent: {
+    // Write-class: discloses the exact paths that will be written, resolved from
+    // the target job's pending change set (restricted by `only` when given).
+    disclose: (input, context) => {
+      try {
+        const store = resolveJobStore(context);
+        const job = store?._raw?.(input?.id);
+        const changes = Array.isArray(job?.changes) ? job.changes : [];
+        const onlySet =
+          Array.isArray(input?.only) && input.only.length ? new Set(input.only) : null;
+        return {
+          writes: changes
+            .map((c) => c?.path)
+            .filter((p) => typeof p === 'string' && p && (!onlySet || onlySet.has(p))),
+        };
+      } catch {
+        return { writes: [] };
+      }
+    },
+  },
   input: defineSchema({
     id: { type: 'string', required: true, description: 'Job id whose changes to apply.' },
     only: {

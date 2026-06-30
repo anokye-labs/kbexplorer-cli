@@ -62,6 +62,18 @@ describe('registry', () => {
     assert.equal(byName.derive, 'write');
   });
 
+  it('surfaces static consent disclosure in the introspection contract', () => {
+    const byName = Object.fromEntries(describeAffordances().map((d) => [d.name, d]));
+    // create_pr statically discloses the GitHub credential it may use.
+    assert.deepEqual(byName.create_pr.consent.credentials, ['GITHUB_TOKEN']);
+    // start_generate discloses a sample cost (a model runtime is invoked).
+    assert.equal(byName.start_generate.consent.cost.kind, 'sample');
+    // Read actions carry no consent block.
+    assert.equal(byName.query_node.consent, null);
+    // The dynamic `disclose`/`readOnlyWhen` functions are NOT serialised.
+    assert.equal('disclose' in (byName.derive.consent ?? {}), false);
+  });
+
   it('executeAffordance throws UNKNOWN_AFFORDANCE for an unregistered name', async () => {
     await assert.rejects(
       () => executeAffordance('teleport', {}),
