@@ -156,7 +156,7 @@ describe('DECIDE validation (#149)', () => {
     ]);
   }
 
-  it('accepts a valid scalar decision and emits a persist effect', () => {
+  it('accepts a valid scalar decision and records it without a persist effect', () => {
     const { state, effects } = onboardingReducer(atStrategy(), {
       type: 'DECIDE',
       step: 'template-strategy',
@@ -164,7 +164,15 @@ describe('DECIDE validation (#149)', () => {
     });
     assert.equal(state.decisions.strategy, 'vendor');
     assert.equal(state.status, STATUS.AWAITING_INPUT);
-    assert.deepEqual(effects, [{ kind: 'persist', patch: { onboarding: { strategy: 'vendor' } } }]);
+    // Persistence happens on advance (single persist path), not on DECIDE.
+    assert.deepEqual(effects, []);
+  });
+
+  it('persists the decision on advance, under the onboarding key', () => {
+    let s = atStrategy();
+    ({ state: s } = onboardingReducer(s, { type: 'DECIDE', step: 'template-strategy', value: 'vendor' }));
+    const { effects } = onboardingReducer(s, { type: 'NEXT' });
+    assert.deepEqual(effects[0], { kind: 'persist', patch: { onboarding: { strategy: 'vendor' } } });
   });
 
   it('rejects an out-of-enum value without transitioning', () => {
@@ -188,7 +196,7 @@ describe('DECIDE validation (#149)', () => {
     assert.equal(state.error.code, ONBOARDING_ERRORS.INVALID_INPUT);
   });
 
-  it('accepts the two-key visual-identity decision as an object', () => {
+  it('accepts the two-key visual-identity decision as an object (no persist on decide)', () => {
     const m = createOnboardingMachine();
     const { state, effects } = onboardingReducer(m, {
       type: 'DECIDE',
@@ -197,9 +205,7 @@ describe('DECIDE validation (#149)', () => {
     });
     assert.equal(state.decisions.visual, 'heroes');
     assert.equal(state.decisions.theme, 'sepia');
-    assert.deepEqual(effects, [
-      { kind: 'persist', patch: { onboarding: { visual: 'heroes', theme: 'sepia' } } },
-    ]);
+    assert.deepEqual(effects, []);
   });
 
   it('rejects a decision key that does not belong to the step', () => {
@@ -269,6 +275,132 @@ describe('BACK / RESET (#149)', () => {
   });
 });
 
+describe('persistence routing — single source of truth with #150', () => {
+  function walkTo(targetStep, decisions) {
+    let s = createOnboardingMachine({ decisions });
+    s = run(s, [
+      { type: 'START' },
+      { type: 'PREFLIGHT_RESULT', result: { ok: true, diagnostics: [] } },
+    ]);
+    // Advance until we are AT targetStep, collecting the persist effects emitted.
+    const persists = [];
+    while (s.step !== targetStep) {
+      const { state, effects } = onboardingReducer(s, { type: 'NEXT' });
+      for (const e of effects) if (e.kind === 'persist') persists.push(e.patch);
+      s = state;
+    }
+    return { state: s, persists };
+  }
+
+  it('routes visual + theme into the #150 presentation block, never under onboarding', () => {
+    // Advance past visual-identity (into search-mode) and inspect the persist.
+    const { persists } = walkTo('search-mode', FULL_DECISIONS);
+    const presentationPatch = persists.find((p) => p.presentation);
+    assert.ok(presentationPatch, 'expected a presentation patch');
+    assert.deepEqual(presentationPatch.presentation, { visual: 'sprites', theme: 'light' });
+    // visual/theme must NOT appear under any onboarding patch.
+    for (const p of persists) {
+      if (p.onboarding) {
+        assert.equal('visual' in p.onboarding, false);
+        assert.equal('theme' in p.onboarding, false);
+      }
+    }
+  });
+
+  it('routes strategy / contentMode / search under the onboarding key', () => {
+    const { persists } = walkTo('generate', FULL_DECISIONS);
+    const onboardingKeys = persists.flatMap((p) => (p.onboarding ? Object.keys(p.onboarding) : []));
+    assert.ok(onboardingKeys.includes('strategy'));
+    assert.ok(onboardingKeys.includes('contentMode'));
+    assert.ok(onboardingKeys.includes('search'));
+  });
+
+  it('the terminal ready persist records progress only — no duplicated decisions', () => {
+    let s = createOnboardingMachine({ decisions: FULL_DECISIONS });
+    s = run(s, [
+      { type: 'START' },
+      { type: 'PREFLIGHT_RESULT', result: { ok: true, diagnostics: [] } },
+      { type: 'NEXT' }, // template-strategy
+      { type: 'NEXT' }, // content-mode
+      { type: 'NEXT' }, // visual-identity
+      { type: 'NEXT' }, // search-mode
+      { type: 'NEXT' }, // generate
+      { type: 'JOB_UPDATE', snapshot: { id: 'j', status: 'succeeded' } },
+    ]);
+    const { effects } = onboardingReducer(s, { type: 'NEXT' }); // -> ready
+    const persist = effects.find((e) => e.kind === 'persist');
+    assert.deepEqual(persist.patch.onboarding.step, 'ready');
+    assert.deepEqual(persist.patch.onboarding.status, 'ready');
+    assert.equal('visual' in persist.patch.onboarding, false);
+    assert.equal('presentation' in persist.patch, false);
+  });
+});
+
+describe('BACK + re-DECIDE determinism — downstream invalidation (#149)', () => {
+  function seededAt(step, decisions) {
+    let s = createOnboardingMachine({ decisions });
+    s = run(s, [
+      { type: 'START' },
+      { type: 'PREFLIGHT_RESULT', result: { ok: true, diagnostics: [] } },
+    ]);
+    while (s.step !== step) ({ state: s } = onboardingReducer(s, { type: 'NEXT' }));
+    return s;
+  }
+
+  it('changing an earlier decision clears all downstream decisions', () => {
+    // Sitting at search-mode with everything chosen; go BACK to content-mode and
+    // change contentMode — visual, theme and search must all be invalidated.
+    let s = seededAt('search-mode', FULL_DECISIONS);
+    ({ state: s } = onboardingReducer(s, { type: 'BACK' })); // visual-identity
+    ({ state: s } = onboardingReducer(s, { type: 'BACK' })); // content-mode
+    assert.equal(s.step, 'content-mode');
+    ({ state: s } = onboardingReducer(s, { type: 'DECIDE', step: 'content-mode', value: 'repo' }));
+    assert.equal(s.decisions.contentMode, 'repo');
+    assert.equal(s.decisions.visual, null);
+    assert.equal(s.decisions.theme, null);
+    assert.equal(s.decisions.search, null);
+    // Upstream decision (strategy) is untouched.
+    assert.equal(s.decisions.strategy, 'vendor');
+  });
+
+  it('re-selecting the SAME value does not invalidate downstream decisions', () => {
+    let s = seededAt('search-mode', FULL_DECISIONS);
+    ({ state: s } = onboardingReducer(s, { type: 'BACK' })); // visual-identity
+    ({ state: s } = onboardingReducer(s, { type: 'BACK' })); // content-mode
+    ({ state: s } = onboardingReducer(s, { type: 'DECIDE', step: 'content-mode', value: 'both' }));
+    assert.equal(s.decisions.visual, 'sprites');
+    assert.equal(s.decisions.search, 'semantic');
+  });
+
+  it('changing one half of visual-identity clears only strictly-downstream (search)', () => {
+    let s = seededAt('search-mode', FULL_DECISIONS);
+    ({ state: s } = onboardingReducer(s, { type: 'BACK' })); // visual-identity
+    ({ state: s } = onboardingReducer(s, { type: 'DECIDE', step: 'visual-identity', value: { visual: 'none' } }));
+    assert.equal(s.decisions.visual, 'none');
+    assert.equal(s.decisions.theme, 'light'); // same-step sibling preserved
+    assert.equal(s.decisions.search, null); // downstream invalidated
+  });
+
+  it('changing a decision after a settled generate clears the in-flight job', () => {
+    let s = createOnboardingMachine({ decisions: FULL_DECISIONS });
+    s = run(s, [
+      { type: 'START' },
+      { type: 'PREFLIGHT_RESULT', result: { ok: true, diagnostics: [] } },
+      { type: 'NEXT' },
+      { type: 'NEXT' },
+      { type: 'NEXT' },
+      { type: 'NEXT' }, // search-mode
+      { type: 'NEXT' }, // generate
+      { type: 'JOB_UPDATE', snapshot: { id: 'j', status: 'succeeded' } },
+    ]);
+    assert.equal(s.job.status, 'succeeded');
+    ({ state: s } = onboardingReducer(s, { type: 'BACK' })); // search-mode (BACK clears job leaving generate)
+    ({ state: s } = onboardingReducer(s, { type: 'DECIDE', step: 'search-mode', value: 'none' }));
+    assert.equal(s.decisions.search, 'none');
+    assert.equal(s.job, null);
+  });
+});
+
 describe('generate step composes with the job layer (#154)', () => {
   function atGenerate() {
     // Walk to search-mode with all decisions set, then NEXT into generate.
@@ -289,10 +421,10 @@ describe('generate step composes with the job layer (#154)', () => {
     const { state, effects } = atGenerate();
     assert.equal(state.step, 'generate');
     assert.equal(state.status, STATUS.RUNNING);
-    assert.equal(effects.length, 1);
-    assert.equal(effects[0].kind, 'start-job');
-    assert.equal(effects[0].operation, 'generate');
-    assert.deepEqual(effects[0].request.decisions, FULL_DECISIONS);
+    const job = effects.find((e) => e.kind === 'start-job');
+    assert.ok(job);
+    assert.equal(job.operation, 'generate');
+    assert.deepEqual(job.request.decisions, FULL_DECISIONS);
   });
 
   it('a running snapshot keeps the flow running and ungated', () => {
@@ -317,9 +449,9 @@ describe('generate step composes with the job layer (#154)', () => {
     assert.equal(ready.step, 'ready');
     assert.equal(ready.status, STATUS.DONE);
     assert.ok(isTerminal(ready));
-    assert.deepEqual(effects, [
-      { kind: 'persist', patch: { onboarding: { ...FULL_DECISIONS, status: 'ready' } } },
-    ]);
+    const persist = effects.find((e) => e.kind === 'persist');
+    assert.equal(persist.patch.onboarding.step, 'ready');
+    assert.equal(persist.patch.onboarding.status, 'ready');
     assert.deepEqual(nextActions(ready), ['dev', 'build']);
   });
 
@@ -382,10 +514,13 @@ describe('driveOnboarding runner (seam-injected effects)', () => {
     const final = await driveOnboarding(createOnboardingMachine({ decisions: FULL_DECISIONS }), seams);
     assert.equal(final.step, 'ready');
     assert.equal(final.status, STATUS.DONE);
-    // Final persist records the terminal onboarding record.
+    // Presentation lands in #150's block (single source of truth), not under onboarding.
+    const presentationPatch = persisted.find((p) => p.presentation);
+    assert.deepEqual(presentationPatch.presentation, { visual: 'sprites', theme: 'light' });
+    // The terminal persist records flow progress under the onboarding key.
     const last = persisted[persisted.length - 1];
     assert.equal(last.onboarding.status, 'ready');
-    assert.equal(last.onboarding.strategy, 'vendor');
+    assert.equal('visual' in last.onboarding, false);
   });
 
   it('halts at a blocking preflight error without touching generate', async () => {

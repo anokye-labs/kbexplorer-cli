@@ -21,13 +21,22 @@
  * Composition seams (all injected, never imported here):
  *   - `preflight`        → runs the #152 first-run diagnostics, returns
  *                          `{ ok, diagnostics:[{ level, id, message, recovery }] }`.
- *   - `persist`          → merges a decision patch into `.kbx.json`
- *                          (e.g. `writeSourceRecord`).
+ *   - `persist`          → deep-merges a decision/progress patch into `.kbx.json`
+ *                          (e.g. read-modify-`writeSourceRecord`).
  *   - `startGenerate`    → drives the #154 generate job to a settled snapshot.
  *
  * The decision vocabulary mirrors `src/commands/init.js` exactly, so the headless
  * (`--yes`) wizard, the interactive wizard and the canvas all validate against one
  * source of truth.
+ *
+ * **Single source of truth for presentation (coordinating with #150).** #150
+ * persists the chosen visual mode + theme as a `presentation: { visual, theme }`
+ * block in `.kbx.json`. This machine does NOT fork a second copy of those under its
+ * own key: `persist` effects route visual/theme into that same `presentation`
+ * block, while the `onboarding` key holds only flow progress (step, status,
+ * history) plus the decisions that have no other home (strategy, contentMode,
+ * search). The `persist` seam is expected to deep-merge the patch so sibling
+ * fields are preserved.
  *
  * @module src/lib/onboarding
  */
@@ -108,6 +117,12 @@ export const ONBOARDING_ERRORS = Object.freeze({
 });
 
 const DECISION_KEYS = Object.freeze(['strategy', 'contentMode', 'visual', 'theme', 'search']);
+
+/**
+ * Decision keys owned by #150's `presentation` block — the single source of truth
+ * for these. They are persisted there, never duplicated under `onboarding`.
+ */
+const PRESENTATION_KEYS = Object.freeze(['visual', 'theme']);
 
 function freezeState(state) {
   return Object.freeze({
@@ -209,11 +224,57 @@ export function nextActions(state) {
   return state.step === 'ready' ? ['dev', 'build'] : [];
 }
 
-/** Build the persist patch for a set of changed decision keys. */
-function persistPatch(decisions, keys) {
+/**
+ * Build a `persist` effect for the decisions owned by `step`, routing visual/theme
+ * into #150's `presentation` block and the rest under `onboarding`. Single source
+ * of truth: presentation decisions never appear under the `onboarding` key.
+ *
+ * @param {object} decisions
+ * @param {string} step
+ * @returns {object} a `{ kind: 'persist', patch }` effect
+ */
+function persistEffectForStep(decisions, step) {
+  const keys = STEP_DECISION_KEYS[step] ?? [];
+  const presentation = {};
   const onboarding = {};
-  for (const k of keys) onboarding[k] = decisions[k];
-  return { onboarding };
+  for (const k of keys) {
+    if (PRESENTATION_KEYS.includes(k)) presentation[k] = decisions[k];
+    else onboarding[k] = decisions[k];
+  }
+  const patch = {};
+  if (Object.keys(presentation).length) patch.presentation = presentation;
+  if (Object.keys(onboarding).length) patch.onboarding = onboarding;
+  return { kind: 'persist', patch };
+}
+
+/** Index in the spine of the step that owns a decision key. */
+function owningStepIndex(key) {
+  for (const [step, keys] of Object.entries(STEP_DECISION_KEYS)) {
+    if (keys.includes(key)) return stepIndex(step);
+  }
+  return Infinity;
+}
+
+/**
+ * Clear every decision owned by a step strictly later in the spine than
+ * `afterStepIndex`. Used to keep the state internally consistent when an earlier
+ * decision is changed (BACK + re-DECIDE): downstream choices made under the old
+ * value are no longer valid and must be re-collected.
+ *
+ * @param {object} decisions
+ * @param {number} afterStepIndex
+ * @returns {{ decisions: object, cleared: string[] }}
+ */
+function clearDownstreamDecisions(decisions, afterStepIndex) {
+  const next = { ...decisions };
+  const cleared = [];
+  for (const k of DECISION_KEYS) {
+    if (owningStepIndex(k) > afterStepIndex && next[k] != null) {
+      next[k] = null;
+      cleared.push(k);
+    }
+  }
+  return { decisions: next, cleared };
 }
 
 function withError(state, code, message) {
@@ -230,7 +291,7 @@ function normalizeDecideValue(step, value) {
   return null;
 }
 
-/** Handle a DECIDE event (validate + merge + emit a persist effect). */
+/** Handle a DECIDE event (validate + merge; invalidate downstream on a change). */
 function reduceDecide(state, event) {
   const { step, value } = event;
   if (!isDecisionStep(step)) {
@@ -241,8 +302,10 @@ function reduceDecide(state, event) {
     return withError(state, ONBOARDING_ERRORS.INVALID_INPUT, `No decision value supplied for "${step}"`);
   }
   const allowedKeys = STEP_DECISION_KEYS[step];
-  const changed = [];
-  const nextDecisions = { ...state.decisions };
+  let nextDecisions = { ...state.decisions };
+  // True when a key is being changed away from a previously-chosen value — that is
+  // what invalidates downstream decisions (a fresh first choice does not).
+  let changedFromExisting = false;
   for (const [k, v] of Object.entries(patch)) {
     if (!allowedKeys.includes(k)) {
       return withError(
@@ -258,17 +321,29 @@ function reduceDecide(state, event) {
         `Invalid ${k} "${v}" — must be one of ${DECISION_ENUMS[k].join('|')}`,
       );
     }
+    if (nextDecisions[k] != null && nextDecisions[k] !== v) changedFromExisting = true;
     nextDecisions[k] = v;
-    changed.push(k);
   }
+
+  // Determinism on BACK + re-DECIDE: changing an earlier decision clears every
+  // downstream decision (and any in-flight/settled generate job) so the state can
+  // never be internally contradictory.
+  let job = state.job;
+  if (changedFromExisting) {
+    ({ decisions: nextDecisions } = clearDownstreamDecisions(nextDecisions, stepIndex(step)));
+    job = null;
+  }
+
   return {
     state: freezeState({
       ...state,
       decisions: nextDecisions,
+      job,
+      needs: changedFromExisting ? null : state.needs,
       status: STATUS.AWAITING_INPUT,
       error: null,
     }),
-    effects: [{ kind: 'persist', patch: persistPatch(nextDecisions, changed) }],
+    effects: [],
   };
 }
 
@@ -291,7 +366,10 @@ function enterStep(baseState, step) {
     return {
       state: freezeState({ ...common, status: STATUS.DONE }),
       effects: [
-        { kind: 'persist', patch: { onboarding: { ...baseState.decisions, status: 'ready' } } },
+        {
+          kind: 'persist',
+          patch: { onboarding: { step: 'ready', status: 'ready', history: [...common.history] } },
+        },
       ],
     };
   }
@@ -308,8 +386,16 @@ function reduceNext(state) {
       `Cannot advance from "${state.step}" — its guard is not satisfied.`,
     );
   }
-  const next = ONBOARDING_STEPS[stepIndex(state.step) + 1];
-  return enterStep(state, next);
+  const leaving = state.step;
+  const next = ONBOARDING_STEPS[stepIndex(leaving) + 1];
+  const entered = enterStep(state, next);
+  // Persist the just-confirmed decision(s) on advance — this is the single persist
+  // path, so it covers both the interactive (DECIDE→NEXT) and the seeded headless
+  // (NEXT-only) flows, routing visual/theme into #150's `presentation` block.
+  const effects = [];
+  if (isDecisionStep(leaving)) effects.push(persistEffectForStep(state.decisions, leaving));
+  effects.push(...entered.effects);
+  return { state: entered.state, effects };
 }
 
 /** Handle BACK (rewind one step; clears the job when leaving generate). */
