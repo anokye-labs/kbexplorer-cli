@@ -33,6 +33,7 @@ const COMMANDS = {
   affected: '../src/commands/affected.js',
   scaffold: '../src/commands/scaffold.js',
   derive: '../src/commands/derive.js',
+  connect: '../src/commands/connect.js',
   doctor: '../src/commands/doctor.js',
   plugin: '../src/commands/plugin.js',
   'search-index': '../src/commands/search-index.js',
@@ -57,6 +58,7 @@ function printUsage() {
     affected    Map a git diff to impacted content nodes via citations
     scaffold    Create a new content/<slug>.md skeleton with valid frontmatter
     derive      Extract entities from .docx/prose into committed *.jsonld (F8)
+    connect     Persist + drift-check the cross-source connection layer (.kbx/connection/)
     search-index  Build or check semantic search artifacts
     search      Semantic search over the knowledge graph
     update      Pull latest template + refresh agents/skills
