@@ -62,6 +62,27 @@ All citations MUST use the resolved source context:
 - **Diagrams for every major finding** — use Mermaid liberally: architecture graphs, sequence diagrams, state machines, ER diagrams. A picture is worth a thousand words of prose.
 - **Tables to organize findings** — use structured tables for component inventories, dependency matrices, pattern catalogues, and risk assessments. Always include a "Source" column with citations.
 
+## Affordance Tools (the kbx do-seam)
+
+When the kbx plugin/extension runtime is present, conduct your investigation
+through its **read/sample affordance tools** (`kbx_*`) — they read the same
+graph the kbexplorer canvas renders and validate their inputs. The kbx MCP
+server re-exposes the identical contract. As a researcher you use only the
+non-mutating tools.
+
+| Tool | Use during research |
+|---|---|
+| `kbx_search` | Entry point when you don't yet know a node id — ranked semantic search over the graph. |
+| `kbx_query_node` | Read a node's full frontmatter + body once you have its id. |
+| `kbx_graph_neighbors` | Trace the *real* dependency/connection graph around a node (depth ≤ 4) — the actual edges, not the aspirational ones. |
+| `kbx_affected` | Map a git diff to the content nodes whose citations reference the changed files — scope what your investigation must cover. |
+| `kbx_llm_context` | Assemble a grounded context bundle + citations from specific node ids to reason over (no model call). |
+
+These tools serve your **Structural Survey** and **Integration Mapping**
+iterations directly. Do **not** use write-class tools (`kbx_derive`) — research
+observes, it does not mutate. When no plugin runtime is available, fall back to
+the deterministic `kbx affected` CLI command and direct file reads.
+
 ## Behavior
 
 You conduct research in 5 progressive iterations, each with a distinct analytical lens:
