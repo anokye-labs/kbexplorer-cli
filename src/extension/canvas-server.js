@@ -7,12 +7,15 @@
  * Servers are memoized per `instanceId` (re-opening rehydrates the same origin)
  * and torn down on close.
  *
- * Scope (A1): server lifecycle, `GET /` (serve whatever SPA build is available +
+ * Scope: server lifecycle, `GET /` (serve whatever SPA build is available +
  * inject the `window.__KBX_CANVAS__` boot config), static assets, and teardown.
- * Data endpoints `GET /manifest` + `GET /manifest/slice` (A2, #191) and
- * `POST /search` (A3, #192) are implemented here behind injected seams
- * (`getManifest`, `runSearch`); the SSE / action endpoints (`/events`,
- * `/affordance/:name`) remain later issues (A4–A5) stubbed as `404 { error: 'not yet' }`.
+ * All frozen-contract endpoints are implemented here behind injected seams:
+ * `GET /manifest` + `GET /manifest/slice` (A2, #191) via `getManifest`;
+ * `POST /search` (A3, #192) via `runSearch`; `GET /events` SSE (A4, #193) via
+ * `subscribe`; and `POST /affordance/:name` (A5, #194) via `executeAffordance`
+ * — the do-seam adapter that routes straight through the affordance registry's
+ * fail-closed consent gate, the third delivery surface after extension-tools
+ * (#163) and MCP (#197).
  *
  * All I/O is behind injected seams (`createServer`, `existsSync`, `readFile`,
  * `resolveBuildDir`) so the registry is hermetically testable with a fake server
@@ -26,13 +29,48 @@ import { existsSync as fsExistsSync, readFileSync } from 'node:fs';
 import { resolve, join, normalize, extname, sep } from 'node:path';
 import { getAppRoot } from '../lib/detect-repo.js';
 import { parseFrontmatter } from '../lib/frontmatter.js';
+import {
+  executeAffordance as defaultExecuteAffordance,
+  ERROR_CODES,
+} from '../affordances/index.js';
 
 /**
- * Endpoints owned by later issues (A4/A5); stubbed as `404 not yet` until they
- * land. `/manifest` (A2) and `/search` (A3) are implemented in this module and
- * are therefore no longer listed here.
+ * Endpoints owned by later issues; stubbed as `404 not yet` until they land.
+ * All contract endpoints are now implemented (`/manifest` A2, `/search` A3,
+ * `/events` A4, `/affordance/:name` A5), so nothing remains stubbed.
  */
-const NOT_YET_ENDPOINTS = ['/events', '/affordance'];
+const NOT_YET_ENDPOINTS = [];
+
+/** Default keep-alive cadence for the SSE `/events` stream (ms). */
+const DEFAULT_HEARTBEAT_MS = 15000;
+
+/**
+ * The SSE event names the frozen loopback contract
+ * (`docs/canvas-loopback-contract.md`) defines on `GET /events`. `graph-updated`
+ * carries the mutated `{ nodes[] }`; `anchor` re-focuses the SPA on `{ nodeId }`.
+ * `ready` is a transport-level "stream is live" signal emitted once on connect.
+ * @enum {string}
+ */
+export const SSE_EVENTS = Object.freeze({
+  READY: 'ready',
+  GRAPH_UPDATED: 'graph-updated',
+  ANCHOR: 'anchor',
+});
+
+/**
+ * Default `/events` subscription seam — a no-op (heartbeat-only) emitter. The
+ * endpoint stays live and keeps the connection warm via the handler's heartbeat;
+ * real domain triggers (file-watch / regenerate → `graph-updated`, canvas action
+ * → `anchor`) are a deliberate A-follow-up. Kept injectable so those triggers can
+ * land without touching the request handler, and so tests stay hermetic.
+ *
+ * @param {string} _instanceId  Canvas instance the subscription belongs to.
+ * @param {(evt: { event: string, data: object }) => void} _onEvent  Frame sink.
+ * @returns {() => void} Unsubscribe (no-op by default).
+ */
+export function defaultSubscribe(_instanceId, _onEvent) {
+  return () => {};
+}
 
 /** How many search results the SPA (useSemanticSearch) asks for by default. */
 const DEFAULT_SEARCH_LIMIT = 10;
@@ -409,6 +447,12 @@ export function createRequestHandler({
   readFile,
   getManifest,
   runSearch,
+  subscribe = defaultSubscribe,
+  executeAffordance = defaultExecuteAffordance,
+  registerCleanup = () => {},
+  heartbeatMs = DEFAULT_HEARTBEAT_MS,
+  setInterval: setIntervalSeam = globalThis.setInterval,
+  clearInterval: clearIntervalSeam = globalThis.clearInterval,
   entryFiles = CANVAS_ENTRY_CANDIDATES,
 }) {
   const serveIndex = (res) => {
@@ -504,6 +548,119 @@ export function createRequestHandler({
     }
   };
 
+  const serveEvents = (req, res, method) => {
+    if (method !== 'GET') {
+      sendJson(res, 405, { error: 'method not allowed', endpoint: '/events' });
+      return;
+    }
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+    });
+    const write = (chunk) => {
+      try {
+        res.write(chunk);
+      } catch {
+        /* connection went away between events */
+      }
+    };
+    // Open the stream: a comment to flush headers, a client retry advisory, and
+    // an initial `ready` so consumers know the stream is live.
+    write(': connected\n\n');
+    write('retry: 3000\n\n');
+    const writeEvent = (event, data) =>
+      write(`event: ${event}\ndata: ${JSON.stringify(data ?? {})}\n\n`);
+    writeEvent(SSE_EVENTS.READY, { ok: true });
+
+    const hb = setIntervalSeam(() => write(': heartbeat\n\n'), heartbeatMs);
+    // A keep-alive heartbeat must never hold the CLI's event loop open on its
+    // own; unref the real timer so process exit is governed by real work.
+    if (hb && typeof hb.unref === 'function') hb.unref();
+    // Domain events (graph-updated / anchor) arrive via the injected subscribe
+    // seam; default is a no-op so the endpoint is live + hermetic today.
+    let unsubscribe = () => {};
+    try {
+      unsubscribe = subscribe((evt) => {
+        if (evt && typeof evt.event === 'string') writeEvent(evt.event, evt.data);
+      }) || (() => {});
+    } catch {
+      /* a failing subscribe must not break the heartbeat stream */
+    }
+
+    let done = false;
+    const cleanup = () => {
+      if (done) return;
+      done = true;
+      clearIntervalSeam(hb);
+      try {
+        unsubscribe();
+      } catch {
+        /* ignore */
+      }
+      try {
+        res.end();
+      } catch {
+        /* already closed */
+      }
+    };
+    const tracked = registerCleanup(cleanup) || cleanup;
+    if (req && typeof req.on === 'function') {
+      req.on('close', tracked);
+      req.on('error', tracked);
+    }
+  };
+
+  const serveAffordance = async (req, res, method, pathname) => {
+    if (method !== 'POST') {
+      sendJson(res, 405, { error: 'method not allowed', endpoint: pathname });
+      return;
+    }
+    const name = decodeURIComponent(pathname.slice('/affordance/'.length)).trim();
+    if (!name) {
+      sendJson(res, 404, { error: 'unknown affordance', endpoint: pathname });
+      return;
+    }
+    let payload;
+    try {
+      const raw = await readBody(req);
+      payload = raw ? JSON.parse(raw) : {};
+    } catch {
+      sendJson(res, 400, { error: 'invalid json body', endpoint: pathname });
+      return;
+    }
+    // Body is the affordance input; also accept a `{ input }` envelope (the
+    // contract-doc shape). The registry — not this transport — owns validation
+    // and the fail-closed consent gate; we only route through executeAffordance.
+    const input =
+      payload && typeof payload === 'object' && !Array.isArray(payload) && 'input' in payload
+        ? payload.input
+        : payload;
+    try {
+      const result = await executeAffordance(name, input ?? {});
+      res.writeHead(200, { 'content-type': MIME['.json'] });
+      res.end(JSON.stringify({ ok: true, result }));
+    } catch (err) {
+      const code = err?.code;
+      const status =
+        code === ERROR_CODES.UNKNOWN_AFFORDANCE
+          ? 404
+          : code === ERROR_CODES.NOT_FOUND
+            ? 404
+            : code === ERROR_CODES.INVALID_INPUT
+              ? 400
+              : code === ERROR_CODES.CONSENT_REQUIRED || code === ERROR_CODES.CONSENT_DENIED
+                ? 403
+                : 500;
+      const body =
+        typeof err?.toJSON === 'function'
+          ? err.toJSON()
+          : { error: true, code: code || 'EXECUTION_FAILED', message: String(err?.message || err) };
+      sendJson(res, status, body);
+    }
+  };
+
   return (req, res) => {
     const method = (req.method || 'GET').toUpperCase();
     const [pathname, rawQuery = ''] = (req.url || '/').split('?');
@@ -522,6 +679,18 @@ export function createRequestHandler({
     }
     if (pathname === '/search') {
       void serveSearch(req, res, method);
+      return;
+    }
+    if (pathname === '/events') {
+      serveEvents(req, res, method);
+      return;
+    }
+    if (pathname === '/affordance' || pathname === '/affordance/') {
+      sendJson(res, 404, { error: 'unknown affordance', endpoint: pathname });
+      return;
+    }
+    if (pathname.startsWith('/affordance/')) {
+      void serveAffordance(req, res, method, pathname);
       return;
     }
     if (isNotYet(pathname)) {
@@ -552,6 +721,11 @@ export function createRequestHandler({
  * @param {() => Promise<object>} [deps.getManifest]  A2 manifest seam (hermetic tests).
  * @param {(params: object, ctx: object) => Promise<object>} [deps.runSearch]  A3 search seam.
  * @param {() => Promise<object>} [deps.loadSearchModule]  Search-engine module seam.
+ * @param {(instanceId: string, onEvent: Function) => (() => void)} [deps.subscribe]
+ *        A4 `/events` domain-event seam (default {@link defaultSubscribe}, no-op).
+ * @param {(name: string, input: object, ctx?: object) => Promise<*>} [deps.executeAffordance]
+ *        A5 `/affordance/:name` do-seam entry (default the real registry executor).
+ * @param {number} [deps.heartbeatMs]  SSE keep-alive cadence (default 15000).
  * @param {string[]} [deps.entryFiles]  Ordered entry candidates (default canvas.html, index.html).
  * @returns {{ open: Function, close: Function, get: Function, size: () => number }}
  */
@@ -565,9 +739,12 @@ export function createCanvasRegistry({
   getManifest,
   runSearch,
   loadSearchModule,
+  subscribe = defaultSubscribe,
+  executeAffordance = defaultExecuteAffordance,
+  heartbeatMs = DEFAULT_HEARTBEAT_MS,
   entryFiles = CANVAS_ENTRY_CANDIDATES,
 } = {}) {
-  /** @type {Map<string, { url: string, title: string, server: object }>} */
+  /** @type {Map<string, { url: string, title: string, server: object, sseCleanups: Set<Function> }>} */
   const instances = new Map();
 
   // Default data-path seams: live manifest generation + engine-backed search,
@@ -601,6 +778,18 @@ export function createCanvasRegistry({
       ...(options.anchorNodeId ? { anchorNodeId: options.anchorNodeId } : {}),
     });
 
+    // Track live SSE cleanups so close() can end keep-alive streams (otherwise
+    // server.close() would hang on them). Each cleanup deregisters itself.
+    const sseCleanups = new Set();
+    const registerCleanup = (fn) => {
+      const wrapped = () => {
+        sseCleanups.delete(wrapped);
+        fn();
+      };
+      sseCleanups.add(wrapped);
+      return wrapped;
+    };
+
     const handler = createRequestHandler({
       buildDir,
       bootConfig,
@@ -608,6 +797,10 @@ export function createCanvasRegistry({
       readFile,
       getManifest: getManifestSeam,
       runSearch: runSearchSeam,
+      subscribe: (onEvent) => subscribe(instanceId, onEvent),
+      executeAffordance,
+      registerCleanup,
+      heartbeatMs,
       entryFiles,
     });
     const server = createServer(handler);
@@ -621,7 +814,7 @@ export function createCanvasRegistry({
     });
 
     origin = `http://127.0.0.1:${port}`;
-    const record = { url: origin, title, server };
+    const record = { url: origin, title, server, sseCleanups };
     instances.set(instanceId, record);
     return { url: origin, title };
   }
@@ -635,6 +828,14 @@ export function createCanvasRegistry({
     const record = instances.get(instanceId);
     if (!record) return;
     instances.delete(instanceId);
+    // End any live SSE streams first so the underlying server can close cleanly.
+    for (const cleanup of [...record.sseCleanups]) {
+      try {
+        cleanup();
+      } catch {
+        /* best-effort */
+      }
+    }
     await new Promise((res) => {
       if (typeof record.server.close === 'function') record.server.close(() => res());
       else res();

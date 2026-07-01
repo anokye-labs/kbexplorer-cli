@@ -9,9 +9,11 @@ import {
   defaultResolveBuildDir,
   defaultGetManifest,
   defaultRunSearch,
+  defaultSubscribe,
   sliceManifest,
   toSemanticResult,
   textIndexSearch,
+  SSE_EVENTS,
   CANVAS_ENTRY_FILE,
   CANVAS_ENTRY_CANDIDATES,
 } from '../../src/extension/canvas-server.js';
@@ -61,6 +63,44 @@ function makeRes() {
       if (chunk != null) this.body += String(chunk);
     },
   };
+}
+
+/**
+ * Fake SSE response + request pair: captures written frames and lets a test
+ * simulate the client disconnecting (`emitClose`). `writeHead`/`write`/`end`
+ * mirror the http response surface the SSE handler uses.
+ */
+function makeSseRes(url = '/events', method = 'GET') {
+  const listeners = {};
+  const res = {
+    url,
+    method,
+    statusCode: null,
+    headers: null,
+    body: '',
+    ended: false,
+    // Doubles as the `req` (has .on) and the `res` (has write/end/writeHead).
+    on(evt, cb) {
+      listeners[evt] = cb;
+      return this;
+    },
+    writeHead(status, headers) {
+      this.statusCode = status;
+      this.headers = headers;
+    },
+    write(chunk) {
+      if (chunk != null) this.body += String(chunk);
+      return true;
+    },
+    end(chunk) {
+      if (chunk != null) this.body += String(chunk);
+      this.ended = true;
+    },
+    emitClose() {
+      if (listeners.close) listeners.close();
+    },
+  };
+  return res;
 }
 
 describe('CANVAS_ENTRY_FILE (A1<->template#406 seam)', () => {
@@ -172,19 +212,20 @@ describe('createRequestHandler', () => {
     assert.match(res.body, /__KBX_CANVAS__/);
   });
 
-  it('404 "not yet" for the still-unimplemented A4/A5 endpoints', () => {
+  it('routes /events (A4) and /affordance/:name (A5) instead of the old "not yet" stub', () => {
     const handler = createRequestHandler({
       buildDir: '/build',
       bootConfig,
       existsSync: () => true,
       readFile: () => 'x',
+      executeAffordance: async () => ({ ok: true }),
     });
-    for (const path of ['/events', '/affordance/foo']) {
-      const res = makeRes();
-      handler({ url: `${path}?q=1` }, res);
-      assert.equal(res.statusCode, 404, path);
-      assert.deepEqual(JSON.parse(res.body), { error: 'not yet', endpoint: path });
-    }
+    // /events is now a live SSE stream (200 text/event-stream), not 404 not yet.
+    const evRes = makeSseRes();
+    handler(evRes, evRes);
+    assert.equal(evRes.statusCode, 200);
+    assert.match(evRes.headers['content-type'], /text\/event-stream/);
+    evRes.emitClose();
   });
 
   it('serves a static asset from the build dir', () => {
@@ -344,8 +385,62 @@ describe('createCanvasRegistry (real loopback integration)', () => {
       req.end();
     });
 
+  const httpPost = (url, json) =>
+    new Promise((res, rej) => {
+      const req = request(url, { method: 'POST' }, (r) => {
+        let body = '';
+        r.on('data', (c) => (body += c));
+        r.on('end', () => res({ status: r.statusCode, body }));
+      });
+      req.on('error', rej);
+      req.end(JSON.stringify(json));
+    });
+
+  /**
+   * Open an SSE stream and expose accumulated bytes + a `closed` promise that
+   * resolves when the server ends the stream.
+   */
+  const sseOpen = (url) =>
+    new Promise((resolve, rej) => {
+      const req = request(url, { method: 'GET' }, (r) => {
+        let buf = '';
+        const waiters = [];
+        r.setEncoding('utf8');
+        r.on('data', (c) => {
+          buf += c;
+          for (let i = waiters.length - 1; i >= 0; i--) {
+            if (waiters[i].re.test(buf)) {
+              waiters[i].resolve();
+              waiters.splice(i, 1);
+            }
+          }
+        });
+        const closed = new Promise((res) => r.on('end', res));
+        resolve({
+          contentType: r.headers['content-type'] || '',
+          get bytes() {
+            return buf;
+          },
+          waitForBytes: (re) =>
+            new Promise((res) => {
+              if (re.test(buf)) res();
+              else waiters.push({ re, resolve: res });
+            }),
+          closed,
+          abort: () => req.destroy(),
+        });
+      });
+      req.on('error', rej);
+      req.end();
+    });
+
   it('binds a real 127.0.0.1 port, serves / with boot config, then tears down', async () => {
-    const registry = createCanvasRegistry({ resolveBuildDir: () => null, title: 'Real KB' });
+    const registry = createCanvasRegistry({
+      resolveBuildDir: () => null,
+      title: 'Real KB',
+      heartbeatMs: 20,
+      executeAffordance: async (name, input) => ({ echoed: name, input }),
+    });
     const { url, title } = await registry.open('real');
     assert.equal(title, 'Real KB');
     assert.match(url, /^http:\/\/127\.0\.0\.1:\d+$/);
@@ -356,11 +451,22 @@ describe('createCanvasRegistry (real loopback integration)', () => {
     assert.match(root.body, /"local":true/);
     assert.match(root.body, new RegExp(`${url.replace(/[.]/g, '\\.')}/search`));
 
-    const notYet = await httpGet(`${url}/events`);
-    assert.equal(notYet.status, 404);
-    assert.equal(JSON.parse(notYet.body).error, 'not yet');
+    // A5: POST /affordance/:name routes through the injected executeAffordance.
+    const aff = await httpPost(`${url}/affordance/search`, { input: { query: 'x' } });
+    assert.equal(aff.status, 200);
+    const affBody = JSON.parse(aff.body);
+    assert.equal(affBody.ok, true);
+    assert.deepEqual(affBody.result, { echoed: 'search', input: { query: 'x' } });
+
+    // A4: GET /events opens an SSE stream and emits at least one heartbeat, then
+    // registry.close() ends the live stream so teardown completes cleanly.
+    const sse = await sseOpen(`${url}/events`);
+    assert.match(sse.contentType, /text\/event-stream/);
+    await sse.waitForBytes(/event: ready/);
+    await sse.waitForBytes(/: heartbeat/);
 
     await registry.close('real');
+    await sse.closed; // stream ended by teardown, not by the client
     await assert.rejects(() => httpGet(`${url}/`));
   });
 });
@@ -787,5 +893,326 @@ describe('data-path integration (real loopback)', () => {
     } finally {
       await registry.close('data-path');
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A4 — GET /events (SSE), #193.
+// ---------------------------------------------------------------------------
+
+describe('GET /events (A4, #193 — SSE)', () => {
+  /** Injected timer seams that capture the heartbeat callback for manual firing. */
+  function fakeTimers() {
+    const state = { cb: null, cleared: false };
+    return {
+      state,
+      setInterval: (cb) => {
+        state.cb = cb;
+        return 'hb-handle';
+      },
+      clearInterval: (h) => {
+        if (h === 'hb-handle') state.cleared = true;
+      },
+    };
+  }
+
+  it('opens a text/event-stream with the ready event and keep-alive headers', () => {
+    const handler = createRequestHandler({
+      buildDir: null,
+      bootConfig,
+      existsSync: () => false,
+      readFile: () => '',
+    });
+    const res = makeSseRes();
+    handler(res, res);
+    assert.equal(res.statusCode, 200);
+    assert.match(res.headers['content-type'], /text\/event-stream/);
+    assert.match(res.headers['cache-control'], /no-cache/);
+    assert.equal(res.headers.connection, 'keep-alive');
+    assert.match(res.body, /: connected/);
+    assert.match(res.body, /retry: 3000/);
+    assert.match(res.body, /event: ready\ndata: \{"ok":true\}/);
+    res.emitClose();
+  });
+
+  it('405s on a non-GET method', () => {
+    const handler = createRequestHandler({
+      buildDir: null,
+      bootConfig,
+      existsSync: () => false,
+      readFile: () => '',
+    });
+    const res = makeRes();
+    handler({ url: '/events', method: 'POST' }, res);
+    assert.equal(res.statusCode, 405);
+    assert.equal(JSON.parse(res.body).error, 'method not allowed');
+  });
+
+  it('writes a heartbeat comment on the injected interval', () => {
+    const timers = fakeTimers();
+    const handler = createRequestHandler({
+      buildDir: null,
+      bootConfig,
+      existsSync: () => false,
+      readFile: () => '',
+      setInterval: timers.setInterval,
+      clearInterval: timers.clearInterval,
+    });
+    const res = makeSseRes();
+    handler(res, res);
+    assert.doesNotMatch(res.body, /: heartbeat/);
+    timers.state.cb(); // fire one heartbeat tick
+    assert.match(res.body, /: heartbeat/);
+  });
+
+  it('serializes domain events from the subscribe seam as SSE frames', () => {
+    const timers = fakeTimers();
+    let emit;
+    const handler = createRequestHandler({
+      buildDir: null,
+      bootConfig,
+      existsSync: () => false,
+      readFile: () => '',
+      subscribe: (onEvent) => {
+        emit = onEvent;
+        return () => {};
+      },
+      setInterval: timers.setInterval,
+      clearInterval: timers.clearInterval,
+    });
+    const res = makeSseRes();
+    handler(res, res);
+    emit({ event: SSE_EVENTS.GRAPH_UPDATED, data: { nodes: ['n1', 'n2'] } });
+    emit({ event: SSE_EVENTS.ANCHOR, data: { nodeId: 'n3' } });
+    assert.match(res.body, /event: graph-updated\ndata: \{"nodes":\["n1","n2"\]\}/);
+    assert.match(res.body, /event: anchor\ndata: \{"nodeId":"n3"\}/);
+    res.emitClose();
+  });
+
+  it('clears the heartbeat and unsubscribes when the client disconnects', () => {
+    const timers = fakeTimers();
+    let unsubscribed = false;
+    const handler = createRequestHandler({
+      buildDir: null,
+      bootConfig,
+      existsSync: () => false,
+      readFile: () => '',
+      subscribe: () => () => {
+        unsubscribed = true;
+      },
+      setInterval: timers.setInterval,
+      clearInterval: timers.clearInterval,
+    });
+    const res = makeSseRes();
+    handler(res, res);
+    res.emitClose();
+    assert.equal(timers.state.cleared, true);
+    assert.equal(unsubscribed, true);
+    assert.equal(res.ended, true);
+  });
+
+  it('registers a cleanup so the registry can end the stream on close', () => {
+    const cleanups = [];
+    const timers = fakeTimers();
+    const handler = createRequestHandler({
+      buildDir: null,
+      bootConfig,
+      existsSync: () => false,
+      readFile: () => '',
+      registerCleanup: (fn) => {
+        cleanups.push(fn);
+        return fn;
+      },
+      setInterval: timers.setInterval,
+      clearInterval: timers.clearInterval,
+    });
+    const res = makeSseRes();
+    handler(res, res);
+    assert.equal(cleanups.length, 1);
+    cleanups[0](); // registry-driven teardown
+    assert.equal(res.ended, true);
+    assert.equal(timers.state.cleared, true);
+  });
+});
+
+describe('defaultSubscribe (A4 no-op seam)', () => {
+  it('returns a no-op unsubscribe and never emits', () => {
+    let emitted = 0;
+    const unsub = defaultSubscribe('inst', () => (emitted += 1));
+    assert.equal(typeof unsub, 'function');
+    assert.doesNotThrow(() => unsub());
+    assert.equal(emitted, 0);
+  });
+});
+
+describe('createCanvasRegistry close() ends live SSE streams (A4 teardown)', () => {
+  it('runs registered SSE cleanups before closing the server', async () => {
+    let handler;
+    const registry = createCanvasRegistry({
+      createServer: (h) => {
+        handler = h;
+        return makeFakeServer(4545);
+      },
+      resolveBuildDir: () => null,
+      heartbeatMs: 10_000,
+    });
+    await registry.open('sse-inst');
+    const res = makeSseRes();
+    handler(res, res);
+    assert.equal(res.ended, false);
+    await registry.close('sse-inst');
+    // The registry drained the live stream (res.end) as part of teardown.
+    assert.equal(res.ended, true);
+    assert.equal(registry.size(), 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A5 — POST /affordance/:name (do-seam adapter), #194.
+// ---------------------------------------------------------------------------
+
+describe('POST /affordance/:name (A5, #194 — do-seam)', () => {
+  const handlerWith = (executeAffordance) =>
+    createRequestHandler({
+      buildDir: null,
+      bootConfig,
+      existsSync: () => false,
+      readFile: () => '',
+      executeAffordance,
+    });
+
+  it('routes the body straight through executeAffordance and returns { ok, result }', async () => {
+    let received = null;
+    const handler = handlerWith(async (name, input) => {
+      received = { name, input };
+      return { neighbors: ['n2'] };
+    });
+    const res = makeAsyncRes();
+    handler({ url: '/affordance/graph_neighbors', method: 'POST', body: { nodeId: 'n1' } }, res);
+    await res.done;
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(JSON.parse(res.body), { ok: true, result: { neighbors: ['n2'] } });
+    assert.deepEqual(received, { name: 'graph_neighbors', input: { nodeId: 'n1' } });
+  });
+
+  it('unwraps a { input } envelope (contract-doc shape)', async () => {
+    let received = null;
+    const handler = handlerWith(async (name, input) => {
+      received = { name, input };
+      return {};
+    });
+    const res = makeAsyncRes();
+    handler({ url: '/affordance/search', method: 'POST', body: { input: { query: 'x' } } }, res);
+    await res.done;
+    assert.deepEqual(received, { name: 'search', input: { query: 'x' } });
+  });
+
+  it('405s on a non-POST method', async () => {
+    const res = makeAsyncRes();
+    handlerWith(async () => ({}))({ url: '/affordance/search', method: 'GET' }, res);
+    await res.done;
+    assert.equal(res.statusCode, 405);
+  });
+
+  it('404s a bare /affordance with no name', async () => {
+    const res = makeRes();
+    handlerWith(async () => ({}))({ url: '/affordance', method: 'POST' }, res);
+    assert.equal(res.statusCode, 404);
+    assert.equal(JSON.parse(res.body).error, 'unknown affordance');
+  });
+
+  it('400s on an invalid JSON body', async () => {
+    const res = makeAsyncRes();
+    handlerWith(async () => ({}))({ url: '/affordance/search', method: 'POST', body: '{bad' }, res);
+    await res.done;
+    assert.equal(res.statusCode, 400);
+    assert.equal(JSON.parse(res.body).error, 'invalid json body');
+  });
+
+  it('maps UNKNOWN_AFFORDANCE → 404', async () => {
+    const err = Object.assign(new Error('nope'), {
+      code: 'UNKNOWN_AFFORDANCE',
+      toJSON: () => ({ error: true, code: 'UNKNOWN_AFFORDANCE', message: 'nope' }),
+    });
+    const res = makeAsyncRes();
+    handlerWith(async () => {
+      throw err;
+    })({ url: '/affordance/bogus', method: 'POST', body: {} }, res);
+    await res.done;
+    assert.equal(res.statusCode, 404);
+    assert.equal(JSON.parse(res.body).code, 'UNKNOWN_AFFORDANCE');
+  });
+
+  it('maps INVALID_INPUT → 400', async () => {
+    const err = Object.assign(new Error('bad input'), {
+      code: 'INVALID_INPUT',
+      toJSON: () => ({ error: true, code: 'INVALID_INPUT', message: 'bad input' }),
+    });
+    const res = makeAsyncRes();
+    handlerWith(async () => {
+      throw err;
+    })({ url: '/affordance/search', method: 'POST', body: {} }, res);
+    await res.done;
+    assert.equal(res.statusCode, 400);
+    assert.equal(JSON.parse(res.body).code, 'INVALID_INPUT');
+  });
+
+  it('surfaces consent-denied → 403 without crashing', async () => {
+    const err = Object.assign(new Error('user declined'), {
+      code: 'CONSENT_DENIED',
+      details: { affordance: 'apply_changes' },
+      toJSON: () => ({
+        error: true,
+        code: 'CONSENT_DENIED',
+        message: 'user declined',
+        details: { affordance: 'apply_changes' },
+      }),
+    });
+    const res = makeAsyncRes();
+    handlerWith(async () => {
+      throw err;
+    })({ url: '/affordance/apply_changes', method: 'POST', body: {} }, res);
+    await res.done;
+    assert.equal(res.statusCode, 403);
+    const body = JSON.parse(res.body);
+    assert.equal(body.code, 'CONSENT_DENIED');
+    assert.equal(body.details.affordance, 'apply_changes');
+  });
+
+  it('maps CONSENT_REQUIRED (fail-closed, no seam wired) → 403', async () => {
+    const err = Object.assign(new Error('consent seam missing'), {
+      code: 'CONSENT_REQUIRED',
+      toJSON: () => ({ error: true, code: 'CONSENT_REQUIRED', message: 'consent seam missing' }),
+    });
+    const res = makeAsyncRes();
+    handlerWith(async () => {
+      throw err;
+    })({ url: '/affordance/create_pr', method: 'POST', body: {} }, res);
+    await res.done;
+    assert.equal(res.statusCode, 403);
+    assert.equal(JSON.parse(res.body).code, 'CONSENT_REQUIRED');
+  });
+
+  it('maps an unexpected (non-AffordanceError) throw → 500', async () => {
+    const res = makeAsyncRes();
+    handlerWith(async () => {
+      throw new Error('kaboom');
+    })({ url: '/affordance/audit', method: 'POST', body: {} }, res);
+    await res.done;
+    assert.equal(res.statusCode, 500);
+    const body = JSON.parse(res.body);
+    assert.equal(body.code, 'EXECUTION_FAILED');
+    assert.match(body.message, /kaboom/);
+  });
+
+  it('decodes a URL-encoded affordance name', async () => {
+    let received = null;
+    const res = makeAsyncRes();
+    handlerWith(async (name) => {
+      received = name;
+      return {};
+    })({ url: '/affordance/get_job_status', method: 'POST', body: {} }, res);
+    await res.done;
+    assert.equal(received, 'get_job_status');
   });
 });
