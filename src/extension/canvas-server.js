@@ -9,9 +9,10 @@
  *
  * Scope (A1): server lifecycle, `GET /` (serve whatever SPA build is available +
  * inject the `window.__KBX_CANVAS__` boot config), static assets, and teardown.
- * The data / SSE / action endpoints (`/manifest`, `/search`, `/events`,
- * `/affordance/:name`) are later issues (A2–A5) and are stubbed here as a stable
- * `404 { error: 'not yet' }`.
+ * Data endpoints `GET /manifest` + `GET /manifest/slice` (A2, #191) and
+ * `POST /search` (A3, #192) are implemented here behind injected seams
+ * (`getManifest`, `runSearch`); the SSE / action endpoints (`/events`,
+ * `/affordance/:name`) remain later issues (A4–A5) stubbed as `404 { error: 'not yet' }`.
  *
  * All I/O is behind injected seams (`createServer`, `existsSync`, `readFile`,
  * `resolveBuildDir`) so the registry is hermetically testable with a fake server
@@ -24,9 +25,17 @@ import { createServer as nodeCreateServer } from 'node:http';
 import { existsSync as fsExistsSync, readFileSync } from 'node:fs';
 import { resolve, join, normalize, extname, sep } from 'node:path';
 import { getAppRoot } from '../lib/detect-repo.js';
+import { parseFrontmatter } from '../lib/frontmatter.js';
 
-/** Endpoints owned by later issues; stubbed as `404 not yet` until they land. */
-const NOT_YET_ENDPOINTS = ['/manifest', '/search', '/events', '/affordance'];
+/**
+ * Endpoints owned by later issues (A4/A5); stubbed as `404 not yet` until they
+ * land. `/manifest` (A2) and `/search` (A3) are implemented in this module and
+ * are therefore no longer listed here.
+ */
+const NOT_YET_ENDPOINTS = ['/events', '/affordance'];
+
+/** How many search results the SPA (useSemanticSearch) asks for by default. */
+const DEFAULT_SEARCH_LIMIT = 10;
 
 /**
  * The embeddable canvas entry the template's build (#406) emits, and the point
@@ -150,6 +159,234 @@ function isNotYet(pathname) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// A2/A3 data path — manifest + search, behind injectable seams.
+// ---------------------------------------------------------------------------
+
+/**
+ * Candidate paths for a bundled/prebuilt `repo-manifest.json`, used only as a
+ * fallback when live generation fails.
+ * @param {string} cwd
+ * @returns {string[]}
+ */
+function bundledManifestCandidates(cwd) {
+  const candidates = [];
+  const appRoot = getAppRoot(cwd);
+  if (appRoot) candidates.push(resolve(appRoot, 'src', 'generated', 'repo-manifest.json'));
+  candidates.push(resolve(cwd, 'dist', 'kb', 'repo-manifest.json'));
+  candidates.push(resolve(cwd, 'repo-manifest.json'));
+  return candidates;
+}
+
+/**
+ * Default manifest seam: live-generate the host manifest, falling back to a
+ * bundled `repo-manifest.json` only when generation throws. Live generation is
+ * what makes SSE refresh (A4) rebuild-free.
+ *
+ * @param {object} [deps]
+ * @param {string} [deps.cwd]
+ * @param {(p: string) => boolean} [deps.existsSync]
+ * @param {(p: string) => Buffer|string} [deps.readFile]
+ * @param {() => Promise<object>} [deps.generate]  Injected generator (tests).
+ * @returns {Promise<object>}
+ */
+export async function defaultGetManifest({
+  cwd = process.cwd(),
+  existsSync = fsExistsSync,
+  readFile = readFileSync,
+  generate,
+} = {}) {
+  try {
+    const gen = generate || (async () => {
+      const { generateManifest } = await import('../lib/manifest.js');
+      return generateManifest(cwd);
+    });
+    return await gen();
+  } catch (err) {
+    for (const candidate of bundledManifestCandidates(cwd)) {
+      if (existsSync(candidate)) {
+        try {
+          return JSON.parse(String(readFile(candidate)));
+        } catch {
+          /* try next candidate */
+        }
+      }
+    }
+    throw err;
+  }
+}
+
+/**
+ * Produce a manifest-shaped slice: the same manifest with `authoredContent`
+ * filtered to pages whose frontmatter `id` is in `ids`, plus a `{ slice: { ids } }`
+ * marker. Directly consumable by the SPA's existing manifest loader/merge path.
+ *
+ * @param {object} manifest
+ * @param {string[]} ids
+ * @returns {object}
+ */
+export function sliceManifest(manifest, ids) {
+  const idSet = new Set(ids);
+  const authored = manifest?.authoredContent || {};
+  const authoredContent = {};
+  for (const [path, raw] of Object.entries(authored)) {
+    const parsed = parseFrontmatter(String(raw));
+    const id = parsed.ok ? parsed.frontmatter?.id : undefined;
+    if (id != null && idSet.has(id)) authoredContent[path] = raw;
+  }
+  return { ...manifest, authoredContent, slice: { ids } };
+}
+
+/**
+ * Map a kbexplorer-search engine result to the SPA's `SemanticResult` shape
+ * (`useSemanticSearch.ts`): exact field names/casing — `nodeId`, `cluster`,
+ * numeric `score` (0..1), `chunkIndex`, `connections: string[]`.
+ *
+ * @param {object} r
+ * @returns {object}
+ */
+export function toSemanticResult(r = {}) {
+  const out = {
+    nodeId: r.nodeId ?? r.id ?? r.slug ?? '',
+    title: r.title ?? '',
+    cluster: r.cluster ?? r.clusterId ?? '',
+    score: typeof r.score === 'number' ? r.score : 0,
+    snippet: r.snippet ?? '',
+    chunkIndex: typeof r.chunkIndex === 'number' ? r.chunkIndex : 0,
+    connections: Array.isArray(r.connections) ? r.connections : [],
+  };
+  if (r.path != null) out.path = r.path;
+  if (r.parentId != null) out.parentId = r.parentId;
+  if (r.entityType != null) out.entityType = r.entityType;
+  return out;
+}
+
+/**
+ * Deterministic, dependency-free text index over the manifest's authored
+ * content — the fallback when `.search/*` artifacts are absent/unusable.
+ * Scores by query-term frequency across title + body; normalizes to 0..1.
+ *
+ * @param {object} manifest
+ * @param {string} query
+ * @param {number} limit
+ * @returns {object[]}  SemanticResult-shaped rows.
+ */
+export function textIndexSearch(manifest, query, limit = DEFAULT_SEARCH_LIMIT) {
+  const terms = String(query).toLowerCase().split(/[^a-z0-9]+/i).filter(Boolean);
+  if (terms.length === 0) return [];
+  const authored = manifest?.authoredContent || {};
+  const scored = [];
+  for (const [path, raw] of Object.entries(authored)) {
+    const parsed = parseFrontmatter(String(raw));
+    const fm = parsed.ok ? parsed.frontmatter || {} : {};
+    const body = (parsed.ok ? parsed.body : String(raw)) || '';
+    const title = fm.title || path;
+    const hayTitle = String(title).toLowerCase();
+    const hayBody = body.toLowerCase();
+    let hits = 0;
+    for (const t of terms) {
+      // Title matches weigh more than body matches.
+      hits += hayTitle.includes(t) ? 3 : 0;
+      const bodyMatches = hayBody.split(t).length - 1;
+      hits += bodyMatches;
+    }
+    if (hits <= 0) continue;
+    const snippetSource = body.replace(/\s+/g, ' ').trim();
+    scored.push({
+      nodeId: fm.id ?? path,
+      title,
+      cluster: fm.cluster ?? '',
+      _hits: hits,
+      snippet: snippetSource.slice(0, 200),
+      chunkIndex: 0,
+      path,
+      parentId: fm.parent ?? undefined,
+      entityType: fm.entityType ?? fm.type ?? undefined,
+      connections: Array.isArray(fm.connections)
+        ? fm.connections.map((c) => (typeof c === 'string' ? c : c?.to)).filter(Boolean)
+        : [],
+    });
+  }
+  scored.sort((a, b) => b._hits - a._hits);
+  const top = scored.slice(0, limit);
+  const max = top.length ? top[0]._hits : 1;
+  return top.map(({ _hits, ...r }) => toSemanticResult({ ...r, score: max ? _hits / max : 0 }));
+}
+
+/**
+ * Default search seam. Prefers the `@anokye-labs/kbexplorer-search` engine over
+ * checked-in `.search/*` artifacts (same path `kbx_search` uses); on any failure
+ * (module missing, artifacts absent, embedding/network error) falls back to the
+ * client text index over the live manifest and attaches a `drift` warning.
+ *
+ * @param {{ query: string, limit?: number, graphRanking?: boolean }} params
+ * @param {object} deps
+ * @param {string} deps.cwd
+ * @param {() => Promise<object>} deps.getManifest
+ * @param {() => Promise<object>} [deps.loadSearchModule]  Injected engine (tests).
+ * @param {(msg: string) => void} [deps.warn]
+ * @returns {Promise<{ results: object[], suggestions: object[], drift?: object }>}
+ */
+export async function defaultRunSearch(
+  { query, limit = DEFAULT_SEARCH_LIMIT, graphRanking } = {},
+  { cwd = process.cwd(), getManifest, loadSearchModule, warn = console.warn } = {},
+) {
+  void graphRanking; // honored implicitly by the engine's ranking; SPA only needs results.
+  let driftReason = null;
+  try {
+    const mod = loadSearchModule
+      ? await loadSearchModule()
+      : await import('@anokye-labs/kbexplorer-search');
+    const { readArtifacts, createSearchEngine, getProvider } = mod;
+    const artifactDir = resolve(cwd, '.search');
+    const artifact = readArtifacts(artifactDir);
+    if (!artifact) {
+      driftReason = 'search artifacts absent (.search/); using client text-index fallback';
+    } else {
+      const provider = getProvider('openai', {
+        model: artifact.meta?.model,
+        dimensions: artifact.meta?.dimensions,
+      });
+      const engine = createSearchEngine(artifact, provider);
+      const results = await engine.search(query, { limit });
+      return { results: results.map(toSemanticResult), suggestions: [] };
+    }
+  } catch (err) {
+    driftReason = `search engine unavailable (${err?.message || err}); using client text-index fallback`;
+  }
+
+  if (driftReason) warn(`⚠ ${driftReason}`);
+  const manifest = await getManifest();
+  const results = textIndexSearch(manifest, query, limit);
+  return {
+    results,
+    suggestions: [],
+    drift: { stale: true, reason: driftReason || 'text-index fallback' },
+  };
+}
+
+/**
+ * Read a request body as a string. Tolerates an injected `req.body` (tests) and
+ * a real streaming `IncomingMessage`.
+ * @param {object} req
+ * @returns {Promise<string>}
+ */
+function readBody(req) {
+  if (req && req.body != null) {
+    return Promise.resolve(typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+  }
+  return new Promise((res, rej) => {
+    if (!req || typeof req.on !== 'function') {
+      res('');
+      return;
+    }
+    let data = '';
+    req.on('data', (c) => (data += c));
+    req.on('end', () => res(data));
+    req.on('error', rej);
+  });
+}
+
 /**
  * Build the request handler for one canvas instance. Closes over the origin's
  * build dir + boot config so `GET /` can inject an origin-correct config.
@@ -160,6 +397,8 @@ function isNotYet(pathname) {
  *        needs the bound port) is only read after `listen`.
  * @param {(p: string) => boolean} opts.existsSync
  * @param {(p: string) => Buffer|string} opts.readFile
+ * @param {() => Promise<object>} [opts.getManifest]  A2 manifest seam.
+ * @param {(params: object) => Promise<object>} [opts.runSearch]  A3 search seam.
  * @param {string[]} [opts.entryFiles]  Ordered entry candidates (default canvas.html, index.html).
  * @returns {(req, res) => void}
  */
@@ -168,6 +407,8 @@ export function createRequestHandler({
   bootConfig,
   existsSync,
   readFile,
+  getManifest,
+  runSearch,
   entryFiles = CANVAS_ENTRY_CANDIDATES,
 }) {
   const serveIndex = (res) => {
@@ -201,11 +442,86 @@ export function createRequestHandler({
     res.end(readFile(abs));
   };
 
+  const sendJson = (res, status, obj) => {
+    res.writeHead(status, { 'content-type': MIME['.json'] });
+    res.end(JSON.stringify(obj));
+  };
+
+  const serveManifest = async (res) => {
+    try {
+      const manifest = await getManifest();
+      res.writeHead(200, { 'content-type': MIME['.json'] });
+      res.end(JSON.stringify(manifest));
+    } catch (err) {
+      sendJson(res, 500, { error: 'manifest generation failed', message: String(err?.message || err) });
+    }
+  };
+
+  const serveManifestSlice = async (res, rawQuery) => {
+    const params = new URLSearchParams(rawQuery || '');
+    const ids = (params.get('ids') || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (ids.length === 0) {
+      sendJson(res, 400, { error: 'ids required', endpoint: '/manifest/slice' });
+      return;
+    }
+    try {
+      const manifest = await getManifest();
+      res.writeHead(200, { 'content-type': MIME['.json'] });
+      res.end(JSON.stringify(sliceManifest(manifest, ids)));
+    } catch (err) {
+      sendJson(res, 500, { error: 'manifest generation failed', message: String(err?.message || err) });
+    }
+  };
+
+  const serveSearch = async (req, res, method) => {
+    if (method !== 'POST') {
+      sendJson(res, 405, { error: 'method not allowed', endpoint: '/search' });
+      return;
+    }
+    let payload;
+    try {
+      const raw = await readBody(req);
+      payload = raw ? JSON.parse(raw) : {};
+    } catch {
+      sendJson(res, 400, { error: 'invalid json body', endpoint: '/search' });
+      return;
+    }
+    const query = typeof payload.query === 'string' ? payload.query.trim() : '';
+    if (!query) {
+      sendJson(res, 400, { error: 'query required', endpoint: '/search' });
+      return;
+    }
+    const limit = Number.isFinite(payload.limit) ? payload.limit : DEFAULT_SEARCH_LIMIT;
+    try {
+      const out = await runSearch({ query, limit, graphRanking: payload.graphRanking });
+      res.writeHead(200, { 'content-type': MIME['.json'] });
+      res.end(JSON.stringify(out));
+    } catch (err) {
+      sendJson(res, 500, { error: 'search failed', message: String(err?.message || err) });
+    }
+  };
+
   return (req, res) => {
-    const pathname = (req.url || '/').split('?')[0];
+    const method = (req.method || 'GET').toUpperCase();
+    const [pathname, rawQuery = ''] = (req.url || '/').split('?');
 
     if (pathname === '/' || pathname === '/index.html') {
       serveIndex(res);
+      return;
+    }
+    if (pathname === '/manifest') {
+      void serveManifest(res);
+      return;
+    }
+    if (pathname === '/manifest/slice') {
+      void serveManifestSlice(res, rawQuery);
+      return;
+    }
+    if (pathname === '/search') {
+      void serveSearch(req, res, method);
       return;
     }
     if (isNotYet(pathname)) {
@@ -232,6 +548,10 @@ export function createRequestHandler({
  * @param {(p: string) => boolean} [deps.existsSync]
  * @param {(p: string) => Buffer|string} [deps.readFile]
  * @param {string} [deps.title]  Canvas title returned from `open`.
+ * @param {string} [deps.cwd]  Host repo root (default `process.cwd()`).
+ * @param {() => Promise<object>} [deps.getManifest]  A2 manifest seam (hermetic tests).
+ * @param {(params: object, ctx: object) => Promise<object>} [deps.runSearch]  A3 search seam.
+ * @param {() => Promise<object>} [deps.loadSearchModule]  Search-engine module seam.
  * @param {string[]} [deps.entryFiles]  Ordered entry candidates (default canvas.html, index.html).
  * @returns {{ open: Function, close: Function, get: Function, size: () => number }}
  */
@@ -241,10 +561,21 @@ export function createCanvasRegistry({
   existsSync = fsExistsSync,
   readFile = readFileSync,
   title = 'kbexplorer Knowledge Graph',
+  cwd = process.cwd(),
+  getManifest,
+  runSearch,
+  loadSearchModule,
   entryFiles = CANVAS_ENTRY_CANDIDATES,
 } = {}) {
   /** @type {Map<string, { url: string, title: string, server: object }>} */
   const instances = new Map();
+
+  // Default data-path seams: live manifest generation + engine-backed search,
+  // both overridable for hermetic tests.
+  const getManifestSeam = getManifest || (() => defaultGetManifest({ cwd, existsSync, readFile }));
+  const runSearchSeam =
+    runSearch ||
+    ((params) => defaultRunSearch(params, { cwd, getManifest: getManifestSeam, loadSearchModule }));
 
   /**
    * Start (or rehydrate) the loopback server for `instanceId`.
@@ -270,7 +601,15 @@ export function createCanvasRegistry({
       ...(options.anchorNodeId ? { anchorNodeId: options.anchorNodeId } : {}),
     });
 
-    const handler = createRequestHandler({ buildDir, bootConfig, existsSync, readFile, entryFiles });
+    const handler = createRequestHandler({
+      buildDir,
+      bootConfig,
+      existsSync,
+      readFile,
+      getManifest: getManifestSeam,
+      runSearch: runSearchSeam,
+      entryFiles,
+    });
     const server = createServer(handler);
 
     const port = await new Promise((res, rej) => {

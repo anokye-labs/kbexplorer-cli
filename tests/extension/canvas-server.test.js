@@ -7,6 +7,11 @@ import {
   createRequestHandler,
   injectBootConfig,
   defaultResolveBuildDir,
+  defaultGetManifest,
+  defaultRunSearch,
+  sliceManifest,
+  toSemanticResult,
+  textIndexSearch,
   CANVAS_ENTRY_FILE,
   CANVAS_ENTRY_CANDIDATES,
 } from '../../src/extension/canvas-server.js';
@@ -167,14 +172,14 @@ describe('createRequestHandler', () => {
     assert.match(res.body, /__KBX_CANVAS__/);
   });
 
-  it('404 "not yet" for A2–A5 endpoints', () => {
+  it('404 "not yet" for the still-unimplemented A4/A5 endpoints', () => {
     const handler = createRequestHandler({
       buildDir: '/build',
       bootConfig,
       existsSync: () => true,
       readFile: () => 'x',
     });
-    for (const path of ['/manifest', '/manifest/slice', '/search', '/events', '/affordance/foo']) {
+    for (const path of ['/events', '/affordance/foo']) {
       const res = makeRes();
       handler({ url: `${path}?q=1` }, res);
       assert.equal(res.statusCode, 404, path);
@@ -351,7 +356,7 @@ describe('createCanvasRegistry (real loopback integration)', () => {
     assert.match(root.body, /"local":true/);
     assert.match(root.body, new RegExp(`${url.replace(/[.]/g, '\\.')}/search`));
 
-    const notYet = await httpGet(`${url}/search`);
+    const notYet = await httpGet(`${url}/events`);
     assert.equal(notYet.status, 404);
     assert.equal(JSON.parse(notYet.body).error, 'not yet');
 
@@ -399,6 +404,388 @@ describe('defaultResolveBuildDir', () => {
     } finally {
       if (prev !== undefined) process.env.KBX_CANVAS_BUILD_DIR = prev;
       else delete process.env.KBX_CANVAS_BUILD_DIR;
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A2/A3 data path — /manifest, /manifest/slice, /search.
+// ---------------------------------------------------------------------------
+
+/** A res that resolves `.done` once `end()` is called (for async endpoints). */
+function makeAsyncRes() {
+  let resolveDone;
+  const done = new Promise((r) => (resolveDone = r));
+  const res = {
+    statusCode: null,
+    headers: null,
+    body: '',
+    done,
+    writeHead(status, headers) {
+      this.statusCode = status;
+      this.headers = headers;
+    },
+    end(chunk) {
+      if (chunk != null) this.body += String(chunk);
+      resolveDone(this);
+    },
+  };
+  return res;
+}
+
+const page = (id, extra = {}) => {
+  const fm = { id, title: `Title ${id}`, cluster: extra.cluster || 'core', ...extra };
+  const lines = ['---'];
+  for (const [k, v] of Object.entries(fm)) lines.push(`${k}: ${v}`);
+  lines.push('---', '', extra.body || `Body for ${id}.`);
+  return lines.join('\n');
+};
+
+const FIXTURE_MANIFEST = {
+  configRaw: 'title: X',
+  authoredContent: {
+    'content/a.md': page('node-a', { body: 'alpha audit validation logic' }),
+    'content/b.md': page('node-b', { cluster: 'infra', body: 'beta deployment config' }),
+    'content/c.md': page('node-c', { body: 'gamma unrelated words' }),
+  },
+  tree: [],
+  readme: null,
+};
+
+const bootConfig = () => ({ local: true });
+
+describe('GET /manifest (A2, #191)', () => {
+  it('serves the full manifest bytes from the getManifest seam', async () => {
+    const handler = createRequestHandler({
+      buildDir: null,
+      bootConfig,
+      existsSync: () => false,
+      readFile: () => '',
+      getManifest: async () => FIXTURE_MANIFEST,
+      runSearch: async () => ({ results: [], suggestions: [] }),
+    });
+    const res = makeAsyncRes();
+    handler({ url: '/manifest', method: 'GET' }, res);
+    await res.done;
+    assert.equal(res.statusCode, 200);
+    assert.match(res.headers['content-type'], /application\/json/);
+    assert.deepEqual(JSON.parse(res.body), FIXTURE_MANIFEST);
+  });
+
+  it('returns 500 when generation fails', async () => {
+    const handler = createRequestHandler({
+      buildDir: null,
+      bootConfig,
+      existsSync: () => false,
+      readFile: () => '',
+      getManifest: async () => {
+        throw new Error('boom');
+      },
+      runSearch: async () => ({ results: [] }),
+    });
+    const res = makeAsyncRes();
+    handler({ url: '/manifest', method: 'GET' }, res);
+    await res.done;
+    assert.equal(res.statusCode, 500);
+    assert.match(JSON.parse(res.body).message, /boom/);
+  });
+});
+
+describe('GET /manifest/slice?ids= (A2, #191)', () => {
+  const handler = () =>
+    createRequestHandler({
+      buildDir: null,
+      bootConfig,
+      existsSync: () => false,
+      readFile: () => '',
+      getManifest: async () => FIXTURE_MANIFEST,
+      runSearch: async () => ({ results: [] }),
+    });
+
+  it('filters authoredContent to the requested frontmatter ids + slice marker', async () => {
+    const res = makeAsyncRes();
+    handler()({ url: '/manifest/slice?ids=node-a,node-c', method: 'GET' }, res);
+    await res.done;
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.body);
+    assert.deepEqual(Object.keys(body.authoredContent).sort(), ['content/a.md', 'content/c.md']);
+    assert.deepEqual(body.slice, { ids: ['node-a', 'node-c'] });
+    // Non-authored keys are preserved (manifest-shaped).
+    assert.equal(body.configRaw, 'title: X');
+  });
+
+  it('400s on empty/malformed ids', async () => {
+    for (const url of ['/manifest/slice', '/manifest/slice?ids=', '/manifest/slice?ids=,%20,']) {
+      const res = makeAsyncRes();
+      handler()({ url, method: 'GET' }, res);
+      await res.done;
+      assert.equal(res.statusCode, 400, url);
+      assert.equal(JSON.parse(res.body).error, 'ids required');
+    }
+  });
+});
+
+describe('sliceManifest', () => {
+  it('drops pages whose frontmatter has no matching id', () => {
+    const out = sliceManifest(FIXTURE_MANIFEST, ['node-b']);
+    assert.deepEqual(Object.keys(out.authoredContent), ['content/b.md']);
+    assert.deepEqual(out.slice, { ids: ['node-b'] });
+  });
+});
+
+describe('POST /search (A3, #192)', () => {
+  const handlerWith = (runSearch) =>
+    createRequestHandler({
+      buildDir: null,
+      bootConfig,
+      existsSync: () => false,
+      readFile: () => '',
+      getManifest: async () => FIXTURE_MANIFEST,
+      runSearch,
+    });
+
+  it('returns the { results, suggestions } object from the runSearch seam', async () => {
+    let received = null;
+    const handler = handlerWith(async (params) => {
+      received = params;
+      return {
+        results: [toSemanticResult({ nodeId: 'node-a', title: 'A', cluster: 'core', score: 0.9 })],
+        suggestions: [],
+      };
+    });
+    const res = makeAsyncRes();
+    handler({ url: '/search', method: 'POST', body: { query: '  audit  ', limit: 10, graphRanking: true } }, res);
+    await res.done;
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.body);
+    assert.equal(body.results[0].nodeId, 'node-a');
+    assert.equal(body.results[0].chunkIndex, 0);
+    assert.deepEqual(body.suggestions, []);
+    // query is trimmed; limit + graphRanking forwarded.
+    assert.deepEqual(received, { query: 'audit', limit: 10, graphRanking: true });
+  });
+
+  it('405 on non-POST', async () => {
+    const res = makeAsyncRes();
+    handlerWith(async () => ({ results: [] }))({ url: '/search', method: 'GET' }, res);
+    await res.done;
+    assert.equal(res.statusCode, 405);
+  });
+
+  it('400 on missing query', async () => {
+    const res = makeAsyncRes();
+    handlerWith(async () => ({ results: [] }))({ url: '/search', method: 'POST', body: { limit: 5 } }, res);
+    await res.done;
+    assert.equal(res.statusCode, 400);
+    assert.equal(JSON.parse(res.body).error, 'query required');
+  });
+
+  it('400 on invalid JSON body', async () => {
+    const res = makeAsyncRes();
+    handlerWith(async () => ({ results: [] }))({ url: '/search', method: 'POST', body: '{not json' }, res);
+    await res.done;
+    assert.equal(res.statusCode, 400);
+    assert.equal(JSON.parse(res.body).error, 'invalid json body');
+  });
+
+  it('defaults limit to 10 when omitted', async () => {
+    let received = null;
+    const res = makeAsyncRes();
+    handlerWith(async (p) => {
+      received = p;
+      return { results: [], suggestions: [] };
+    })({ url: '/search', method: 'POST', body: { query: 'x' } }, res);
+    await res.done;
+    assert.equal(received.limit, 10);
+  });
+});
+
+describe('toSemanticResult (SPA field mapping)', () => {
+  it('maps engine output to exact SPA field names/casing', () => {
+    const out = toSemanticResult({
+      id: 'n1',
+      title: 'T',
+      clusterId: 'infra',
+      score: 0.42,
+      snippet: 's',
+      path: 'content/x.md',
+      connections: ['n2', 'n3'],
+    });
+    assert.deepEqual(out, {
+      nodeId: 'n1',
+      title: 'T',
+      cluster: 'infra',
+      score: 0.42,
+      snippet: 's',
+      chunkIndex: 0,
+      connections: ['n2', 'n3'],
+      path: 'content/x.md',
+    });
+  });
+
+  it('coerces missing/invalid fields to safe defaults', () => {
+    const out = toSemanticResult({});
+    assert.equal(out.nodeId, '');
+    assert.equal(out.score, 0);
+    assert.equal(out.chunkIndex, 0);
+    assert.deepEqual(out.connections, []);
+  });
+});
+
+describe('textIndexSearch (fallback)', () => {
+  it('ranks pages by query-term frequency and returns SemanticResult rows', () => {
+    const rows = textIndexSearch(FIXTURE_MANIFEST, 'audit', 10);
+    assert.ok(rows.length >= 1);
+    assert.equal(rows[0].nodeId, 'node-a');
+    assert.equal(rows[0].chunkIndex, 0);
+    assert.ok(rows[0].score > 0 && rows[0].score <= 1);
+  });
+
+  it('returns [] for an empty query', () => {
+    assert.deepEqual(textIndexSearch(FIXTURE_MANIFEST, '   ', 10), []);
+  });
+
+  it('respects the limit', () => {
+    const rows = textIndexSearch(FIXTURE_MANIFEST, 'a', 1);
+    assert.ok(rows.length <= 1);
+  });
+});
+
+describe('defaultRunSearch (drift fallback)', () => {
+  it('falls back to the text index + drift warning when the engine module is missing', async () => {
+    const warnings = [];
+    const out = await defaultRunSearch(
+      { query: 'audit', limit: 5 },
+      {
+        cwd: process.cwd(),
+        getManifest: async () => FIXTURE_MANIFEST,
+        loadSearchModule: async () => {
+          throw new Error('not installed');
+        },
+        warn: (m) => warnings.push(m),
+      },
+    );
+    assert.ok(out.drift?.stale);
+    assert.match(out.drift.reason, /engine unavailable/);
+    assert.ok(out.results.length >= 1);
+    assert.deepEqual(out.suggestions, []);
+    assert.equal(warnings.length, 1);
+  });
+
+  it('falls back with an absent-artifacts drift reason when readArtifacts returns null', async () => {
+    const out = await defaultRunSearch(
+      { query: 'deployment' },
+      {
+        cwd: process.cwd(),
+        getManifest: async () => FIXTURE_MANIFEST,
+        loadSearchModule: async () => ({
+          readArtifacts: () => null,
+          createSearchEngine: () => ({ search: async () => [] }),
+          getProvider: () => ({}),
+        }),
+        warn: () => {},
+      },
+    );
+    assert.match(out.drift.reason, /artifacts absent/);
+    assert.equal(out.results[0].nodeId, 'node-b');
+  });
+
+  it('uses the engine (no drift) when artifacts are present', async () => {
+    const out = await defaultRunSearch(
+      { query: 'audit', limit: 3 },
+      {
+        cwd: process.cwd(),
+        getManifest: async () => FIXTURE_MANIFEST,
+        loadSearchModule: async () => ({
+          readArtifacts: () => ({ meta: { model: 'm', dimensions: 3 } }),
+          getProvider: () => ({ embed: async () => [0, 0, 0] }),
+          createSearchEngine: () => ({
+            search: async () => [
+              { nodeId: 'node-a', title: 'A', cluster: 'core', score: 0.8, snippet: 's', connections: [] },
+            ],
+          }),
+        }),
+        warn: () => {},
+      },
+    );
+    assert.equal(out.drift, undefined);
+    assert.equal(out.results[0].nodeId, 'node-a');
+    assert.equal(out.results[0].score, 0.8);
+  });
+});
+
+describe('defaultGetManifest (live + bundled fallback)', () => {
+  it('returns the live-generated manifest when generation succeeds', async () => {
+    const m = await defaultGetManifest({ generate: async () => FIXTURE_MANIFEST });
+    assert.deepEqual(m, FIXTURE_MANIFEST);
+  });
+
+  it('falls back to a bundled repo-manifest.json when generation throws', async () => {
+    const bundled = JSON.stringify({ configRaw: 'bundled' });
+    const m = await defaultGetManifest({
+      cwd: '/repo',
+      generate: async () => {
+        throw new Error('no gh');
+      },
+      existsSync: (p) => p.replace(/\\/g, '/').endsWith('/repo/dist/kb/repo-manifest.json'),
+      readFile: () => bundled,
+    });
+    assert.equal(m.configRaw, 'bundled');
+  });
+
+  it('rethrows when generation fails and no bundle exists', async () => {
+    await assert.rejects(
+      defaultGetManifest({
+        generate: async () => {
+          throw new Error('nope');
+        },
+        existsSync: () => false,
+        readFile: () => '',
+      }),
+      /nope/,
+    );
+  });
+});
+
+describe('data-path integration (real loopback)', () => {
+  const httpJson = (url, { method = 'GET', body } = {}) =>
+    new Promise((resolve, reject) => {
+      const req = request(url, { method }, (r) => {
+        let data = '';
+        r.on('data', (c) => (data += c));
+        r.on('end', () => resolve({ status: r.statusCode, body: data }));
+      });
+      req.on('error', reject);
+      if (body != null) req.end(typeof body === 'string' ? body : JSON.stringify(body));
+      else req.end();
+    });
+
+  it('serves /manifest, /manifest/slice and POST /search over a real port via injected seams', async () => {
+    const registry = createCanvasRegistry({
+      resolveBuildDir: () => null,
+      getManifest: async () => FIXTURE_MANIFEST,
+      runSearch: async ({ query }) => ({
+        results: [toSemanticResult({ nodeId: 'node-a', title: query, cluster: 'core', score: 1 })],
+        suggestions: [],
+      }),
+    });
+    const { url } = await registry.open('data-path');
+    try {
+      const man = await httpJson(`${url}/manifest`);
+      assert.equal(man.status, 200);
+      assert.equal(JSON.parse(man.body).configRaw, 'title: X');
+
+      const slice = await httpJson(`${url}/manifest/slice?ids=node-b`);
+      assert.equal(slice.status, 200);
+      assert.deepEqual(Object.keys(JSON.parse(slice.body).authoredContent), ['content/b.md']);
+
+      const search = await httpJson(`${url}/search`, { method: 'POST', body: { query: 'hello', limit: 10 } });
+      assert.equal(search.status, 200);
+      const sbody = JSON.parse(search.body);
+      assert.equal(sbody.results[0].title, 'hello');
+      assert.ok(Array.isArray(sbody.suggestions));
+    } finally {
+      await registry.close('data-path');
     }
   });
 });
