@@ -35,11 +35,13 @@
   "files": [
     "bin/",
     "src/",
+    "examples/",
     "LICENSE",
     "README.md"
   ],
   "dependencies": {
     "@anokye-labs/kbexplorer-core": "github:anokye-labs/kbexplorer-core#v0.3.0",
-    "@anokye-labs/kbexplorer-provider-rich-markdown": "github:anokye-labs/kbexplorer-provider-rich-markdown#v0.1.0"
+    "@anokye-labs/kbexplorer-provider-rich-markdown": "github:anokye-labs/kbexplorer-provider-rich-markdown#v0.1.0",
+    "@modelcontextprotocol/sdk": "^1.29.0"
   }
 }

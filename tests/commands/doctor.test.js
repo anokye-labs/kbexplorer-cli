@@ -260,9 +260,10 @@ describe('checkRuntime — invalid flag value', () => {
 describe('checkMcp — no mcp declared', () => {
   it('returns a pass when no mcp block in config', () => {
     const checks = checkMcp({ adapter: copilotAdapter, config: null, cwd: tmpdir(), env: {} });
-    assert.strictEqual(checks.length, 1);
-    assert.strictEqual(checks[0].status, 'pass');
-    assert.match(checks[0].message, /No MCP/i);
+    const declared = checks.find((c) => c.id === 'mcp.declared');
+    assert.ok(declared);
+    assert.strictEqual(declared.status, 'pass');
+    assert.match(declared.message, /No MCP/i);
   });
 
   it('returns a pass when mcp block has no servers', () => {
@@ -272,7 +273,9 @@ describe('checkMcp — no mcp declared', () => {
       cwd: tmpdir(),
       env: {},
     });
-    assert.strictEqual(checks[0].status, 'pass');
+    const declared = checks.find((c) => c.id === 'mcp.declared');
+    assert.ok(declared);
+    assert.strictEqual(declared.status, 'pass');
   });
 });
 
@@ -365,10 +368,13 @@ describe('checkMcp — custom adapter', () => {
           cwd,
           env: { HOME: home, USERPROFILE: home },
         });
-        for (const c of checks) {
+        const serverChecks = checks.filter((c) => c.id !== 'mcp.server');
+        for (const c of serverChecks) {
           assert.strictEqual(c.status, 'warn', `Expected warn for ${c.id}, got ${c.status}`);
         }
-        assert.strictEqual(checks.length, 2);
+        assert.strictEqual(serverChecks.length, 2);
+        // The provider-readiness advisory is present and passes independently.
+        assert.strictEqual(checks.find((c) => c.id === 'mcp.server').status, 'pass');
       });
     });
   });
