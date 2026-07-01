@@ -21,6 +21,14 @@ import { buildCanvasOptions } from './canvas.js';
 
 export { TOOL_PREFIX, toolNameFor, affordanceToTool, buildAffordanceTools } from './tools.js';
 export { KBX_CANVAS_ID, buildCanvasOptions } from './canvas.js';
+export {
+  createCanvasRegistry,
+  createRequestHandler,
+  injectBootConfig,
+  defaultResolveBuildDir,
+  CANVAS_ENTRY_FILE,
+  CANVAS_ENTRY_CANDIDATES,
+} from './canvas-server.js';
 export { descriptorToJsonSchema, fieldToJsonSchema } from './json-schema.js';
 export { successResult, errorResult } from './tool-result.js';
 
