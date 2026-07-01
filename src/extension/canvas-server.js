@@ -643,6 +643,15 @@ export function createRequestHandler({
       res.end(JSON.stringify({ ok: true, result }));
     } catch (err) {
       const code = err?.code;
+      // Consent contract: a direct canvas POST is stateless with no interactive
+      // channel, so it cannot itself run a consent prompt. Consent-gated
+      // (mutating) affordances are therefore expected to route through the AGENT
+      // (A6 click→chat / #409), where elicitation lives — mirroring how the MCP
+      // adapter maps consent to elicitation. Direct POST /affordance is for
+      // read-only / already-safe actions; anything needing consent fails closed
+      // with 403. CONSENT_REQUIRED and CONSENT_DENIED stay DISTINGUISHABLE in the
+      // body (via err.toJSON()) so the agent path can retry REQUIRED but treat
+      // DENIED as terminal.
       const status =
         code === ERROR_CODES.UNKNOWN_AFFORDANCE
           ? 404
