@@ -743,4 +743,33 @@ describe('search-mode is actionable via the add-search seam (#151, PE2-F4)', () 
     assert.equal(final.status, STATUS.DONE);
     assert.equal(final.search.status, ADD_SEARCH_STATUS.SUCCEEDED);
   });
+
+  it('an UNSUPPORTED search provider degrades without blocking — genesis still completes', async () => {
+    // Mirrors the real cliff: local/lexical against a vector-only kbexplorer-search.
+    const s = atSearchMode(SEARCH_MODES.LOCAL);
+    const { state } = onboardingReducer(s, {
+      type: 'SEARCH_RESULT',
+      result: { mode: 'local', status: ADD_SEARCH_STATUS.UNSUPPORTED, provider: 'lexical', note: 'lexical not available' },
+    });
+    assert.equal(state.search.status, ADD_SEARCH_STATUS.UNSUPPORTED);
+    assert.equal(state.search.note, 'lexical not available');
+    assert.notEqual(state.status, STATUS.BLOCKED);
+  });
+
+  it('driveOnboarding reaches ready when local search is unsupported (graceful degrade)', async () => {
+    const seams = {
+      preflight: async () => ({ ok: true, diagnostics: [] }),
+      persist: async () => {},
+      startGenerate: async () => ({ status: 'succeeded' }),
+      addSearchSeams: { providerAvailable: () => false },
+    };
+    const final = await driveOnboarding(
+      createOnboardingMachine({ decisions: { ...FULL_DECISIONS, search: 'local' } }),
+      seams,
+    );
+    assert.equal(final.step, 'ready');
+    assert.equal(final.status, STATUS.DONE);
+    assert.equal(final.search.status, ADD_SEARCH_STATUS.UNSUPPORTED);
+    assert.match(final.search.note, /not available/i);
+  });
 });

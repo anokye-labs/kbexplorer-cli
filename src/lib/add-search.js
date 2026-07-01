@@ -15,7 +15,13 @@
  * Two axes of search (narrative §8.5 — do NOT imply semantic-by-default):
  *   - `local`    → **lexical**, ZERO-credential. Builds a keyword index with the
  *                  `lexical` provider — no embedding API key, fully offline and
- *                  deterministic.
+ *                  deterministic. NOTE: as of `@anokye-labs/kbexplorer-search` the
+ *                  registered providers are vector-only (`openai`); a zero-cred
+ *                  lexical provider is a tracked follow-up. Until it ships, a real
+ *                  `local` run degrades gracefully via the `providerAvailable`
+ *                  seam (settles `unsupported`, builds/stages nothing) rather than
+ *                  committing a broken index. The provider mapping below is the
+ *                  overridable default.
  *   - `semantic` → **vector**, bring-your-own-key. Builds embeddings with a vector
  *                  provider (default `openai` / `text-embedding-3-small`), which
  *                  needs a credential (e.g. `OPENAI_API_KEY`). When the credential
@@ -91,6 +97,14 @@ export const ADD_SEARCH_STATUS = Object.freeze({
   SUCCEEDED: 'succeeded',
   /** Semantic mode but no embedding credential — surface a `needs`, do not skip. */
   AWAITING_CREDENTIAL: 'awaiting_credential',
+  /**
+   * The chosen mode's index provider is not available in the installed
+   * `@anokye-labs/kbexplorer-search` (e.g. `local`/lexical against a build that
+   * only ships the `openai` vector provider). The run degrades *gracefully*:
+   * nothing is built or staged, and a clear `note` explains why — genesis is not
+   * hard-blocked on an optional capability the tooling can't yet provide.
+   */
+  UNSUPPORTED: 'unsupported',
   /** A step threw. Carries a typed error. */
   FAILED: 'failed',
 });
@@ -197,6 +211,12 @@ function makeError(code, message, details = {}) {
  *
  * @param {object} plan  A plan from {@link planAddSearch}.
  * @param {object} [seams]
+ * @param {(plan: object) => (boolean|Promise<boolean>)} [seams.providerAvailable]
+ *        Resolve whether the plan's index provider is actually registered in the
+ *        installed `@anokye-labs/kbexplorer-search` (real wiring backs this with
+ *        the package's `listProviders()`). When it resolves falsy the run settles
+ *        {@link ADD_SEARCH_STATUS.UNSUPPORTED} and nothing is built or staged. If
+ *        omitted the provider is assumed available (keeps the executor hermetic).
  * @param {() => (boolean|Promise<boolean>)} [seams.hasCredential]  Resolve whether
  *        the embedding credential is present (semantic only). If omitted, the
  *        plan's own `needsCredential` flag is trusted.
@@ -232,6 +252,26 @@ export async function applyAddSearch(plan, seams = {}) {
 
   if (!plan.needsAction) {
     return Object.freeze({ ...base, status: ADD_SEARCH_STATUS.SKIPPED });
+  }
+
+  // Provider-availability gate — a mode whose index provider is not registered in
+  // the installed search package (e.g. `local`/lexical against a vector-only
+  // build) degrades gracefully: report clearly, build/stage nothing. This is the
+  // guard that keeps `local` from ever committing a broken/empty index at runtime.
+  if (typeof seams.providerAvailable === 'function') {
+    const available = await seams.providerAvailable(plan);
+    if (!available) {
+      return Object.freeze({
+        ...base,
+        status: ADD_SEARCH_STATUS.UNSUPPORTED,
+        note:
+          `The "${plan.provider}" search index provider is not available in the ` +
+          `installed ${SEARCH_PACKAGE}. No index was built or staged. ` +
+          (plan.kind === 'lexical'
+            ? 'Zero-credential lexical search is not yet supported there — use semantic (BYO-key) search, or track the follow-up for a lexical provider.'
+            : `Install a build of ${SEARCH_PACKAGE} that registers "${plan.provider}".`),
+      });
+    }
   }
 
   // Credential gate — consult the live seam when provided, else trust the plan.
