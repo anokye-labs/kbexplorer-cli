@@ -5,6 +5,7 @@ import {
   buildSourceIndex,
   rollupSources,
   computeSyncStatus,
+  sourceContentDrift,
   UNKNOWN_SOURCE,
 } from '../../src/lib/drift.js';
 
@@ -112,5 +113,23 @@ describe('drift — computeSyncStatus', () => {
     const a = computeSyncStatus({ current, baseline });
     const b = computeSyncStatus({ current, baseline });
     assert.deepEqual(a, b);
+  });
+});
+
+describe('drift — sourceContentDrift', () => {
+  it('returns only drifted (own-input-changed) sources, not stale ones', () => {
+    // a (gh) drifted; b (sp) only downstream/stale.
+    const current = {
+      nodes: [dnode('a', 'gh', 'x', 'h2'), { id: 'b', sourceId: 'sp' }],
+      edges: [{ id: 'e1', sourceId: 'gh', from: 'a', to: 'b' }],
+    };
+    const baseline = { nodes: [dnode('a', 'gh', 'x', 'h1'), { id: 'b', sourceId: 'sp' }] };
+    const s = computeSyncStatus({ current, baseline });
+    assert.deepEqual(sourceContentDrift(s), ['gh']);
+  });
+
+  it('is empty when nothing drifted', () => {
+    assert.deepEqual(sourceContentDrift({ sources: [] }), []);
+    assert.deepEqual(sourceContentDrift(null), []);
   });
 });

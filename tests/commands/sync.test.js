@@ -183,3 +183,45 @@ describe('sync command — end to end (--check)', () => {
     }
   });
 });
+
+describe('sync command — reconcile (write mode)', () => {
+  it('flags remaining source-content drift and does not exit non-zero', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kbx-sync-'));
+    let exited = false;
+    const origExit = process.exit;
+    process.exit = () => { exited = true; throw new Error('__exit__'); };
+    try {
+      // Graph kept OUTSIDE .kbx/connection so there is no connection layer to
+      // reconcile — isolates the source-content-drift reporting path.
+      writeFileSync(resolve(dir, 'graph.json'), JSON.stringify({ nodes: [dnode('a', 'gh', 'x', 'h2')] }), 'utf-8');
+      writeFileSync(resolve(dir, 'prior.json'), JSON.stringify({ nodes: [dnode('a', 'gh', 'x', 'h1')] }), 'utf-8');
+      const out = await inDir(dir, async () => {
+        await syncCommand(['--graph', 'graph.json', '--against', 'prior.json']);
+      });
+      assert.equal(exited, false);
+      assert.match(out, /content drift NOT fixed/i);
+      assert.match(out, /gh/);
+      assert.match(out, /No connection layer to reconcile/);
+    } finally {
+      process.exit = origExit;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('--json reconcile surfaces sourceContentDrift', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kbx-sync-'));
+    try {
+      writeFileSync(resolve(dir, 'graph.json'), JSON.stringify({ nodes: [dnode('a', 'gh', 'x', 'h2')] }), 'utf-8');
+      writeFileSync(resolve(dir, 'prior.json'), JSON.stringify({ nodes: [dnode('a', 'gh', 'x', 'h1')] }), 'utf-8');
+      const out = await inDir(dir, async () => {
+        await syncCommand(['--graph', 'graph.json', '--against', 'prior.json', '--json']);
+      });
+      const parsed = JSON.parse(out);
+      assert.equal(parsed.mode, 'reconcile');
+      assert.deepEqual(parsed.sourceContentDrift, ['gh']);
+      assert.equal(parsed.reconcile, null);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

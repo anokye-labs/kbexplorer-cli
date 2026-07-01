@@ -25,7 +25,7 @@
 
 import { resolve, relative } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
-import { computeSyncStatus } from '../lib/drift.js';
+import { computeSyncStatus, sourceContentDrift } from '../lib/drift.js';
 import { loadBaselineGraph } from './affected.js';
 import { runConnectCommand } from './connect.js';
 import { CONNECT_DIR, ARTIFACT_FILES, ConnectError } from '../lib/connect.js';
@@ -273,6 +273,8 @@ export default async function syncCommand(args = []) {
     }
   }
 
+  const contentDrift = sourceContentDrift(computed.status);
+
   if (opts.json) {
     console.log(JSON.stringify({
       mode: 'reconcile',
@@ -280,6 +282,7 @@ export default async function syncCommand(args = []) {
       baseline: computed.baselineDesc,
       status: computed.status,
       reconcile: reconcile ? { report: reconcile.report, stats: reconcile.stats } : null,
+      sourceContentDrift: contentDrift,
     }, null, 2));
     return;
   }
@@ -288,9 +291,20 @@ export default async function syncCommand(args = []) {
   if (reconcile) {
     const relDir = toPosix(relative(cwd, dir)) || CONNECT_DIR;
     for (const r of reconcile.report) console.log(`  ${r.status === 'unchanged' ? '=' : '+'} ${r.status}: ${relDir}/${r.file}`);
-    console.log(`\nOK Reconciled connection artifacts -> ${relDir}/.`);
+    console.log(`\nOK Reconciled deterministic connection artifacts -> ${relDir}/.`);
   } else {
     console.log('No connection layer to reconcile (run `kbx connect` to create one).');
   }
-  console.log('Node-content regeneration is deferred to incremental regen (#158).');
+
+  // Deterministic reconcile does NOT re-ingest sources or regenerate node
+  // content. If any source's OWN input changed, that content drift REMAINS and
+  // must be resolved by regeneration — make that unmistakable.
+  if (contentDrift.length > 0) {
+    console.log('');
+    console.log(`! ${contentDrift.length} source(s) have content drift NOT fixed by this reconcile:`);
+    for (const src of contentDrift) console.log(`  ~ ${src} — source content changed; node content is still stale`);
+    console.log('  Run `kbx generate` / incremental regen (#158) to regenerate, then commit.');
+  } else {
+    console.log('Node-content regeneration is deferred to incremental regen (#158).');
+  }
 }

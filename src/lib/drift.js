@@ -122,6 +122,21 @@ export function rollupSources({ current, affected }) {
 }
 
 /**
+ * The sources whose *own* input content hash changed (`drifted`) — i.e. those
+ * with unreconciled SOURCE-CONTENT drift that the deterministic reconcile
+ * (`kbx sync`) cannot fix on its own; they require re-ingestion / node-content
+ * regeneration (incremental regen, #158). `stale` sources are excluded: they
+ * are only downstream of another source's drift and are reconciled
+ * deterministically.
+ *
+ * @param {{ sources?: Array<{ source: string, status: string }> }} status
+ * @returns {string[]} drifted source ids, sorted (rollup is already sorted)
+ */
+export function sourceContentDrift(status) {
+  return (status?.sources ?? []).filter((s) => s.status === 'drifted').map((s) => s.source);
+}
+
+/**
  * Compute the full drift + multi-source sync status for a composite graph
  * against a committed baseline, optionally folding in the connection-artifact
  * parity signal.
