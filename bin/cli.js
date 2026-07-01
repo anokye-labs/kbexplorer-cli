@@ -39,6 +39,7 @@ const COMMANDS = {
   plugin: '../src/commands/plugin.js',
   'search-index': '../src/commands/search-index.js',
   search: '../src/commands/search.js',
+  mcp: '../src/commands/mcp.js',
 };
 
 function printUsage() {
@@ -66,6 +67,7 @@ function printUsage() {
     update      Pull latest template + refresh agents/skills
     doctor      Diagnose local runtime, MCP, template setup, and adoption readiness
     plugin      Install or share the kbx Copilot plugin bundle (install/share/resolve)
+    mcp         Serve the affordances as an MCP server (optional, non-canvas hosts)
 
   Options:
     --help      Show this help message
@@ -129,6 +131,7 @@ function printUsage() {
     npx kbx doctor --json
     npx kbx plugin install --scope user
     npx kbx plugin share
+    npx kbx mcp
 `);
 }
 

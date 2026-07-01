@@ -1,0 +1,11 @@
+{
+  "$comment": "Example MCP host config for the kbexplorer affordance server (kbx mcp, PE3-F4). This is the OPTIONAL, non-canvas delivery path: point a plain `copilot -p` run (or any MCP client) at this to expose the kbexplorer affordances as MCP tools named kbx_<affordance>. If you use the canvas extension instead, you do NOT need this — the tools ship in-process with the canvas and no MCP config is consulted. BYO-cred: the server inherits your ambient environment (gh, provider keys).",
+  "mcpServers": {
+    "kbexplorer": {
+      "command": "npx",
+      "args": ["-y", "@anokye-labs/kbx", "mcp"],
+      "$comment-allow": "Add \"--allow\" to args (or set env KBX_MCP_CONSENT=allow) to auto-approve write/sample actions in trusted automation. Without it, those actions request consent via MCP elicitation and fail closed when the client cannot elicit.",
+      "env": {}
+    }
+  }
+}

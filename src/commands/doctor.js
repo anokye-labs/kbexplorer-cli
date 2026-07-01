@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 import { loadRuntimeConfig, resolveRuntime, RUNTIME_ENV } from '../lib/runtime-config.js';
 import { detectConfiguredMcpServers } from '../lib/mcp-preflight.js';
+import { runMcpServerPreflight } from '../mcp/preflight.js';
 import { readSourceRecord, SOURCE_FILE, classifyRef } from '../lib/source.js';
 import { isAdapterAvailable, resolveBinary } from '../lib/copilot-runtime.js';
 import { getSubmoduleUrl, getAppRoot } from '../lib/detect-repo.js';
@@ -226,6 +227,19 @@ function checkRuntime({ flag, config, env, spawnSync: spawnSyncImpl = spawnSync 
  */
 function checkMcp({ adapter, config, cwd, env }) {
   const checks = [];
+
+  // Provider readiness (PE3-F4): can this host run `kbx mcp` — the optional MCP
+  // *server* that exposes the affordances to non-canvas hosts? This is separate
+  // from the consumer checks below (which verify upstream servers kbx *calls*).
+  const provider = runMcpServerPreflight({});
+  if (provider.ok) {
+    checks.push(
+      pass('mcp.server', `kbx mcp server available (${provider.toolCount} affordance tools)`)
+    );
+  } else {
+    checks.push(warn('mcp.server', `kbx mcp server not ready: ${provider.errors.join('; ')}`));
+  }
+
   const mcp = config?.mcp;
 
   if (!mcp || (!mcp.required?.length && !mcp.optional?.length)) {
