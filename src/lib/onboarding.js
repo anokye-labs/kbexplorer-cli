@@ -507,6 +507,7 @@ function reduceSearchResult(state, event) {
     artifactDir: result.artifactDir ?? null,
     artifacts: result.artifacts ?? [],
     stepsRun: result.stepsRun ?? [],
+    note: result.note ?? null,
   };
   const blocked = result.status === ADD_SEARCH_STATUS.AWAITING_CREDENTIAL;
   const failed = result.status === ADD_SEARCH_STATUS.FAILED;

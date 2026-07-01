@@ -194,4 +194,33 @@ describe('applyAddSearch (#151 seam-injected executor)', () => {
     assert.equal(result.status, ADD_SEARCH_STATUS.FAILED);
     assert.equal(result.error.code, ADD_SEARCH_ERRORS.INVALID_MODE);
   });
+
+  it('degrades gracefully (unsupported, nothing staged) when the provider is unavailable', async () => {
+    const staged = [];
+    const seams = {
+      providerAvailable: () => false,
+      buildIndex: () => staged.push('build'),
+      stageArtifacts: () => staged.push('stage'),
+    };
+    const result = await applyAddSearch(planAddSearch(SEARCH_MODES.LOCAL), seams);
+    assert.equal(result.status, ADD_SEARCH_STATUS.UNSUPPORTED);
+    assert.deepEqual(staged, [], 'must not build or stage a broken index');
+    assert.deepEqual(result.stepsRun, []);
+    assert.match(result.note, /not available/i);
+    assert.match(result.note, /lexical/i);
+  });
+
+  it('proceeds normally when providerAvailable resolves true', async () => {
+    const built = [];
+    const seams = {
+      providerAvailable: () => true,
+      installDependency: () => {},
+      buildIndex: (s) => built.push(s.provider),
+      stageArtifacts: () => {},
+      configureCiGate: () => {},
+    };
+    const result = await applyAddSearch(planAddSearch(SEARCH_MODES.LOCAL), seams);
+    assert.equal(result.status, ADD_SEARCH_STATUS.SUCCEEDED);
+    assert.deepEqual(built, ['lexical']);
+  });
 });
