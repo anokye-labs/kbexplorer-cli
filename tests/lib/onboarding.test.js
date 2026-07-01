@@ -15,6 +15,8 @@ const {
   driveOnboarding,
 } = await import('../../src/lib/onboarding.js');
 
+const { SEARCH_MODES, ADD_SEARCH_STATUS } = await import('../../src/lib/add-search.js');
+
 /** Apply a sequence of events, returning the final state (effects discarded). */
 function run(state, events) {
   let s = state;
@@ -572,5 +574,173 @@ describe('driveOnboarding runner (seam-injected effects)', () => {
       () => driveOnboarding(createOnboardingMachine({ decisions: FULL_DECISIONS }), seams),
       /seams\.startGenerate/,
     );
+  });
+});
+
+describe('search-mode is actionable via the add-search seam (#151, PE2-F4)', () => {
+  function atSearchMode(searchValue) {
+    let s = createOnboardingMachine({ decisions: { ...FULL_DECISIONS, search: searchValue } });
+    s = run(s, [
+      { type: 'START' },
+      { type: 'PREFLIGHT_RESULT', result: { ok: true, diagnostics: [] } },
+      { type: 'NEXT' }, // template-strategy
+      { type: 'NEXT' }, // content-mode
+      { type: 'NEXT' }, // visual-identity
+      { type: 'NEXT' }, // search-mode
+    ]);
+    assert.equal(s.step, 'search-mode');
+    return s;
+  }
+
+  it('leaving search-mode with a non-none choice emits an add-search effect carrying a plan', () => {
+    const s = atSearchMode(SEARCH_MODES.SEMANTIC);
+    const { effects } = onboardingReducer(s, { type: 'NEXT' });
+    const addSearch = effects.find((e) => e.kind === 'add-search');
+    assert.ok(addSearch, 'expected an add-search effect');
+    assert.equal(addSearch.mode, 'semantic');
+    assert.equal(addSearch.plan.provider, 'openai');
+    assert.equal(addSearch.plan.kind, 'vector');
+    // The generate start-job effect is still emitted alongside it.
+    assert.ok(effects.find((e) => e.kind === 'start-job'));
+  });
+
+  it('local also emits an add-search effect (zero-credential lexical)', () => {
+    const s = atSearchMode(SEARCH_MODES.LOCAL);
+    const { effects } = onboardingReducer(s, { type: 'NEXT' });
+    const addSearch = effects.find((e) => e.kind === 'add-search');
+    assert.ok(addSearch);
+    assert.equal(addSearch.plan.provider, 'lexical');
+    assert.equal(addSearch.plan.needsCredential, false);
+  });
+
+  it('search=none emits NO add-search effect', () => {
+    const s = atSearchMode('none');
+    const { effects } = onboardingReducer(s, { type: 'NEXT' });
+    assert.equal(effects.find((e) => e.kind === 'add-search'), undefined);
+  });
+
+  it('SEARCH_RESULT folds a success summary onto state.search without blocking', () => {
+    const s = atSearchMode(SEARCH_MODES.LOCAL);
+    const { state } = onboardingReducer(s, {
+      type: 'SEARCH_RESULT',
+      result: {
+        mode: 'local',
+        status: ADD_SEARCH_STATUS.SUCCEEDED,
+        provider: 'lexical',
+        artifactDir: '.search',
+        stepsRun: ['install-dependency', 'build-index', 'stage-artifacts', 'configure-ci-gate'],
+      },
+    });
+    assert.equal(state.search.mode, 'local');
+    assert.equal(state.search.status, ADD_SEARCH_STATUS.SUCCEEDED);
+    assert.notEqual(state.status, STATUS.BLOCKED);
+  });
+
+  it('an awaiting_credential SEARCH_RESULT blocks the flow and surfaces the needs', () => {
+    const s = atSearchMode(SEARCH_MODES.SEMANTIC);
+    const needs = { kind: 'credential', provider: 'openai', env: 'OPENAI_API_KEY', message: 'set the key' };
+    const { state } = onboardingReducer(s, {
+      type: 'SEARCH_RESULT',
+      result: { mode: 'semantic', status: ADD_SEARCH_STATUS.AWAITING_CREDENTIAL, needs },
+    });
+    assert.equal(state.status, STATUS.BLOCKED);
+    assert.deepEqual(state.needs, needs);
+  });
+
+  it('a failed SEARCH_RESULT blocks with the typed error', () => {
+    const s = atSearchMode(SEARCH_MODES.SEMANTIC);
+    const { state } = onboardingReducer(s, {
+      type: 'SEARCH_RESULT',
+      result: { mode: 'semantic', status: ADD_SEARCH_STATUS.FAILED, error: { code: 'STEP_FAILED', message: 'boom' } },
+    });
+    assert.equal(state.status, STATUS.BLOCKED);
+    assert.equal(state.error.code, 'STEP_FAILED');
+  });
+
+  it('driveOnboarding runs the add-search seam end-to-end and records the outcome', async () => {
+    const seen = [];
+    const seams = {
+      preflight: async () => ({ ok: true, diagnostics: [] }),
+      persist: async () => {},
+      startGenerate: async () => ({ status: 'succeeded', changeCount: 1 }),
+      addSearch: async (effect) => {
+        seen.push(effect.mode);
+        return {
+          mode: effect.mode,
+          status: ADD_SEARCH_STATUS.SUCCEEDED,
+          provider: effect.plan.provider,
+          artifactDir: effect.plan.artifactDir,
+          stepsRun: effect.plan.steps.map((x) => x.id),
+        };
+      },
+    };
+    const final = await driveOnboarding(
+      createOnboardingMachine({ decisions: { ...FULL_DECISIONS, search: 'local' } }),
+      seams,
+    );
+    assert.deepEqual(seen, ['local']);
+    assert.equal(final.step, 'ready');
+    assert.equal(final.status, STATUS.DONE);
+    assert.equal(final.search.status, ADD_SEARCH_STATUS.SUCCEEDED);
+  });
+
+  it('driveOnboarding halts at search setup when semantic lacks a credential', async () => {
+    let generateCalled = false;
+    const seams = {
+      preflight: async () => ({ ok: true, diagnostics: [] }),
+      persist: async () => {},
+      startGenerate: async () => {
+        generateCalled = true;
+        return { status: 'succeeded' };
+      },
+      addSearch: async (effect) => ({
+        mode: effect.mode,
+        status: ADD_SEARCH_STATUS.AWAITING_CREDENTIAL,
+        needs: { kind: 'credential', provider: 'openai', env: 'OPENAI_API_KEY', message: 'set key' },
+      }),
+    };
+    const final = await driveOnboarding(
+      createOnboardingMachine({ decisions: { ...FULL_DECISIONS, search: 'semantic' } }),
+      seams,
+    );
+    assert.equal(final.status, STATUS.BLOCKED);
+    assert.equal(final.needs.kind, 'credential');
+    assert.equal(generateCalled, false, 'generate must not run once search setup blocks');
+  });
+
+  it('driveOnboarding with no addSearch seam still advances (hermetic no-op)', async () => {
+    const seams = {
+      preflight: async () => ({ ok: true, diagnostics: [] }),
+      persist: async () => {},
+      startGenerate: async () => ({ status: 'succeeded' }),
+    };
+    const final = await driveOnboarding(
+      createOnboardingMachine({ decisions: { ...FULL_DECISIONS, search: 'semantic' } }),
+      seams,
+    );
+    assert.equal(final.step, 'ready');
+    assert.equal(final.status, STATUS.DONE);
+  });
+
+  it('driveOnboarding can drive add-search via fine-grained addSearchSeams', async () => {
+    const ran = [];
+    const seams = {
+      preflight: async () => ({ ok: true, diagnostics: [] }),
+      persist: async () => {},
+      startGenerate: async () => ({ status: 'succeeded' }),
+      addSearchSeams: {
+        installDependency: (s) => ran.push(s.id),
+        buildIndex: (s) => ran.push(s.id),
+        stageArtifacts: (s) => ran.push(s.id),
+        configureCiGate: (s) => ran.push(s.id),
+      },
+    };
+    const final = await driveOnboarding(
+      createOnboardingMachine({ decisions: { ...FULL_DECISIONS, search: 'local' } }),
+      seams,
+    );
+    assert.deepEqual(ran, ['install-dependency', 'build-index', 'stage-artifacts', 'configure-ci-gate']);
+    assert.equal(final.status, STATUS.DONE);
+    assert.equal(final.search.status, ADD_SEARCH_STATUS.SUCCEEDED);
   });
 });

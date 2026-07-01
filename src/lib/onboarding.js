@@ -24,6 +24,9 @@
  *   - `persist`          → deep-merges a decision/progress patch into `.kbx.json`
  *                          (e.g. read-modify-`writeSourceRecord`).
  *   - `startGenerate`    → drives the #154 generate job to a settled snapshot.
+ *   - `addSearch`        → runs the #151 opt-in search chain (install the search
+ *                          package, build + commit the `.search/` index, wire the
+ *                          `search-index --check` CI gate) for a non-`none` choice.
  *
  * The decision vocabulary mirrors `src/commands/init.js` exactly, so the headless
  * (`--yes`) wizard, the interactive wizard and the canvas all validate against one
@@ -40,6 +43,8 @@
  *
  * @module src/lib/onboarding
  */
+
+import { planAddSearch, applyAddSearch, ADD_SEARCH_STATUS } from './add-search.js';
 
 /**
  * The ordered onboarding spine. `preflight` is the #152 entry guard; `ready` is
@@ -161,6 +166,7 @@ export function createOnboardingMachine({ decisions = {} } = {}) {
     diagnostics: [],
     job: null,
     needs: null,
+    search: null,
     error: null,
     history: ['preflight'],
   });
@@ -394,6 +400,14 @@ function reduceNext(state) {
   // (NEXT-only) flows, routing visual/theme into #150's `presentation` block.
   const effects = [];
   if (isDecisionStep(leaving)) effects.push(persistEffectForStep(state.decisions, leaving));
+  // #151 (PE2-F4): make the search-mode choice *actionable*. Leaving search-mode
+  // with a non-`none` choice emits a declarative `add-search` effect — the machine
+  // stays pure (this is just a descriptor); the injected `addSearch` seam runs the
+  // opt-in chain (install + index build + stage `.search/` + CI `--check` gate).
+  if (leaving === 'search-mode' && state.decisions.search && state.decisions.search !== 'none') {
+    const plan = planAddSearch(state.decisions.search);
+    effects.push({ kind: 'add-search', mode: state.decisions.search, plan });
+  }
   effects.push(...entered.effects);
   return { state: entered.state, effects };
 }
@@ -478,6 +492,38 @@ function reduceJobUpdate(state, event) {
 }
 
 /**
+ * Handle SEARCH_RESULT (fold an add-search outcome into the state, #151). Additive
+ * and pure — it never touches the decision core; it only records the outcome of
+ * the injected `addSearch` seam under `state.search`, and (for the semantic
+ * BYO-key cliff) surfaces a blocking `needs` when a credential is missing so the
+ * flow does not silently skip search setup.
+ */
+function reduceSearchResult(state, event) {
+  const result = event.result ?? {};
+  const search = {
+    mode: result.mode ?? state.decisions.search ?? null,
+    status: result.status ?? null,
+    provider: result.provider ?? null,
+    artifactDir: result.artifactDir ?? null,
+    artifacts: result.artifacts ?? [],
+    stepsRun: result.stepsRun ?? [],
+  };
+  const blocked = result.status === ADD_SEARCH_STATUS.AWAITING_CREDENTIAL;
+  const failed = result.status === ADD_SEARCH_STATUS.FAILED;
+  const status = blocked || failed ? STATUS.BLOCKED : state.status;
+  return {
+    state: freezeState({
+      ...state,
+      search,
+      status,
+      needs: blocked ? result.needs ?? null : state.needs,
+      error: failed ? result.error ?? { code: 'EXECUTION_FAILED', message: 'add-search failed' } : state.error,
+    }),
+    effects: [],
+  };
+}
+
+/**
  * The pure transition function. Given the current `state` and an `event`, returns
  * the next `state` plus any declarative `effects` to run. Never mutates `state`,
  * never performs I/O, never reads the clock.
@@ -489,6 +535,7 @@ function reduceJobUpdate(state, event) {
  *   - `{ type: 'NEXT' }`                          — advance one step (guarded)
  *   - `{ type: 'BACK' }`                          — rewind one step
  *   - `{ type: 'JOB_UPDATE', snapshot }`          — feed back a generate-job snapshot
+ *   - `{ type: 'SEARCH_RESULT', result }`         — feed back an add-search outcome (#151)
  *   - `{ type: 'RESET' }`                         — rewind to the start, keeping decisions
  *
  * @param {object} state
@@ -509,6 +556,8 @@ export function onboardingReducer(state, event) {
       return reduceBack(state);
     case 'JOB_UPDATE':
       return reduceJobUpdate(state, event);
+    case 'SEARCH_RESULT':
+      return reduceSearchResult(state, event);
     case 'RESET':
       return { state: createOnboardingMachine({ decisions: state.decisions }), effects: [] };
     default:
@@ -547,6 +596,22 @@ async function applyEffect(effect, seams, dispatch) {
       const snapshot = await seams.startGenerate(effect);
       return dispatch({ type: 'JOB_UPDATE', snapshot });
     }
+    case 'add-search': {
+      // #151: run the opt-in search chain. `seams.addSearch` may be a full custom
+      // executor; otherwise fall back to the module's own {@link applyAddSearch}
+      // driven by fine-grained sub-seams (install/build/stage/ci/persist). With no
+      // seam at all it is a hermetic no-op, so a flow that never wires search still
+      // advances cleanly.
+      let result;
+      if (typeof seams.addSearch === 'function') {
+        result = await seams.addSearch(effect);
+      } else if (seams.addSearchSeams) {
+        result = await applyAddSearch(effect.plan, seams.addSearchSeams);
+      } else {
+        return [];
+      }
+      return dispatch({ type: 'SEARCH_RESULT', result });
+    }
     default:
       return [];
   }
@@ -564,7 +629,7 @@ async function applyEffect(effect, seams, dispatch) {
  * or is waiting on input the seeded decisions didn't provide.
  *
  * @param {object} initial   A state from {@link createOnboardingMachine}.
- * @param {object} seams      { preflight?, persist?, startGenerate? }
+ * @param {object} seams      { preflight?, persist?, startGenerate?, addSearch?, addSearchSeams? }
  * @param {object} [opts]
  * @param {number} [opts.maxIterations=100]  Safety bound against effect loops.
  * @returns {Promise<Readonly<object>>} The final state.
@@ -587,6 +652,13 @@ export async function driveOnboarding(initial, seams = {}, { maxIterations = 100
     while (pending.length) {
       if (iterations++ >= maxIterations) {
         throw new Error('driveOnboarding exceeded its iteration budget (effect loop?).');
+      }
+      // A blocking/terminal state (e.g. add-search settled awaiting_credential)
+      // must halt the flow: drop any sibling effects still queued from the same
+      // transition (like the generate start-job) rather than run them anyway.
+      if (state.status === STATUS.BLOCKED || state.status === STATUS.FAILED) {
+        pending = [];
+        break;
       }
       const effect = pending.shift();
       const produced = await applyEffect(effect, seams, dispatch);
