@@ -70,10 +70,34 @@ describe('resolveRepositoryRef', () => {
     });
   });
 
-  it('keeps the git remote but null host for bare/unknown remotes', () => {
+  it('resolves owner/repo for a self-hosted / GHES HTTPS remote via the generic fallback (#143)', () => {
+    assert.deepEqual(resolveRepositoryRef('https://github.example.com/corp/enterprise-repo'), {
+      kind: 'git',
+      remoteUrl: 'https://github.example.com/corp/enterprise-repo',
+      host: { kind: 'bare-git', owner: 'corp', repo: 'enterprise-repo' },
+    });
+  });
+
+  it('resolves owner/repo for a generic scheme://host/o/r remote, tagged bare-git (#143)', () => {
     assert.deepEqual(resolveRepositoryRef('https://example.com/foo/bar.git'), {
       kind: 'git',
       remoteUrl: 'https://example.com/foo/bar.git',
+      host: { kind: 'bare-git', owner: 'foo', repo: 'bar' },
+    });
+  });
+
+  it('resolves an ssh:// scheme remote via the generic fallback (#143)', () => {
+    assert.deepEqual(resolveRepositoryRef('ssh://git@gitlab.corp/team/svc.git'), {
+      kind: 'git',
+      remoteUrl: 'ssh://git@gitlab.corp/team/svc.git',
+      host: { kind: 'bare-git', owner: 'team', repo: 'svc' },
+    });
+  });
+
+  it('keeps a null host when no owner/repo can be derived', () => {
+    assert.deepEqual(resolveRepositoryRef('git://example.com/loose'), {
+      kind: 'git',
+      remoteUrl: 'git://example.com/loose',
       host: null,
     });
   });

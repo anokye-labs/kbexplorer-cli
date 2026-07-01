@@ -18,8 +18,10 @@
  *   RepositoryRef  — { kind: 'git', remoteUrl: string, host: ForgeRef|null }
  *
  * A `RepositoryRef` always carries the raw `remoteUrl` (git is the store); `host`
- * is the resolved host-specific identity, or `null` when no registered adapter
- * recognizes the remote (a bare git remote).
+ * is the resolved host-specific identity. A registered adapter wins first
+ * (GitHub); otherwise a generic `scheme://host/owner/repo` fallback carries the
+ * owner/repo tagged as bare-git, and `host` is `null` only when even that does
+ * not apply.
  *
  * Zero external dependencies.
  */
@@ -92,6 +94,11 @@ const ADAPTERS = [githubForgeAdapter];
  * Resolve a remote URL into a host-specific {@link ForgeRef} via the registered
  * adapters, or `null` when no adapter recognizes it (a bare git remote).
  *
+ * This stays strictly forge-specific: only a registered adapter (GitHub today)
+ * can produce a ref. The host-neutral owner/repo fallback lives in
+ * {@link resolveRepositoryRef}, so this function's behavior is byte-for-byte
+ * unchanged from the seam introduced in #141.
+ *
  * @param {string|null|undefined} remoteUrl
  * @returns {ForgeRef|null}
  */
@@ -105,13 +112,35 @@ export function resolveForgeRef(remoteUrl) {
 }
 
 /**
+ * Host-neutral `scheme://host/owner/repo` fallback. Used only when no registered
+ * forge adapter recognizes the remote, so a self-hosted / GHES / generic git
+ * host still yields an `{ owner, repo }` identity (tagged {@link HostKind.BARE_GIT})
+ * instead of assuming GitHub. Matches any URL scheme; the SCP-style SSH form
+ * (`git@host:owner/repo`) is already covered host-agnostically by the GitHub
+ * adapter, so it is intentionally not re-matched here.
+ *
+ * @param {string} remoteUrl
+ * @returns {ForgeRef|null}
+ */
+function parseGenericHost(remoteUrl) {
+  const m = remoteUrl.match(/^[a-z][a-z0-9+.-]*:\/\/[^/]+\/([^/]+)\/([^/.]+)/i);
+  if (m) return { kind: HostKind.BARE_GIT, owner: m[1], repo: m[2] };
+  return null;
+}
+
+/**
  * Resolve a remote URL into a host-neutral {@link RepositoryRef}. The git remote
- * is always preserved; `host` carries the resolved identity (or null for bare git).
+ * is always preserved; `host` carries the resolved identity. A registered forge
+ * adapter wins first (GitHub stays byte-for-byte); otherwise a generic
+ * `scheme://host/owner/repo` fallback carries the owner/repo tagged as bare-git,
+ * so non-GitHub hosts are no longer assumed away. `host` is null only when even
+ * the generic form does not apply (e.g. a bare `git://` path with no owner/repo).
  *
  * @param {string|null|undefined} remoteUrl
  * @returns {RepositoryRef|null} null only when `remoteUrl` is empty/absent.
  */
 export function resolveRepositoryRef(remoteUrl) {
   if (!remoteUrl) return null;
-  return { kind: 'git', remoteUrl, host: resolveForgeRef(remoteUrl) };
+  const host = resolveForgeRef(remoteUrl) ?? parseGenericHost(remoteUrl);
+  return { kind: 'git', remoteUrl, host };
 }
