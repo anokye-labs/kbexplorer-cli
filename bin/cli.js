@@ -34,6 +34,7 @@ const COMMANDS = {
   scaffold: '../src/commands/scaffold.js',
   derive: '../src/commands/derive.js',
   connect: '../src/commands/connect.js',
+  sync: '../src/commands/sync.js',
   doctor: '../src/commands/doctor.js',
   plugin: '../src/commands/plugin.js',
   'search-index': '../src/commands/search-index.js',
@@ -59,6 +60,7 @@ function printUsage() {
     scaffold    Create a new content/<slug>.md skeleton with valid frontmatter
     derive      Extract entities from .docx/prose into committed *.jsonld (F8)
     connect     Persist + drift-check the cross-source connection layer (.kbx/connection/)
+    sync        Detect source drift + reconcile the deterministic KB (multi-source status)
     search-index  Build or check semantic search artifacts
     search      Semantic search over the knowledge graph
     update      Pull latest template + refresh agents/skills
@@ -116,6 +118,8 @@ function printUsage() {
     npx kbx generate
     npx kbx derive docs/org-chart.docx
     npx kbx derive docs/*.md --check
+    npx kbx sync --check
+    npx kbx sync
     npx kbx dev
     npx kbx build --base /docs/
     npx kbx validate
