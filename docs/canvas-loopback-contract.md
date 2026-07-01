@@ -54,19 +54,51 @@ present only when the canvas was opened against a specific node.
 
 ### A1 scope vs. later issues
 
-A1 implements **only** the server lifecycle, `GET /` (serving the available
+A1 implemented the server lifecycle, `GET /` (serving the available
 canvas entry — `canvas.html` preferred, else `index.html`, else a minimal
 fallback — plus boot-config injection), and teardown. The data/SSE/action
-endpoints are later issues and are stubbed until then:
+endpoints landed in follow-up issues and are now all implemented:
 
-- `/manifest`, `/manifest/slice` → A2
-- `/search` → A3
-- `/events` → A4
-- `/affordance/:name` → A5
+- `/manifest`, `/manifest/slice` → A2 ✅ (behind the injected `getManifest` seam)
+- `/search` → A3 ✅ (behind the injected `runSearch` seam)
+- `/events` → A4 ✅ (SSE; behind the injected `subscribe` seam)
+- `/affordance/:name` → A5 ✅ (behind the injected `executeAffordance` seam)
 
-Until their owning issue lands, each unimplemented endpoint responds
-`404` with a small JSON body `{ "error": "not yet", "endpoint": "<path>" }` so
-callers get a clear, stable signal rather than a hang or a generic error.
+Historically, until each owning issue landed, its endpoint responded `404` with a
+small JSON body `{ "error": "not yet", "endpoint": "<path>" }` so callers got a
+clear, stable signal rather than a hang or a generic error. No contract endpoint
+remains stubbed today.
+
+### `/events` (A4) — SSE event schema
+
+`GET /events` opens a `text/event-stream` (`cache-control: no-cache`,
+`connection: keep-alive`). On connect it writes a `: connected` comment, a
+`retry: 3000` advisory, and an initial `ready` event; a `: heartbeat` comment is
+emitted periodically to keep the connection warm. Domain events follow the frozen
+names:
+
+- `graph-updated` → `data: { "nodes": [ … ] }` — content/graph mutated; the SPA
+  re-fetches the affected manifest slice and re-renders.
+- `anchor` → `data: { "nodeId": "…" }` — focus/anchor the SPA on a node.
+
+Domain events are delivered through an injected `subscribe(instanceId, onEvent)`
+seam. The default seam is a no-op (heartbeat-only): the endpoint is live and
+hermetic today, and real triggers (file-watch / regenerate → `graph-updated`;
+canvas action → `anchor`) are a deliberate follow-up. A template-side SSE
+consumer (`EmbeddableApp` / `useKnowledgeBase`) is likewise a follow-up.
+
+### `/affordance/:name` (A5) — the do-seam adapter
+
+`POST /affordance/:name` routes straight through the affordance registry's
+`executeAffordance`, making the canvas a first-class **do-seam adapter** — the
+third delivery surface after the extension-tool adapter (#163) and the MCP
+adapter (#197). Consent and provenance are enforced **at the action core**
+(`src/affordances/index.js`), fail-closed, identically to the other adapters; the
+handler imports the registry, never a transport, and never re-implements consent.
+The request body is the affordance input (a `{ "input": … }` envelope is also
+accepted). Error mapping: unknown affordance → `404`, invalid input → `400`,
+consent required/denied → `403` (surfaced, not crashed), non-POST → `405`;
+success → `200 { "ok": true, "result": … }`.
 
 ## Invariants
 
