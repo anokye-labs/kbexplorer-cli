@@ -59,6 +59,7 @@ import {
 import { execSync } from 'node:child_process';
 
 import { resolveGhApiBase, resolveGhToken, createFetcher } from './gh-fetch.js';
+import { resolveRepositoryRef } from './forge-adapter.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -231,13 +232,12 @@ export function resolveOwnerRepo(cwd, _exec = execSync) {
       timeout: 10000,
     }).trim();
 
-    // SSH remote: git@github.com:owner/repo.git
-    let m = remote.match(/git@[^:]+:([^/]+)\/([^/.]+)/);
-    if (m) return { owner: m[1], repo: m[2] };
-
-    // HTTPS remote: https://<host>/owner/repo[.git]
-    m = remote.match(/https?:\/\/[^/]+\/([^/]+)\/([^/.]+)/);
-    if (m) return { owner: m[1], repo: m[2] };
+    // Parse through the host-neutral ForgeAdapter seam (#141/#143). GitHub wins
+    // via its adapter (byte-identical); SSH is host-agnostic; a self-hosted /
+    // GHES HTTPS remote resolves via the seam's generic `scheme://host/o/r`
+    // fallback instead of assuming GitHub.
+    const ref = resolveRepositoryRef(remote);
+    if (ref?.host) return { owner: ref.host.owner, repo: ref.host.repo };
   } catch { /* not a git repo or no remote */ }
   return { owner: '', repo: '' };
 }

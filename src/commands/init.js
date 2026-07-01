@@ -426,8 +426,8 @@ export default async function init(args) {
     const detected = detectGitRemote(cwd);
     const detectedBranch = detectBranch(cwd);
 
-    owner = await prompt.ask('GitHub owner', detected?.owner ?? '');
-    repo = await prompt.ask('GitHub repo', detected?.repo ?? '');
+    owner = await prompt.ask('Owner', detected?.owner ?? '');
+    repo = await prompt.ask('Repo', detected?.repo ?? '');
     branch = await prompt.ask('Branch', detectedBranch);
     title = await prompt.ask('Knowledge base title', `${repo} Knowledge Base`);
 
