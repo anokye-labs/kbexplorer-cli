@@ -191,6 +191,26 @@ export default defineAffordance({
   summary:
     'Extract entities/relationships from unstructured sources into committed canonical JSON-LD (or check for drift).',
   actionClass: ACTION_CLASSES.WRITE,
+  consent: {
+    // `check` mode is the deterministic, offline drift gate — it never writes or
+    // extracts, so it is side-effect-free and skips the consent prompt (runs
+    // unattended in CI). Any non-check invocation is gated as a write.
+    readOnlyWhen: (input) => Boolean(input?.check),
+    // Write-class: discloses the committed *.jsonld artifacts it will write
+    // (one per source, in the output directory). Deterministic from input.
+    disclose: (input) => {
+      const outDir = (input?.out && String(input.out)) || DEFAULT_OUT_DIR;
+      const sources = Array.isArray(input?.sources) ? input.sources : [];
+      // `check` mode never writes; disclose nothing to write in that case.
+      if (input?.check) return { writes: [] };
+      return {
+        writes: sources.map((s) => {
+          const base = basename(String(s), extname(String(s)));
+          return toPosix(`${outDir}/${base}.jsonld`);
+        }),
+      };
+    },
+  },
   input: defineSchema({
     sources: {
       type: 'array',

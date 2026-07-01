@@ -35,7 +35,9 @@ let fx;
 let ctx;
 before(() => {
   fx = makeFixture();
-  ctx = createAffordanceContext({ cwd: fx.dir });
+  // llm_context is sample-class; opt into non-interactive consent on the shared
+  // read context so it runs unprompted (read ops ignore the policy).
+  ctx = createAffordanceContext({ cwd: fx.dir, seams: { consentPolicy: 'allow' } });
 });
 after(() => rmSync(fx.dir, { recursive: true, force: true }));
 
@@ -196,7 +198,9 @@ describe('operation: derive', () => {
   function deriveCtx() {
     return createAffordanceContext({
       cwd: fx.dir,
-      seams: { runExtraction: async () => intermediate },
+      // Non-interactive consent opt-in: this derive writes artifacts, so the
+      // consent gate applies; tests approve via the documented policy.
+      seams: { runExtraction: async () => intermediate, consentPolicy: 'allow' },
     });
   }
 
@@ -254,7 +258,7 @@ describe('operation: derive', () => {
         executeAffordance(
           'derive',
           { sources: ['fresh.md'] },
-          createAffordanceContext({ cwd: fx.dir })
+          createAffordanceContext({ cwd: fx.dir, seams: { consentPolicy: 'allow' } })
         ),
       (e) => e.code === ERROR_CODES.UNSUPPORTED
     );

@@ -21,8 +21,17 @@
 
 import { defineAffordance, defineSchema, AffordanceError, ERROR_CODES, ACTION_CLASSES } from '../contract.js';
 import { resolveJobStore, JOB_STATUS } from './store.js';
+import { buildDerivation, sampledSourceRef, SAMPLE_GENERATOR } from '../provenance.js';
 
 const RESUMABLE = new Set([JOB_STATUS.AWAITING_CREDENTIAL, JOB_STATUS.FAILED]);
+
+/** Collect declared provenance inputs from a generation request (SourceRef-ish). */
+function requestInputs(request) {
+  const raw = [];
+  if (Array.isArray(request?.inputs)) raw.push(...request.inputs);
+  if (Array.isArray(request?.sources)) raw.push(...request.sources);
+  return raw.map(sampledSourceRef).filter((r) => r !== null);
+}
 
 export default defineAffordance({
   name: 'start_generate',
@@ -30,6 +39,14 @@ export default defineAffordance({
   summary:
     'Begin a long-running generation job and return a job handle; the model runtime is injected, never owned by the contract.',
   actionClass: ACTION_CLASSES.SAMPLE,
+  consent: {
+    // Sample-class: discloses that a model runtime is invoked, plus any
+    // credential names the caller is handing in (names only — never values).
+    cost: { kind: 'sample', runtime: 'context.seams.runGenerate', generator: SAMPLE_GENERATOR },
+    disclose: (input) => ({
+      credentials: Object.keys(input?.credentials ?? {}),
+    }),
+  },
   input: defineSchema({
     resume: {
       type: 'string',
@@ -84,6 +101,13 @@ export default defineAffordance({
     }
 
     const request = { refresh: input.refresh ?? false, ...(input.request ?? {}) };
-    return store.start({ operation: 'generate', request, credentials, run });
+    // Deterministic sampled-content provenance for the changes this job produces:
+    // the generator + declared inputs + a digest of the request (no timestamps).
+    const derivation = buildDerivation({
+      generator: SAMPLE_GENERATOR,
+      inputs: requestInputs(request),
+      request,
+    });
+    return store.start({ operation: 'generate', request, credentials, derivation, run });
   },
 });

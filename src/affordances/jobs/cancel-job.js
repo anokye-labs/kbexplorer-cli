@@ -17,6 +17,11 @@ export default defineAffordance({
   title: 'Cancel job',
   summary: 'Abort a running (or credential-paused) job and mark it cancelled.',
   actionClass: ACTION_CLASSES.WRITE,
+  consent: {
+    // Write-class but low-impact: it touches no disk paths, only runtime state.
+    // Discloses the job it will stop so a host can auto-approve trivial control.
+    disclose: (input) => ({ writes: input?.id ? [`cancel-job:${input.id}`] : [] }),
+  },
   input: defineSchema({
     id: { type: 'string', required: true, description: 'Job id to cancel.' },
   }),
