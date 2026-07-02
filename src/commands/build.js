@@ -1,10 +1,39 @@
 /**
  * kbx build — Production build.
+ *
+ * Mirrors `dev`'s host-root threading so the build ships the HOST repo's
+ * authored content, not the template's own demo content:
+ *   1. Generate the manifest via {@link writeHostManifest} with
+ *      VITE_KB_HOST_ROOT pointed at the host repo (identical to `dev`).
+ *   2. Spawn the Vite build with the SAME VITE_KB_HOST_ROOT. The template's
+ *      vite plugin re-runs generate-manifest.js at buildStart, so it must see
+ *      the host root — otherwise the template's detectHostRoot() falls back to
+ *      its own directory and bakes the template's demo nodes into dist/.
  */
 
 import { resolve } from 'node:path';
-import { spawn, execSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { getAppRoot, isTemplateRepo } from '../lib/detect-repo.js';
+import { writeHostManifest } from './dev.js';
+
+/**
+ * Environment for the Vite production build. Threads VITE_KB_HOST_ROOT (the
+ * host repo) so the template's build-time manifest reflects the host's authored
+ * content — identical to how `dev` spawns Vite. Omitting VITE_KB_HOST_ROOT is
+ * the bug that makes `kbx build` silently ship the template's demo content.
+ *
+ * @param {string} cwd host repo root (process.cwd())
+ * @param {string} [basePath] optional --base value
+ */
+export function buildViteEnv(cwd, basePath) {
+  return {
+    ...process.env,
+    VITE_KB_LOCAL: 'true',
+    VITE_ENV_DIR: cwd,
+    VITE_KB_HOST_ROOT: cwd,
+    ...(basePath ? { VITE_BASE_PATH: basePath } : {}),
+  };
+}
 
 export default async function build(args) {
   const cwd = process.cwd();
@@ -19,17 +48,17 @@ export default async function build(args) {
   const baseIdx = args.indexOf('--base');
   const basePath = baseIdx >= 0 ? args[baseIdx + 1] : undefined;
 
-  // Generate manifest
+  // Generate the manifest against the HOST repo (identical to `dev`). Seeds an
+  // initial host-correct manifest before Vite spins up; the vite plugin re-runs
+  // the same script at buildStart with the same VITE_KB_HOST_ROOT.
   console.log('📋 Generating manifest...');
   try {
-    const manifestScript = resolve(appRoot, 'scripts', 'generate-manifest.js');
-    execSync(`node "${manifestScript}"`, {
-      cwd,
-      stdio: 'inherit',
-      env: { ...process.env, VITE_KB_LOCAL: 'true' },
-    });
-  } catch {
-    console.warn('⚠ Manifest generation failed — continuing anyway');
+    const r = await writeHostManifest(cwd, appRoot);
+    if (r.via === 'cli-fallback') {
+      console.warn('⚠ Used CLI fallback generator — manifest may be missing template-derived fields');
+    }
+  } catch (err) {
+    console.warn(`⚠ Manifest generation failed: ${err.message} — continuing anyway`);
   }
 
   // Build
@@ -43,12 +72,7 @@ export default async function build(args) {
     cwd: appRoot,
     stdio: 'inherit',
     shell: true,
-    env: {
-      ...process.env,
-      VITE_KB_LOCAL: 'true',
-      VITE_ENV_DIR: cwd,
-      ...(basePath ? { VITE_BASE_PATH: basePath } : {}),
-    },
+    env: buildViteEnv(cwd, basePath),
   });
 
   child.on('exit', async (code) => {
@@ -64,5 +88,3 @@ export default async function build(args) {
     process.exit(code ?? 0);
   });
 }
-
-
