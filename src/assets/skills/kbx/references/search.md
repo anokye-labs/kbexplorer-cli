@@ -14,6 +14,7 @@ the canvas renders, so the agent and the user stay in sync.
 | `kbx_search` | read | Cosine-similarity search over checked-in search artifacts; returns ranked kbx-native results. Your first move when you don't know the node id. |
 | `kbx_query_node` | read | Fetch a single node (frontmatter + full body) by id. Use after `kbx_search` to read the whole page. |
 | `kbx_graph_neighbors` | read | Breadth-first neighbours of a node up to a given depth (max 4). Use to discover what already connects to a node before authoring `connections`. |
+| `kbx_trace` | read | Shortest path between two node ids (`fromId`/`toId`), or the 1-hop neighbours of a single node when `toId` is omitted. Use to explain *how* two nodes relate. |
 | `kbx_affected` | read | List content nodes whose citations reference files changed in a git ref (or an explicit file list). Use to scope an incremental refresh. |
 | `kbx_audit` | read | Structural integrity audit of `content/` (duplicate ids, broken parents, cycles, dead connections). Use before declaring any change done. |
 | `kbx_llm_context` | sample | Assemble a grounded context bundle and citations from explicit node ids for a model to reason over. **Does not call a model** — it only gathers the grounded material. |

@@ -26,6 +26,9 @@ export {
   createRequestHandler,
   injectBootConfig,
   defaultResolveBuildDir,
+  createEventBus,
+  defaultSubscribe,
+  SSE_EVENTS,
   CANVAS_ENTRY_FILE,
   CANVAS_ENTRY_CANDIDATES,
 } from './canvas-server.js';

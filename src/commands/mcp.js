@@ -27,7 +27,7 @@ const HELP = `
   kbx mcp — knowledge-graph affordances as an MCP server (optional, non-canvas hosts)
 
   Runs a stdio Model Context Protocol server that exposes the kbexplorer
-  affordance actions (search, query_node, graph_neighbors, affected, audit,
+  affordance actions (search, query_node, graph_neighbors, trace, affected, audit,
   llm_context, derive, and the job layer) as MCP tools named kbx_<affordance>.
   Intended to be launched by an MCP host, not run interactively.
 

@@ -89,6 +89,7 @@ canvas renders, and inputs are schema-validated.
 | `kbx_search` | read | Ranked semantic search over the graph | `references/search.md` |
 | `kbx_query_node` | read | Fetch one node (frontmatter + body) by id | `references/search.md` |
 | `kbx_graph_neighbors` | read | BFS neighbours of a node (depth ≤ 4) | `references/search.md` |
+| `kbx_trace` | read | Shortest path between two nodes, or 1-hop neighbours of one | `references/search.md` |
 | `kbx_affected` | read | Nodes whose citations touch a changed git ref | `references/incremental-refresh.md` |
 | `kbx_audit` | read | Structural integrity audit of `content/` | `references/audit.md` |
 | `kbx_llm_context` | sample | Assemble a grounded context bundle (no model call) | `references/search.md` |

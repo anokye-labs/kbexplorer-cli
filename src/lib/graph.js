@@ -259,6 +259,50 @@ export function neighbors(graph, id, depth = 1) {
 }
 
 /**
+ * Shortest (fewest-hops) path between two nodes over the undirected adjacency
+ * built by {@link loadGraph} (`connections` + parent edges). Plain BFS —
+ * unweighted, so "shortest" means fewest edges, not any authored weight.
+ *
+ * @param {Graph} graph
+ * @param {string} fromId
+ * @param {string} toId
+ * @returns {string[]|null} Ordered node ids from `fromId` to `toId` inclusive
+ *   (length 1 when `fromId === toId`), or `null` when either id is unknown or
+ *   no path connects them.
+ */
+export function shortestPath(graph, fromId, toId) {
+  if (!graph.nodes.has(fromId) || !graph.nodes.has(toId)) return null;
+  if (fromId === toId) return [fromId];
+
+  const visited = new Set([fromId]);
+  const parent = new Map();
+  let frontier = [fromId];
+
+  while (frontier.length) {
+    const next = [];
+    for (const cur of frontier) {
+      for (const nb of graph.adjacency.get(cur) ?? []) {
+        if (visited.has(nb)) continue;
+        visited.add(nb);
+        parent.set(nb, cur);
+        if (nb === toId) {
+          const path = [toId];
+          let step = toId;
+          while (step !== fromId) {
+            step = parent.get(step);
+            path.push(step);
+          }
+          return path.reverse();
+        }
+        next.push(nb);
+      }
+    }
+    frontier = next;
+  }
+  return null;
+}
+
+/**
  * Summary statistics over the loaded graph.
  *
  * @param {Graph} graph
