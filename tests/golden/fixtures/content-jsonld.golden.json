@@ -2,13 +2,13 @@
   "docs/samples/platform-squad.md": {
     "edges": [
       {
-        "id": "kg://edge/person/jane-doe~leads~squad/platform-squad",
+        "id": "kg://edge/kg://person/jane-doe~leads~kg://squad/platform-squad",
         "relation": "leads",
         "source": "kg://person/jane-doe",
         "target": "kg://squad/platform-squad"
       },
       {
-        "id": "kg://edge/squad/platform-squad~staffs~person/amir-khan",
+        "id": "kg://edge/kg://squad/platform-squad~staffs~kg://person/amir-khan",
         "relation": "staffs",
         "source": "kg://squad/platform-squad",
         "target": "kg://person/amir-khan"
@@ -37,7 +37,7 @@
         "name": "Amir Khan"
       },
       {
-        "@id": "kg://edge/person/jane-doe~leads~squad/platform-squad",
+        "@id": "kg://edge/kg://person/jane-doe~leads~kg://squad/platform-squad",
         "@type": "Relationship",
         "from": {
           "@id": "kg://person/jane-doe"
@@ -48,7 +48,7 @@
         }
       },
       {
-        "@id": "kg://edge/squad/platform-squad~staffs~person/amir-khan",
+        "@id": "kg://edge/kg://squad/platform-squad~staffs~kg://person/amir-khan",
         "@type": "Relationship",
         "from": {
           "@id": "kg://squad/platform-squad"

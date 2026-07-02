@@ -86,7 +86,7 @@ emits the committed artifact
   { "@context": "https://schema.org", "@id": "kg://squad/platform-squad",
     "@type": "squad", "name": "Platform Squad",
     "mission": "Own the build and derivation runtime" },
-  { "@id": "kg://edge/person/jane-doe~leads~squad/platform-squad",
+  { "@id": "kg://edge/kg://person/jane-doe~leads~kg://squad/platform-squad",
     "@type": "Relationship", "relation": "leads",
     "from": { "@id": "kg://person/jane-doe" },
     "to":   { "@id": "kg://squad/platform-squad" } }
