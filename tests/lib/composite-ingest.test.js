@@ -341,6 +341,36 @@ describe('buildProviderConfig + contentHash', () => {
     assert.deepEqual(cfg.options.credentials, { token: 'secret' });
   });
 
+  it('forwards only the credentials declared for THIS source, never a broader bag (#203)', () => {
+    // Simulate a source whose resolved `credentials` bag was contaminated with a
+    // key it never declared under its own config entry — e.g. a shared object
+    // reference, or a future normalizeCompositeConfig bug. `credentialEnv` (the
+    // declared logical-key -> env-var-name map normalizeSource always produces
+    // alongside `credentials`) is the allowlist; only keys present there survive.
+    const cfg = buildProviderConfig({
+      sourceId: 'gh',
+      kind: 'rich-markdown',
+      module: '@p',
+      options: {},
+      credentialEnv: { token: 'GH_TOKEN' },
+      credentials: { token: 'secret', otherSourcesSecret: 'leaked' },
+    });
+    assert.deepEqual(cfg.options.credentials, { token: 'secret' });
+    assert.equal(cfg.options.credentials.otherSourcesSecret, undefined);
+  });
+
+  it('omits options.credentials entirely when the source declares no credentials', () => {
+    const cfg = buildProviderConfig({
+      sourceId: 'gh',
+      kind: 'rich-markdown',
+      module: '@p',
+      options: {},
+      credentialEnv: {},
+      credentials: {},
+    });
+    assert.equal('credentials' in cfg.options, false);
+  });
+
   it('contentHash is stable and key-order independent', () => {
     const a = contentHash({ a: 1, b: 2 });
     const b = contentHash({ b: 2, a: 1 });
