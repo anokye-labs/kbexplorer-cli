@@ -16,6 +16,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
+      - run: npm ci
       - run: npm test
 
   publish:
@@ -28,6 +29,8 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+
+      - run: npm ci
 
       # OIDC trusted publishing is used automatically when configured on npmjs.com.
       # For the initial publish before trusted publishing is set up, add an
