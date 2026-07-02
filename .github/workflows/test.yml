@@ -1,0 +1,46 @@
+# Runs the test suite on every PR and every push to main (refs #210, #207).
+#
+# Before this workflow existed, no CI job ever executed `npm test` — the only
+# required checks were process gates (dependency-review, linked-issue,
+# pr-title), so every "N passing / 0 failing" claim in a PR body was
+# self-reported with no automated verification behind it.
+#
+# Status as of the PR that adds this workflow (refs #209): the three Phase-0
+# golden guardrails and tests/commands/doctor-plugin.test.js are fixed on that
+# PR's branch, but `npm test` will still exit non-zero on `main` until it
+# merges. Separately, tests/lib/composite-ingest.test.js's "timeoutMs trips a
+# hung provider" test trips a `node:test` runner limitation (a deliberately
+# never-settling Promise is flagged as a leaked/pending promise once the event
+# loop goes idle), cascading `cancelledByParent` across the rest of that file
+# — this is a pre-existing, separately-tracked issue, not something this
+# workflow or #209 fixes. Expect this workflow to stay red until that is
+# resolved. Update or remove this note once the suite is fully green.
+#
+# NOT wired up yet (needs repo-admin access): making this a required status
+# check in the branch-protection ruleset, and adding `test` to auto-merge.yml's
+# `workflow_run` trigger list so auto-merge actually waits on it.
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm test
