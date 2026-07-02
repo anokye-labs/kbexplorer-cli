@@ -78,6 +78,10 @@ export default defineAffordance({
     }
 
     // No toId: trace the immediate (depth-1) neighbourhood of a single node.
+    // `neighbors()` returns { id, title, cluster, distance }, but the two-node
+    // path branch above only ever returns { id, title, cluster } — strip
+    // `distance` here so `nodes` has one uniform shape across both trace
+    // modes regardless of which branch produced it.
     const nb = neighbors(graph, fromId, 1);
     const path = [fromId, ...nb.map((n) => n.id)];
     return {
@@ -91,7 +95,7 @@ export default defineAffordance({
           title: graph.nodes.get(fromId).title,
           cluster: graph.nodes.get(fromId).cluster,
         },
-        ...nb,
+        ...nb.map(({ id, title, cluster }) => ({ id, title, cluster })),
       ],
     };
   },

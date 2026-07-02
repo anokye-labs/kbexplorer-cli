@@ -90,6 +90,9 @@ describe('operation: trace', () => {
     assert.equal(r.connected, true);
     assert.deepEqual(r.path, ['home', 'child']);
     assert.equal(r.nodes.length, 2);
+    for (const n of r.nodes) {
+      assert.deepEqual(Object.keys(n).sort(), ['cluster', 'id', 'title']);
+    }
   });
 
   it('reports connected: false with an empty path for unreachable nodes', async () => {
@@ -104,6 +107,14 @@ describe('operation: trace', () => {
     assert.equal(r.toId, null);
     assert.equal(r.connected, true);
     assert.ok(r.path.includes('child'));
+  });
+
+  it('gives every node in the single-node mode the same {id,title,cluster} shape as the two-node path mode (no leaked "distance" field)', async () => {
+    const r = await executeAffordance('trace', { nodeId: 'home' }, ctx);
+    assert.ok(r.nodes.length > 1, 'expected at least the origin + one neighbour');
+    for (const n of r.nodes) {
+      assert.deepEqual(Object.keys(n).sort(), ['cluster', 'id', 'title']);
+    }
   });
 
   it('throws NOT_FOUND for an unknown fromId', async () => {
