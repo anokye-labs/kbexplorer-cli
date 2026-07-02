@@ -160,7 +160,7 @@ describe('extractEntities through the twin (claude adapter)', () => {
 });
 
 describe('runtime binary-override env resolves to the twin', () => {
-  it('runRuntimeTask honours KBEXPLORER_COPILOT_BIN (via node + script arg)', async () => {
+  it('runRuntimeTask honours KBX_COPILOT_BIN (via node + script arg)', async () => {
     // Node cannot spawn a bare .mjs as a binary on every OS, so we set the
     // override to `node` and thread the script through binaryArgs — proving the
     // env-override path reaches the twin and produces parseable output.

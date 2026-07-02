@@ -19,7 +19,7 @@ const httpPost = (url, json) =>
 describe('registerKbxExtension wiring', () => {
   it('createKbxExtensionConfig returns tools + canvas options', () => {
     const { tools, canvasOptions } = createKbxExtensionConfig();
-    assert.equal(tools.length, 13);
+    assert.equal(tools.length, 14);
     assert.equal(canvasOptions.id, KBX_CANVAS_ID);
     assert.equal(typeof canvasOptions.open, 'function');
   });
@@ -44,7 +44,7 @@ describe('registerKbxExtension wiring', () => {
     // Canvas built from the placeholder declaration.
     assert.equal(seen.canvasOptions.id, KBX_CANVAS_ID);
     // joinSession received BOTH surfaces in one call (no MCP round-trip).
-    assert.equal(seen.config.tools.length, 13);
+    assert.equal(seen.config.tools.length, 14);
     assert.deepEqual(seen.config.canvases, [fakeCanvas]);
     assert.ok(seen.config.tools.every((t) => t.name.startsWith('kbx_')));
   });
@@ -65,7 +65,7 @@ describe('registerKbxExtension wiring', () => {
     });
 
     assert.equal(captured.hooks, hooks);
-    assert.equal(captured.tools.length, 14);
+    assert.equal(captured.tools.length, 15);
     assert.equal(captured.tools[0], extraTool);
     assert.deepEqual(captured.canvases, [extraCanvas, { __kbx: true }]);
   });

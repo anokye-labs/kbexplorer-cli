@@ -342,6 +342,67 @@ describe('job layer — late-credential prompt + resume recovery', () => {
   });
 });
 
+describe('job layer — credentials are redacted at source (#206)', () => {
+  it('never attaches raw credential values to the job record on start()', async () => {
+    const s = new JobStore();
+    const started = s.start({
+      operation: 'generate',
+      request: {},
+      credentials: { GITHUB_TOKEN: 'ghp_super_secret', NPM_TOKEN: 'npm_super_secret' },
+      run: () => new Promise(() => {}), // never settles; we only inspect the raw record
+    });
+    const raw = s._raw(started.id);
+    assert.deepEqual(raw.credentialNames, ['GITHUB_TOKEN', 'NPM_TOKEN']);
+    assert.equal(raw.credentials, undefined, 'raw job record must not carry a `credentials` field at all');
+    // Belt-and-suspenders: no property anywhere on the raw record holds either secret value.
+    const dump = JSON.stringify(raw);
+    assert.doesNotMatch(dump, /ghp_super_secret/);
+    assert.doesNotMatch(dump, /npm_super_secret/);
+  });
+
+  it('still resolves the real value through getCredential() at exec time', async () => {
+    const s = new JobStore();
+    let seen;
+    const started = s.start({
+      operation: 'generate',
+      request: {},
+      credentials: { GITHUB_TOKEN: 'ghp_super_secret' },
+      run: async ({ getCredential }) => {
+        seen = getCredential('GITHUB_TOKEN');
+        return { changes: [] };
+      },
+    });
+    await s.settle(started.id);
+    assert.equal(seen, 'ghp_super_secret');
+  });
+
+  it('redacts merged credentials on resume() too', async () => {
+    const s = new JobStore();
+    const started = s.start({
+      operation: 'generate',
+      request: {},
+      run: ({ getCredential }) => {
+        getCredential('GITHUB_TOKEN'); // throws first time — no credential yet
+        return Promise.resolve({ changes: [] });
+      },
+    });
+    await s.settle(started.id);
+    assert.equal(s.get(started.id).status, JOB_STATUS.AWAITING_CREDENTIAL);
+
+    let seen;
+    s.resume(started.id, { GITHUB_TOKEN: 'ghp_late_secret' }, async ({ getCredential }) => {
+      seen = getCredential('GITHUB_TOKEN');
+      return { changes: [] };
+    });
+    await s.settle(started.id);
+
+    const raw = s._raw(started.id);
+    assert.deepEqual(raw.credentialNames, ['GITHUB_TOKEN']);
+    assert.doesNotMatch(JSON.stringify(raw), /ghp_late_secret/);
+    assert.equal(seen, 'ghp_late_secret');
+  });
+});
+
 describe('job layer — store internals', () => {
   it('CredentialRequiredError carries the credential name', () => {
     const e = new CredentialRequiredError('NPM_TOKEN');

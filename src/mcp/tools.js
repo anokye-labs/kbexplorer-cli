@@ -79,7 +79,7 @@ const ACTION_CLASS_HINT = Object.freeze({
  *        Builds the affordance execution context per call (defaults to a fresh
  *        {@link createAffordanceContext} over `process.cwd()`). The MCP wiring
  *        passes a factory that threads MCP elicitation-based consent seams in.
- * @returns {{ name: string, description: string, inputSchema: object, actionClass: string, affordance: string, handler: (args: object) => Promise<object> }}
+ * @returns {{ name: string, description: string, inputSchema: object, actionClass: string, handler: (args: object) => Promise<object> }}
  */
 export function affordanceToMcpTool(described, opts = {}) {
   const { execute = executeAffordance, contextFactory = createAffordanceContext } = opts;
@@ -93,9 +93,11 @@ export function affordanceToMcpTool(described, opts = {}) {
     description,
     inputSchema: descriptorToJsonSchema(described.input),
     // Advisory consent metadata — exposed, not enforced here (PE3-F3 enforces
-    // inside executeAffordance for every adapter).
+    // inside executeAffordance for every adapter). No separate `affordance`
+    // field: the extension-tool adapter's Tool has none either (AF-027), and
+    // `toolNameFor`/`name` already round-trips to the affordance name via the
+    // `kbx_` prefix, so a duplicate field would just be dead weight.
     actionClass,
-    affordance: name,
     async handler(args) {
       try {
         const result = await execute(name, args ?? {}, contextFactory());

@@ -16,6 +16,7 @@ const EXPECTED = [
   'search',
   'query_node',
   'graph_neighbors',
+  'trace',
   'affected',
   'audit',
   'llm_context',

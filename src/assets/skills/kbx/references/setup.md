@@ -20,7 +20,7 @@ node -e "console.log(JSON.parse(require('fs').readFileSync('package.json','utf-8
 
 ```bash
 # 1. Install the CLI globally or as a devDependency
-npm install -D @anokye-labs/kbexplorer
+npm install -D @anokye-labs/kbx
 
 # 2. Run the interactive init — this does ALL of:
 #    - add the .kbx submodule (pinned to the latest release tag)

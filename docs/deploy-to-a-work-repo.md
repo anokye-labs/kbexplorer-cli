@@ -14,7 +14,7 @@ This document records the path proven in the [pilot rehearsal](./pilot-rehearsal
 5. [Regenerate the manifest](#5-regenerate-the-manifest)
 6. [Production build](#6-production-build)
 7. [Hosting options](#7-hosting-options)
-8. [Troubleshooting with `kbx doctor`](#8-troubleshooting-with-kbexplorer-doctor)
+8. [Troubleshooting with `kbx doctor`](#8-troubleshooting-with-kbx-doctor)
 
 ---
 
@@ -99,7 +99,7 @@ Detection locations per adapter:
 From the root of your work repository:
 
 ```bash
-npx @anokye-labs/kbexplorer init
+npx @anokye-labs/kbx init
 ```
 
 The interactive wizard walks through:
@@ -107,7 +107,7 @@ The interactive wizard walks through:
 1. **Template install** — adds `.kbx/` as a pinned git submodule (default)
    or a one-time vendored copy (`--vendor`).
 2. **Agents and skills** — copies `kb-architect`, `kb-writer`, and `kb-researcher`
-   to `.github/agents/`, and the `kbx` skill to `.github/skills/kbexplorer/`.
+   to `.github/agents/`, and the `kbx` skill to `.github/skills/kbx/`.
 3. **Config** — writes `.env.kbx` with owner/repo/branch/title and adds
    `kb:dev`, `kb:build`, `kb:generate` npm scripts.
 4. **Runtime selection** — records your chosen agent runtime in `.kbx.json`.
@@ -124,20 +124,29 @@ the **submodule** mode is recommended.
 
 ```bash
 # Submodule mode (default)
-npx @anokye-labs/kbexplorer init
+npx @anokye-labs/kbx init
 
 # Vendor mode
-npx @anokye-labs/kbexplorer init --vendor
+npx @anokye-labs/kbx init --vendor
 
 # Pin to a specific template release
-npx @anokye-labs/kbexplorer init --ref v1.2.0
+npx @anokye-labs/kbx init --ref v1.2.0
 ```
 
 #### Non-interactive / scripted init
 
-`init` requires a TTY for its interactive prompts. For scripted environments,
-run it interactively on a developer machine first to produce `.env.kbx`
-and `.kbx.json`, then commit those files.
+For scripted or CI environments, pass `--yes` to take every answer from flags
+plus git-remote detection instead of prompting. Without `--yes`, a non-TTY
+stdin makes `init` exit with a clear reminder (it no longer hangs):
+
+```bash
+npx @anokye-labs/kbx init --yes --owner acme --repo widgets --title "Acme KB"
+```
+
+See `npx kbx init --help` for all non-interactive flags (`--kb-branch`,
+`--content-mode`, `--visual`, `--theme`, `--runtime`, `--config <file>`, …).
+Alternatively, run `init` interactively on a developer machine first to produce
+`.env.kbx` and `.kbx.json`, then commit those files.
 
 ### 2.2 Commit the scaffold
 
@@ -155,7 +164,7 @@ Run `doctor` immediately after `init`:
 npx kbx doctor
 ```
 
-All sections should be green (or warn-only). See [§8](#8-troubleshooting-with-kbexplorer-doctor) for remediation.
+All sections should be green (or warn-only). See [§8](#8-troubleshooting-with-kbx-doctor) for remediation.
 
 ### 2.4 GitHub Enterprise / EMU: API base override
 

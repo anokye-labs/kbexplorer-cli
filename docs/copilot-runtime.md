@@ -116,6 +116,23 @@ try {
 | `throwOnError` | `boolean` | `true` | Reject on non-zero exit when true. |
 | `spawn` | `Function` | `child_process.spawn` | Injectable for hermetic tests. |
 | `onEvent` | `Function` | — | Called per parsed JSONL event (json mode). |
+| `platform` | `string` | `process.platform` | Injectable for testing the Windows dispatch below. |
+
+**Cross-platform binary dispatch (Windows):** Node's default `shell: false`
+spawn cannot exec a `.cmd`/`.bat` shim (`EINVAL`) or a bare `.mjs`/`.js` file
+(`EFTYPE`) on Windows. `runRuntimeTask` detects the target extension on
+`win32` and adjusts automatically — a `custom` adapter (or a
+`KBX_COPILOT_BIN`/`KBX_CLAUDE_BIN` override) pointed at one of these still
+works without a manual `node`-wrapping workaround:
+
+| Target extension | Windows behavior |
+|---|---|
+| `.cmd`, `.bat` | Re-invoked through the shell (`shell: true`), with every argument quoted for `cmd.exe`. |
+| `.mjs`, `.js` | Re-invoked as `process.execPath <script> …args`. |
+| anything else | Unchanged (`shell: false`, direct exec). |
+
+Non-Windows platforms are never affected. `resolveSpawnPlan(binary, args, { platform, execPath })`
+is the pure function behind this decision — see `src/lib/copilot-runtime.js`.
 
 **`RuntimeResult`**
 

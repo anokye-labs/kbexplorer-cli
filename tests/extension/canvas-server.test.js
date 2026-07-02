@@ -10,6 +10,7 @@ import {
   defaultGetManifest,
   defaultRunSearch,
   defaultSubscribe,
+  createEventBus,
   sliceManifest,
   toSemanticResult,
   textIndexSearch,
@@ -768,6 +769,59 @@ describe('textIndexSearch (fallback)', () => {
     const rows = textIndexSearch(FIXTURE_MANIFEST, 'a', 1);
     assert.ok(rows.length <= 1);
   });
+
+  // #194: the canvas `filter` action calls registry.search -> textIndexSearch
+  // directly with cluster/entityType, so the fallback path must honor them
+  // exactly like the engine path does — otherwise filter-by-cluster/type
+  // silently degrades whenever search artifacts are missing.
+  describe('cluster/entityType filters (#194 filter-action parity)', () => {
+    const manifest = {
+      configRaw: 'title: X',
+      authoredContent: {
+        'content/a.md': page('node-a', { cluster: 'core', entityType: 'guide', body: 'alpha' }),
+        'content/b.md': page('node-b', { cluster: 'infra', entityType: 'guide', body: 'alpha' }),
+        'content/c.md': page('node-c', {
+          cluster: 'core',
+          entityType: 'reference',
+          body: 'alpha',
+        }),
+      },
+      tree: [],
+      readme: null,
+    };
+
+    it('restricts results to the given cluster', () => {
+      const rows = textIndexSearch(manifest, 'alpha', 10, { cluster: 'infra' });
+      assert.deepEqual(
+        rows.map((r) => r.nodeId),
+        ['node-b']
+      );
+    });
+
+    it('restricts results to the given entityType', () => {
+      const rows = textIndexSearch(manifest, 'alpha', 10, { entityType: 'reference' });
+      assert.deepEqual(
+        rows.map((r) => r.nodeId),
+        ['node-c']
+      );
+    });
+
+    it('combines cluster + entityType (AND semantics)', () => {
+      const rows = textIndexSearch(manifest, 'alpha', 10, {
+        cluster: 'core',
+        entityType: 'guide',
+      });
+      assert.deepEqual(
+        rows.map((r) => r.nodeId),
+        ['node-a']
+      );
+    });
+
+    it('with no filters, matches all clusters/entityTypes', () => {
+      const rows = textIndexSearch(manifest, 'alpha', 10);
+      assert.equal(rows.length, 3);
+    });
+  });
 });
 
 describe('defaultRunSearch (drift fallback)', () => {
@@ -835,8 +889,28 @@ describe('defaultRunSearch (drift fallback)', () => {
       }
     );
     assert.equal(out.drift, undefined);
+    assert.equal(out.degraded, undefined, 'not degraded when the real engine serves the request');
     assert.equal(out.results[0].nodeId, 'node-a');
     assert.equal(out.results[0].score, 0.8);
+  });
+
+  it('flags degraded: true and logs a prominent operator warning on fallback (#208)', async () => {
+    const warnings = [];
+    const out = await defaultRunSearch(
+      { query: 'audit' },
+      {
+        cwd: process.cwd(),
+        getManifest: async () => FIXTURE_MANIFEST,
+        loadSearchModule: async () => {
+          throw new Error('not installed');
+        },
+        warn: (m) => warnings.push(m),
+      },
+    );
+    assert.equal(out.degraded, true);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /DEGRADED/);
+    assert.match(warnings[0], /kbx canvas/);
   });
 });
 
@@ -844,6 +918,7 @@ describe('defaultGetManifest (live + bundled fallback)', () => {
   it('returns the live-generated manifest when generation succeeds', async () => {
     const m = await defaultGetManifest({ generate: async () => FIXTURE_MANIFEST });
     assert.deepEqual(m, FIXTURE_MANIFEST);
+    assert.equal(m.degraded, undefined, 'not degraded on the live-generation path');
   });
 
   it('falls back to a bundled repo-manifest.json when generation throws', async () => {
@@ -857,6 +932,24 @@ describe('defaultGetManifest (live + bundled fallback)', () => {
       readFile: () => bundled,
     });
     assert.equal(m.configRaw, 'bundled');
+  });
+
+  it('flags degraded: true and logs a prominent operator warning on bundled fallback (#208)', async () => {
+    const bundled = JSON.stringify({ configRaw: 'bundled' });
+    const warnings = [];
+    const m = await defaultGetManifest({
+      cwd: '/repo',
+      generate: async () => {
+        throw new Error('no gh');
+      },
+      existsSync: (p) => p.replace(/\\/g, '/').endsWith('/repo/dist/kb/repo-manifest.json'),
+      readFile: () => bundled,
+      warn: (msg) => warnings.push(msg),
+    });
+    assert.equal(m.degraded, true);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /DEGRADED/);
+    assert.match(warnings[0], /kbx canvas/);
   });
 
   it('rethrows when generation fails and no bundle exists', async () => {
@@ -1065,6 +1158,164 @@ describe('defaultSubscribe (A4 no-op seam)', () => {
     assert.equal(typeof unsub, 'function');
     assert.doesNotThrow(() => unsub());
     assert.equal(emitted, 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Real per-instance event bus (#194) — replaces defaultSubscribe as the
+// registry's default so canvas actions can push live SSE frames.
+// ---------------------------------------------------------------------------
+
+describe('createEventBus (#194 real emit bus)', () => {
+  it('delivers an emit to a subscribed listener on the same instance', () => {
+    const bus = createEventBus();
+    const received = [];
+    bus.subscribe('inst-a', (evt) => received.push(evt));
+    const delivered = bus.emit('inst-a', SSE_EVENTS.ANCHOR, { nodeId: 'n1' });
+    assert.equal(delivered, true);
+    assert.deepEqual(received, [{ event: SSE_EVENTS.ANCHOR, data: { nodeId: 'n1' } }]);
+  });
+
+  it('never delivers across instances', () => {
+    const bus = createEventBus();
+    const received = [];
+    bus.subscribe('inst-a', (evt) => received.push(evt));
+    const delivered = bus.emit('inst-b', SSE_EVENTS.ANCHOR, { nodeId: 'n1' });
+    assert.equal(delivered, false);
+    assert.deepEqual(received, []);
+  });
+
+  it('fans out to every listener subscribed on the same instance', () => {
+    const bus = createEventBus();
+    const a = [];
+    const b = [];
+    bus.subscribe('inst-a', (evt) => a.push(evt));
+    bus.subscribe('inst-a', (evt) => b.push(evt));
+    bus.emit('inst-a', SSE_EVENTS.GRAPH_UPDATED, { nodes: ['x'] });
+    assert.equal(a.length, 1);
+    assert.equal(b.length, 1);
+  });
+
+  it('unsubscribe stops further delivery to that listener only', () => {
+    const bus = createEventBus();
+    const a = [];
+    const b = [];
+    const unsubA = bus.subscribe('inst-a', (evt) => a.push(evt));
+    bus.subscribe('inst-a', (evt) => b.push(evt));
+    unsubA();
+    bus.emit('inst-a', SSE_EVENTS.GRAPH_UPDATED, {});
+    assert.equal(a.length, 0);
+    assert.equal(b.length, 1);
+  });
+
+  it('a throwing listener does not break its siblings or the emit call', () => {
+    const bus = createEventBus();
+    const b = [];
+    bus.subscribe('inst-a', () => {
+      throw new Error('boom');
+    });
+    bus.subscribe('inst-a', (evt) => b.push(evt));
+    assert.doesNotThrow(() => bus.emit('inst-a', SSE_EVENTS.ANCHOR, {}));
+    assert.equal(b.length, 1);
+  });
+
+  it('emit on an instance with no listeners returns false and does not throw', () => {
+    const bus = createEventBus();
+    assert.doesNotThrow(() => {
+      assert.equal(bus.emit('nobody-home', SSE_EVENTS.ANCHOR, {}), false);
+    });
+  });
+});
+
+describe('createCanvasRegistry.search (#194 filter-action seam)', () => {
+  it('exposes a search(params) method backed by the same runSearch seam /search uses', async () => {
+    const seen = [];
+    const registry = createCanvasRegistry({
+      resolveBuildDir: () => null,
+      runSearch: async (params) => {
+        seen.push(params);
+        return { results: [{ nodeId: 'n1' }], suggestions: [] };
+      },
+    });
+    const out = await registry.search({ query: 'auth', cluster: 'core', entityType: 'guide' });
+    assert.deepEqual(seen, [{ query: 'auth', cluster: 'core', entityType: 'guide' }]);
+    assert.deepEqual(out, { results: [{ nodeId: 'n1' }], suggestions: [] });
+  });
+
+  it('falls back to the real dependency-free text index when no engine/artifacts are available (no injected runSearch)', async () => {
+    const registry = createCanvasRegistry({
+      resolveBuildDir: () => null,
+      cwd: '/nonexistent-kb-canvas-search-fixture-dir',
+      getManifest: async () => ({
+        configRaw: '',
+        authoredContent: {
+          'content/home.md': page('home', { body: 'home page content' }),
+        },
+        tree: [],
+        readme: null,
+      }),
+      loadSearchModule: async () => {
+        throw new Error('search engine not installed');
+      },
+    });
+    const out = await registry.search({ query: 'home' });
+    assert.deepEqual(
+      out.results.map((r) => r.nodeId),
+      ['home']
+    );
+    assert.ok(out.drift?.stale, 'expected a drift flag when falling back to the text index');
+  });
+});
+
+describe('createCanvasRegistry default subscribe + emit (#194)', () => {
+  it("registry's default subscribe is the real event bus, not the old no-op", async () => {
+    // No custom subscribe/eventBus injected — registry.emit must still reach a
+    // live SSE stream opened through its own default-wired request handler.
+    let handler;
+    const registry = createCanvasRegistry({
+      createServer: (h) => {
+        handler = h;
+        return makeFakeServer(4578);
+      },
+      resolveBuildDir: () => null,
+    });
+    await registry.open('bus-inst');
+    const res = makeSseRes();
+    handler(res, res);
+    const delivered = registry.emit('bus-inst', SSE_EVENTS.ANCHOR, { nodeId: 'n42' });
+    assert.equal(delivered, true);
+    assert.match(res.body, /event: anchor\ndata: \{"nodeId":"n42"\}/);
+    await registry.close('bus-inst');
+  });
+
+  it('registry.emit only reaches the instance it targets', async () => {
+    let handlerA;
+    let handlerB;
+    let port = 4580;
+    const registry = createCanvasRegistry({
+      createServer: (h) => {
+        if (!handlerA) {
+          handlerA = h;
+        } else {
+          handlerB = h;
+        }
+        return makeFakeServer(port++);
+      },
+      resolveBuildDir: () => null,
+    });
+    await registry.open('inst-a');
+    await registry.open('inst-b');
+    const resA = makeSseRes();
+    const resB = makeSseRes();
+    handlerA(resA, resA);
+    handlerB(resB, resB);
+
+    registry.emit('inst-a', SSE_EVENTS.ANCHOR, { nodeId: 'only-a' });
+    assert.match(resA.body, /event: anchor\ndata: \{"nodeId":"only-a"\}/);
+    assert.doesNotMatch(resB.body, /only-a/);
+
+    await registry.close('inst-a');
+    await registry.close('inst-b');
   });
 });
 

@@ -101,7 +101,7 @@ kbexplorer-cli/
 │   │   └── affected.js       #   citation index + diff -> nodes mapping
 │   └── assets/               # Files copied into a host repo's .github/ during init
 │       ├── agents/           #   kb-architect, kb-writer, kb-researcher (Copilot agents)
-│       └── skills/kbexplorer/#   slim router SKILL.md + 15 task-focused references/
+│       └── skills/kbx/#   slim router SKILL.md + 15 task-focused references/
 ├── tests/
 │   ├── lib/                  # Unit tests for each lib module (node:test)
 │   └── commands/             # Command-level tests (links, scaffold)
@@ -619,7 +619,7 @@ Expected `npm test` tail:
 |---------|--------------|-----|
 | `✗ kbx not found. Run kbx init first.` | `getAppRoot` returned `null` — no `.kbx/package.json` | Run `init`, or run from the host repo root ([`detect-repo.js:109-114`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/detect-repo.js#L109-L114)) |
 | Empty graph / no issues or PRs | `gh` not installed or not authenticated | Install/auth `gh`, or accept the degraded build (warns, continues) ([`manifest.js:168-175`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/manifest.js#L168-L175)) |
-| GitHub rate-limit warnings | 60 unauth requests/hour | Set `GITHUB_TOKEN` / `gh auth login` ([`references/setup.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/setup.md)) |
+| GitHub rate-limit warnings | 60 unauth requests/hour | Set `GITHUB_TOKEN` / `gh auth login` ([`references/setup.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbx/references/setup.md)) |
 | `git submodule add` fails with `file://` locally | Git blocks the file protocol for submodules by default | Use a real `https` URL, or test vendor mode (`--vendor`) which uses `git clone` |
 | Test fails after adding a flag | The exact-shape default test wasn't updated | Update the `deepStrictEqual` default-shape assertion ([`args.test.js:7-11`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/tests/lib/args.test.js#L7-L11)) |
 | `update` says "Already up to date" unexpectedly | `resolvedCommit` in `.kbx.json` matches remote SHA | Expected — it compares SHAs ([`update.js:228-232`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/update.js#L228-L232)) |
