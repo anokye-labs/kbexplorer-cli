@@ -327,11 +327,39 @@ describe('quoteCmdArg', () => {
     assert.strictEqual(quoteCmdArg('say "hi"'), '"say ""hi"""');
   });
 
-  it('quotes cmd.exe metacharacters', () => {
-    for (const raw of ['a&b', 'a|b', 'a^b', 'a<b', 'a>b', 'a(b)', 'a%b%', 'a!b!']) {
-      const quoted = quoteCmdArg(raw);
-      assert.ok(quoted.startsWith('"') && quoted.endsWith('"'), `expected ${raw} to be quoted, got ${quoted}`);
-    }
+  it('neutralizes command/redirection/grouping metacharacters by wrapping (cmd treats them literally inside "…")', () => {
+    // Exact transforms — not just "is quote-wrapped". Inside double quotes cmd
+    // does NOT interpret & | < > ( ) ^, so wrapping is a genuine neutralization.
+    assert.strictEqual(quoteCmdArg('a&b'), '"a&b"');
+    assert.strictEqual(quoteCmdArg('a|b'), '"a|b"');
+    assert.strictEqual(quoteCmdArg('a^b'), '"a^b"');
+    assert.strictEqual(quoteCmdArg('a<b'), '"a<b"');
+    assert.strictEqual(quoteCmdArg('a>b'), '"a>b"');
+    assert.strictEqual(quoteCmdArg('a(b)'), '"a(b)"');
+  });
+
+  it('caret-escapes %VAR% out of the quotes (CVE-2024-27980: cmd expands %..% inside quotes)', () => {
+    // `%COMSPEC%` must be broken up so cmd cannot substitute the environment
+    // variable; each `%` is pulled out of the quoted segments and caret-escaped.
+    assert.strictEqual(quoteCmdArg('a%COMSPEC%b'), '"a"^%"COMSPEC"^%"b"');
+    assert.strictEqual(quoteCmdArg('a%b%'), '"a"^%"b"^%');
+  });
+
+  it('caret-escapes ! out of the quotes (delayed expansion escapes double quotes)', () => {
+    assert.strictEqual(quoteCmdArg('a!b!'), '"a"^!"b"^!');
+  });
+
+  it('embeds a literal double quote via the "" convention', () => {
+    assert.strictEqual(quoteCmdArg('a"b'), '"a""b"');
+  });
+
+  it('doubles a trailing backslash before the closing quote so it cannot escape it', () => {
+    // A bare trailing backslash needs no wrapping (harmless unquoted)…
+    assert.strictEqual(quoteCmdArg('a\\'), 'a\\');
+    // …but once the token is quoted (whitespace present), the run before the
+    // closing quote is doubled: `"a b\\"` → CommandLineToArgvW → one `\`, arg closes.
+    assert.strictEqual(quoteCmdArg('a b\\'), '"a b\\\\"');
+    assert.strictEqual(quoteCmdArg('a b\\\\'), '"a b\\\\\\\\"');
   });
 
   it('represents an empty token as an explicit empty quoted string', () => {
