@@ -200,14 +200,36 @@ describe('loadCompositeKnowledgeBase — budgets', () => {
   });
 
   it('timeoutMs trips a hung provider', async () => {
-    const hang = () => ({ id: 'hang', name: 'hang', resolve: () => new Promise(() => {}) });
-    await assert.rejects(
-      loadCompositeKnowledgeBase(
-        { sources: [{ sourceId: 'a', kind: 'hang' }], ingestion: { budgets: { timeoutMs: 20 } } },
-        { env: {}, loadProvider: fakeLoader({ hang }) }
-      ),
-      (e) => e.code === CompositeIngestErrorCode.PROVIDER_TIMEOUT
-    );
+    // resolveWithTimeout() deliberately calls `timer.unref()` on its budget
+    // timer (correct prod behavior: a pending provider timeout should never
+    // by itself keep a real CLI process alive). But that means the only thing
+    // driving this test's assertion forward is an unref'd timer — if nothing
+    // else refs the event loop, Node can decide the loop has "resolved" and
+    // fire its beforeExit/idle check *before* that timer gets a turn to run,
+    // which is what left the old `new Promise(() => {})` version of this test
+    // "cancelled" instead of settled. We hold a trivially refed interval open
+    // for the duration of the assertion so the unref'd timeout gets a real
+    // chance to fire (proving the timeout path genuinely works), and we tear
+    // both it and the hung provider's promise down in `finally` so nothing —
+    // handle or promise — is left pending once the test completes.
+    let releaseHang;
+    const hangSignal = new Promise((resolve) => {
+      releaseHang = resolve;
+    });
+    const hang = () => ({ id: 'hang', name: 'hang', resolve: () => hangSignal });
+    const keepEventLoopAlive = setInterval(() => {}, 1000);
+    try {
+      await assert.rejects(
+        loadCompositeKnowledgeBase(
+          { sources: [{ sourceId: 'a', kind: 'hang' }], ingestion: { budgets: { timeoutMs: 20 } } },
+          { env: {}, loadProvider: fakeLoader({ hang }) }
+        ),
+        (e) => e.code === CompositeIngestErrorCode.PROVIDER_TIMEOUT
+      );
+    } finally {
+      clearInterval(keepEventLoopAlive);
+      releaseHang();
+    }
   });
 });
 
