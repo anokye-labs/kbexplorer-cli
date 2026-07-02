@@ -13,11 +13,11 @@
  * `GET /manifest` + `GET /manifest/slice` (A2, #191) via `getManifest`;
  * `POST /search` (A3, #192) via `runSearch`; `GET /events` SSE (A4, #193) via
  * `subscribe` (a real per-instance {@link createEventBus} by default, so the
- * canvas actions declared in `src/extension/canvas.js` (#194) can push live
- * SSE frames through `registry.emit`); and `POST /affordance/:name` (A5, #194)
- * via `executeAffordance` — the do-seam adapter that routes straight through
- * the affordance registry's fail-closed consent gate, the third delivery
- * surface after extension-tools (#163) and MCP (#197).
+ * canvas actions declared in `src/extension/canvas.js` (#212) can push live
+ * SSE frames through `registry.emit`); and `POST /affordance/:name` (A5,
+ * #201) via `executeAffordance` — the do-seam adapter that routes straight
+ * through the affordance registry's fail-closed consent gate, the third
+ * delivery surface after extension-tools (#163) and MCP (#197).
  *
  * All I/O is behind injected seams (`createServer`, `existsSync`, `readFile`,
  * `resolveBuildDir`) so the registry is hermetically testable with a fake server
@@ -48,15 +48,25 @@ const DEFAULT_HEARTBEAT_MS = 15000;
 
 /**
  * The SSE event names the frozen loopback contract
- * (`docs/canvas-loopback-contract.md`) defines on `GET /events`. `graph-updated`
- * carries the mutated `{ nodes[] }`; `anchor` re-focuses the SPA on `{ nodeId }`.
- * `ready` is a transport-level "stream is live" signal emitted once on connect.
+ * (`docs/canvas-loopback-contract.md`) defines on `GET /events`. `anchor`
+ * re-focuses the SPA on `{ nodeId }` (unchanged since A4). `graph-updated`
+ * carries a mutated `{ nodes[] }` (unchanged since A4; not emitted by any
+ * canvas action as of #212 — reserved for future content/data mutations).
+ * `view-action` (added #212, contract v2) is the single additive envelope
+ * for agent-driven VIEW mutations (`expand`/`trace`/`filter`) —
+ * `{ action, params, requestId? }` — added instead of growing the wire
+ * vocabulary with one event per action, and instead of overloading `anchor`
+ * (which is `{ nodeId }`-shaped and can't express a path or a cluster
+ * filter). Existing consumers that don't know `view-action` simply ignore
+ * it — additive, not a breaking change. `ready` is a transport-level
+ * "stream is live" signal emitted once on connect.
  * @enum {string}
  */
 export const SSE_EVENTS = Object.freeze({
   READY: 'ready',
   GRAPH_UPDATED: 'graph-updated',
   ANCHOR: 'anchor',
+  VIEW_ACTION: 'view-action',
 });
 
 /**
@@ -75,7 +85,7 @@ export function defaultSubscribe(_instanceId, _onEvent) {
 
 /**
  * Create a real, per-canvas-instance domain-event bus: the emit side of the
- * `/events` (A4) SSE seam. This is what turns a canvas **action** (#194 —
+ * `/events` (A4) SSE seam. This is what turns a canvas **action** (#212 —
  * anchor/expand/trace/filter) into a live SSE frame on that instance's
  * subscribed iframe, replacing the no-op {@link defaultSubscribe} the
  * registry used to default to.
@@ -364,9 +374,11 @@ export function toSemanticResult(r = {}) {
  * Scores by query-term frequency across title + body; normalizes to 0..1.
  *
  * `cluster`/`entityType` are applied as exact-match post-filters so this
- * fallback stays at parity with the engine-backed path for the canvas
- * `filter` action (#194) — the frozen `/search` HTTP endpoint (#192) does not
- * forward these fields today and is unaffected by this addition.
+ * fallback stays at parity with the engine-backed path for
+ * `registry.search`/`/search` (A3) callers. The canvas `filter` action no
+ * longer calls this seam as of #212 (it's now a pure `cluster`/`layer` VIEW
+ * instruction with no server-side lookup); this cluster/entityType support
+ * remains for `/search` (#192) and any other `registry.search` caller.
  *
  * @param {object} manifest
  * @param {string} query
@@ -431,9 +443,11 @@ export function textIndexSearch(manifest, query, limit = DEFAULT_SEARCH_LIMIT, f
  * client text index over the live manifest and attaches a `drift` warning.
  *
  * `cluster`/`entityType` are honored on both paths (engine query + text-index
- * fallback) so callers — notably the canvas `filter` action (#194) via
- * {@link createCanvasRegistry}'s `registry.search` — get identical filtering
- * whether or not search artifacts are installed. The frozen `/search` HTTP
+ * fallback) so any `registry.search`/`/search` (A3) caller gets identical
+ * filtering whether or not search artifacts are installed. (Note: the canvas
+ * `filter` action no longer calls `registry.search` as of #212 — it's now a
+ * pure `cluster`/`layer` VIEW instruction — so this parity is for other
+ * `registry.search` callers, not `filter`.) The frozen `/search` HTTP
  * endpoint (#192) does not forward these fields today; this is additive.
  *
  * @param {{ query: string, limit?: number, graphRanking?: boolean, cluster?: string, entityType?: string }} params
@@ -809,7 +823,7 @@ export function createRequestHandler({
  * @param {() => Promise<object>} [deps.loadSearchModule]  Search-engine module seam.
  * @param {(instanceId: string, onEvent: Function) => (() => void)} [deps.subscribe]
  *        A4 `/events` domain-event seam. Defaults to a real {@link createEventBus}
- *        (per-instance, not a no-op) so canvas actions (#194) can push live SSE
+ *        (per-instance, not a no-op) so canvas actions (#212) can push live SSE
  *        frames via the registry's `emit`. Inject a custom seam (or
  *        {@link defaultSubscribe}) to keep a test hermetic.
  * @param {(name: string, input: object, ctx?: object) => Promise<*>} [deps.executeAffordance]
@@ -954,9 +968,10 @@ export function createCanvasRegistry({
      * artifacts, and — critically — falls back to the dependency-free
      * {@link textIndexSearch} over the live manifest when the engine/artifacts
      * are unavailable, so callers get the same graceful degradation the panel
-     * gets from its own `/search` call. Exposed so the canvas `filter` action
-     * (#194) has true parity instead of hard-requiring search artifacts via
-     * the `search` affordance.
+     * gets from its own `/search` call. (Note: as of #212 the canvas `filter`
+     * action is a pure `cluster`/`layer` VIEW instruction and no longer calls
+     * this seam — it remains here as a general registry capability for
+     * `/search` and any other consumer that needs artifact-optional search.)
      * @param {{ query: string, limit?: number, cluster?: string, entityType?: string }} params
      * @returns {Promise<{ results: object[], suggestions: object[], drift?: object }>}
      */

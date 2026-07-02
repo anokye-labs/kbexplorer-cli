@@ -152,7 +152,7 @@ describe('buildCanvasActions: expand', () => {
     return { registry, action: actions.find((a) => a.name === 'expand') };
   }
 
-  it('delegates to execute("graph_neighbors", ...) and emits GRAPH_UPDATED with the expanded set', async () => {
+  it('delegates to execute("graph_neighbors", ...) and emits a view-action envelope with just nodeId/depth', async () => {
     const { registry, action } = build(async (name, input) => {
       assert.equal(name, 'graph_neighbors');
       assert.deepEqual(input, { id: 'home', depth: 2 });
@@ -162,11 +162,38 @@ describe('buildCanvasActions: expand', () => {
     assert.deepEqual(registry.calls.emit, [
       {
         instanceId: 'p1',
-        event: SSE_EVENTS.GRAPH_UPDATED,
-        data: { nodes: ['home', 'child'], reason: 'expand', focus: 'home' },
+        event: SSE_EVENTS.VIEW_ACTION,
+        data: { action: 'expand', params: { nodeId: 'home', depth: 2 } },
       },
     ]);
     assert.equal(result.delivered, true);
+  });
+
+  it('omits depth from the emitted params when not given', async () => {
+    const { registry, action } = build(async (name, input) => {
+      assert.deepEqual(input, { id: 'home', depth: undefined });
+      return { id: 'home', depth: 1, neighbors: [] };
+    });
+    await action.handler({ instanceId: 'p1', input: { nodeId: 'home' } });
+    assert.deepEqual(registry.calls.emit, [
+      {
+        instanceId: 'p1',
+        event: SSE_EVENTS.VIEW_ACTION,
+        data: { action: 'expand', params: { nodeId: 'home' } },
+      },
+    ]);
+  });
+
+  it('threads a requestId through as best-effort pass-through when the invocation context happens to supply one (no current SDK guarantee this field exists)', async () => {
+    const { registry, action } = build(async () => ({ id: 'home', depth: 1, neighbors: [] }));
+    await action.handler({ instanceId: 'p1', input: { nodeId: 'home' }, requestId: 'req-1' });
+    assert.equal(registry.calls.emit[0].data.requestId, 'req-1');
+  });
+
+  it('omits requestId entirely (no key at all) when the invocation context does not supply one', async () => {
+    const { registry, action } = build(async () => ({ id: 'home', depth: 1, neighbors: [] }));
+    await action.handler({ instanceId: 'p1', input: { nodeId: 'home' } });
+    assert.equal('requestId' in registry.calls.emit[0].data, false);
   });
 
   it('throws when nodeId is missing', async () => {
@@ -182,7 +209,7 @@ describe('buildCanvasActions: trace', () => {
     return { registry, action: actions.find((a) => a.name === 'trace') };
   }
 
-  it('accepts fromId/toId and emits GRAPH_UPDATED with the traced path', async () => {
+  it('accepts fromId/toId, computes the path via the `trace` affordance, and emits a view-action envelope with just the path', async () => {
     const { registry, action } = build(async (name, input) => {
       assert.equal(name, 'trace');
       assert.deepEqual(input, { fromId: 'home', toId: 'child' });
@@ -195,16 +222,12 @@ describe('buildCanvasActions: trace', () => {
     assert.deepEqual(registry.calls.emit, [
       {
         instanceId: 'p1',
-        event: SSE_EVENTS.GRAPH_UPDATED,
-        data: {
-          nodes: ['home', 'child'],
-          reason: 'trace',
-          path: ['home', 'child'],
-          connected: true,
-        },
+        event: SSE_EVENTS.VIEW_ACTION,
+        data: { action: 'trace', params: { path: ['home', 'child'] } },
       },
     ]);
     assert.equal(result.delivered, true);
+    assert.equal(result.connected, true);
   });
 
   it('accepts a bare nodeId as an alias for fromId', async () => {
@@ -222,84 +245,103 @@ describe('buildCanvasActions: trace', () => {
 });
 
 describe('buildCanvasActions: filter', () => {
-  function build(search) {
-    const registry = makeFakeRegistry({ search });
+  function build() {
+    const registry = makeFakeRegistry();
     const actions = buildCanvasActions(registry, {
       execute: async () => {
-        throw new Error('filter must not use the `search` affordance directly');
+        throw new Error('filter must not call any affordance');
       },
       contextFactory: () => ({}),
     });
     return { registry, action: actions.find((a) => a.name === 'filter') };
   }
 
-  it('runs registry.search (not the `search` affordance) when query is given, and emits the matched node ids', async () => {
-    const { registry, action } = build(async (params) => {
-      assert.deepEqual(params, { query: 'onboarding', cluster: undefined, entityType: undefined });
-      return { results: [{ nodeId: 'home' }, { id: 'child' }] };
-    });
-    const result = await action.handler({ instanceId: 'p1', input: { query: 'onboarding' } });
-    assert.deepEqual(registry.calls.search, [
-      { query: 'onboarding', cluster: undefined, entityType: undefined },
-    ]);
+  it('emits a view-action envelope with just cluster when only cluster is given', async () => {
+    const { registry, action } = build();
+    const result = await action.handler({ instanceId: 'p1', input: { cluster: 'core' } });
     assert.deepEqual(registry.calls.emit, [
       {
         instanceId: 'p1',
-        event: SSE_EVENTS.GRAPH_UPDATED,
-        data: {
-          reason: 'filter',
-          filter: { query: 'onboarding', cluster: null, nodeType: null },
-          nodes: ['home', 'child'],
-        },
+        event: SSE_EVENTS.VIEW_ACTION,
+        data: { action: 'filter', params: { cluster: 'core' } },
       },
     ]);
-    assert.deepEqual(result.nodes, ['home', 'child']);
-  });
-
-  it('threads cluster/nodeType through to registry.search as cluster/entityType', async () => {
-    const { action } = build(async (params) => {
-      assert.deepEqual(params, { query: 'auth', cluster: 'core', entityType: 'component' });
-      return { results: [{ nodeId: 'home' }] };
-    });
-    const result = await action.handler({
-      instanceId: 'p1',
-      input: { query: 'auth', cluster: 'core', nodeType: 'component' },
-    });
-    assert.deepEqual(result.nodes, ['home']);
-  });
-
-  it('with no query, emits nodes: null, never calls registry.search, and leaves cluster/nodeType filtering to the panel', async () => {
-    const { registry, action } = build(async () => {
-      throw new Error('registry.search must not be called when there is no query');
-    });
-    const result = await action.handler({
-      instanceId: 'p1',
-      input: { cluster: 'core', nodeType: 'component' },
-    });
+    assert.equal(result.delivered, true);
     assert.deepEqual(registry.calls.search, []);
+  });
+
+  it('emits a view-action envelope with just layer when only layer is given', async () => {
+    const { registry, action } = build();
+    await action.handler({ instanceId: 'p1', input: { layer: 'l2' } });
     assert.deepEqual(registry.calls.emit, [
       {
         instanceId: 'p1',
-        event: SSE_EVENTS.GRAPH_UPDATED,
-        data: {
-          reason: 'filter',
-          filter: { query: null, cluster: 'core', nodeType: 'component' },
-          nodes: null,
-        },
+        event: SSE_EVENTS.VIEW_ACTION,
+        data: { action: 'filter', params: { layer: 'l2' } },
       },
     ]);
-    assert.equal(result.nodes, null);
+  });
+
+  it('emits both cluster and layer when both are given', async () => {
+    const { registry, action } = build();
+    await action.handler({ instanceId: 'p1', input: { cluster: 'core', layer: 'l2' } });
+    assert.deepEqual(registry.calls.emit, [
+      {
+        instanceId: 'p1',
+        event: SSE_EVENTS.VIEW_ACTION,
+        data: { action: 'filter', params: { cluster: 'core', layer: 'l2' } },
+      },
+    ]);
+  });
+
+  it('trims whitespace from cluster/layer before emitting', async () => {
+    const { registry, action } = build();
+    await action.handler({ instanceId: 'p1', input: { cluster: '  core  ' } });
+    assert.deepEqual(registry.calls.emit, [
+      {
+        instanceId: 'p1',
+        event: SSE_EVENTS.VIEW_ACTION,
+        data: { action: 'filter', params: { cluster: 'core' } },
+      },
+    ]);
+  });
+
+  it('treats a blank-string field as absent: emits only the other valid field', async () => {
+    const { registry, action } = build();
+    await action.handler({ instanceId: 'p1', input: { cluster: '   ', layer: ' l2 ' } });
+    assert.deepEqual(registry.calls.emit, [
+      {
+        instanceId: 'p1',
+        event: SSE_EVENTS.VIEW_ACTION,
+        data: { action: 'filter', params: { layer: 'l2' } },
+      },
+    ]);
+  });
+
+  it('throws when neither cluster nor layer is given', async () => {
+    const { registry, action } = build();
+    await assert.rejects(() => action.handler({ instanceId: 'p1', input: {} }), TypeError);
+    assert.deepEqual(registry.calls.emit, []);
+  });
+
+  it('throws when cluster/layer are blank strings', async () => {
+    const { action } = build();
+    await assert.rejects(
+      () => action.handler({ instanceId: 'p1', input: { cluster: '  ' } }),
+      TypeError
+    );
   });
 });
 
 // ---------------------------------------------------------------------------
-// End-to-end proof (#194 reopen requirement): invoking an action produced by
-// `buildCanvasOptions()` against a REAL registry must produce the matching SSE
-// frame on that instance's REAL `/events` HTTP stream. No fakes on either side
-// of the seam — this is the wiring the original #194 PR never proved.
+// End-to-end proof (#212 acceptance bar): invoking an action produced by
+// `buildCanvasOptions()` against a REAL registry must produce the matching
+// `view-action` SSE frame on that instance's REAL `/events` HTTP stream, with
+// true per-instance isolation. No fakes on either side of the seam — this is
+// the wiring the original #194 PR never proved.
 // ---------------------------------------------------------------------------
 
-describe('canvas actions -> real registry -> real /events SSE (#194 end-to-end proof)', () => {
+describe('canvas actions -> real registry -> real /events SSE (#212 end-to-end proof)', () => {
   /** Build a temp repo with a small content/ graph to run real affordances over. */
   function makeFixture() {
     const dir = mkdtempSync(join(tmpdir(), 'kb-canvas-e2e-'));
@@ -356,6 +398,7 @@ describe('canvas actions -> real registry -> real /events SSE (#194 end-to-end p
   let registry;
   let opts;
   let url;
+  let otherUrl;
 
   before(async () => {
     fixtureDir = makeFixture();
@@ -385,7 +428,7 @@ describe('canvas actions -> real registry -> real /events SSE (#194 end-to-end p
     sse.abort();
   });
 
-  it('expand: invoking the action delivers a real "graph-updated" SSE frame', async () => {
+  it('expand: invoking the action delivers a real "view-action" SSE frame', async () => {
     const sse = await sseOpen(`${url}/events`);
     await sse.waitForBytes(/event: ready/);
 
@@ -394,12 +437,12 @@ describe('canvas actions -> real registry -> real /events SSE (#194 end-to-end p
     assert.equal(result.delivered, true);
 
     await sse.waitForBytes(
-      /event: graph-updated\ndata: \{"nodes":\["home","child"\],"reason":"expand","focus":"home"\}/
+      /event: view-action\ndata: \{"action":"expand","params":\{"nodeId":"home"\}\}/
     );
     sse.abort();
   });
 
-  it('trace: invoking the action delivers a real "graph-updated" SSE frame with the path', async () => {
+  it('trace: invoking the action delivers a real "view-action" SSE frame with just the path', async () => {
     const sse = await sseOpen(`${url}/events`);
     await sse.waitForBytes(/event: ready/);
 
@@ -411,13 +454,13 @@ describe('canvas actions -> real registry -> real /events SSE (#194 end-to-end p
     assert.equal(result.delivered, true);
     assert.equal(result.connected, true);
 
-    await sse.waitForBytes(/event: graph-updated\ndata: \{"nodes":\["home","child"\]/);
-    assert.match(sse.bytes, /"reason":"trace"/);
-    assert.match(sse.bytes, /"connected":true/);
+    await sse.waitForBytes(
+      /event: view-action\ndata: \{"action":"trace","params":\{"path":\["home","child"\]\}\}/
+    );
     sse.abort();
   });
 
-  it('filter: with no query, delivers a real "graph-updated" SSE frame with nodes: null', async () => {
+  it('filter: with only cluster, delivers a real "view-action" SSE frame with just cluster in params', async () => {
     const sse = await sseOpen(`${url}/events`);
     await sse.waitForBytes(/event: ready/);
 
@@ -428,31 +471,54 @@ describe('canvas actions -> real registry -> real /events SSE (#194 end-to-end p
     });
     assert.equal(result.delivered, true);
 
-    await sse.waitForBytes(/event: graph-updated\ndata: \{"reason":"filter"/);
-    assert.match(sse.bytes, /"nodes":null/);
+    await sse.waitForBytes(
+      /event: view-action\ndata: \{"action":"filter","params":\{"cluster":"core"\}\}/
+    );
     sse.abort();
   });
 
-  it('filter: with a query, resolves via the real (search-artifact-free) text-index fallback and delivers matched node ids over SSE', async () => {
-    // No @anokye-labs/kbexplorer-search package or .search/ artifacts exist in
-    // this fixture (or this repo), so this exercises registry.search's real
-    // fallback path end-to-end — the exact gap flagged in #194 review: the
-    // `filter` action must not hard-require search artifacts to work.
+  it('filter: with cluster+layer, delivers both in the view-action params', async () => {
     const sse = await sseOpen(`${url}/events`);
     await sse.waitForBytes(/event: ready/);
 
     const action = opts.actions.find((a) => a.name === 'filter');
     const result = await action.handler({
       instanceId: 'e2e-inst',
-      input: { query: 'home' },
+      input: { cluster: 'core', layer: 'l2' },
     });
     assert.equal(result.delivered, true);
-    assert.deepEqual(result.nodes, ['home']);
 
-    await sse.waitForBytes(/event: graph-updated\ndata: \{"reason":"filter"/);
-    assert.match(sse.bytes, /"filter":\{"query":"home","cluster":null,"nodeType":null\}/);
-    assert.match(sse.bytes, /"nodes":\["home"\]/);
+    await sse.waitForBytes(
+      /event: view-action\ndata: \{"action":"filter","params":\{"cluster":"core","layer":"l2"\}\}/
+    );
     sse.abort();
+  });
+
+  it('two subscribed instances stay isolated: an expand on one never emits view-action on the other', async () => {
+    ({ url: otherUrl } = await registry.open('e2e-inst-2'));
+    try {
+      let sseA;
+      let sseB;
+      try {
+        sseA = await sseOpen(`${url}/events`);
+        sseB = await sseOpen(`${otherUrl}/events`);
+        await sseA.waitForBytes(/event: ready/);
+        await sseB.waitForBytes(/event: ready/);
+
+        const action = opts.actions.find((a) => a.name === 'expand');
+        const result = await action.handler({ instanceId: 'e2e-inst', input: { nodeId: 'home' } });
+        assert.equal(result.delivered, true);
+
+        await sseA.waitForBytes(/event: view-action/);
+        await new Promise((r) => setTimeout(r, 20));
+        assert.doesNotMatch(sseB.bytes, /event: view-action/);
+      } finally {
+        sseA?.abort();
+        sseB?.abort();
+      }
+    } finally {
+      await registry.close('e2e-inst-2');
+    }
   });
 
   it('an action invoked for a DIFFERENT instanceId never reaches this stream', async () => {
