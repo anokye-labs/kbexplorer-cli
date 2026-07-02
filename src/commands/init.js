@@ -26,13 +26,32 @@ import { runInitPreflight, formatPreflightDiagnostics, explainInstallFailure } f
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = resolve(__dirname, '..', 'assets');
 
+/** Error thrown when interactive prompts are attempted without usable stdin. */
+class NonInteractiveError extends Error {
+  constructor() {
+    super('NON_INTERACTIVE_STDIN');
+    this.code = 'NON_INTERACTIVE_STDIN';
+  }
+}
+
 function createPrompt() {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
+  // Track EOF on stdin. A non-interactive shell (stdin closed / not a TTY, e.g.
+  // `kbx init < /dev/null` or a CI step with no here-doc) reaches 'end'
+  // immediately. Without this guard the readline question callback never fires
+  // and the awaited prompt hangs, then Node exits 13 (unsettled top-level
+  // await) leaving a half-configured repo. We surface a clean error instead.
+  let closed = false;
+  rl.on('close', () => { closed = true; });
   return {
     async ask(question, defaultValue) {
-      return new Promise((res) => {
+      if (closed) throw new NonInteractiveError();
+      return new Promise((res, rej) => {
         const suffix = defaultValue != null ? ` [${defaultValue}]` : '';
+        const onClose = () => rej(new NonInteractiveError());
+        rl.once('close', onClose);
         rl.question(`${question}${suffix}: `, (answer) => {
+          rl.removeListener('close', onClose);
           res(answer.trim() || defaultValue || '');
         });
       });
@@ -423,6 +442,7 @@ export default async function init(args) {
       `✓ Non-interactive config (owner=${owner}, repo=${repo}, branch=${branch}, mode=${mode})`,
     );
   } else {
+   try {
     const detected = detectGitRemote(cwd);
     const detectedBranch = detectBranch(cwd);
 
@@ -469,6 +489,16 @@ export default async function init(args) {
     } else if (runtimeAgentName != null && runtimeAgentName !== 'copilot') {
       // Only write the block when it differs from the default to keep .kbx.json minimal
       runtimeBlock = { agent: runtimeAgentName };
+    }
+   } catch (err) {
+      if (err instanceof NonInteractiveError) {
+        console.error('✗ `kbx init` needs an interactive terminal for its setup prompts, but stdin is not a TTY.');
+        console.error('  Re-run non-interactively with defaults: `kbx init --yes` (add --owner/--repo if not in a git repo).');
+        console.error('  See `kbx init --help` for all non-interactive flags.');
+        prompt?.close();
+        process.exit(1);
+      }
+      throw err;
     }
   }
 

@@ -37,6 +37,23 @@ npx kbx init    # Interactive setup wizard
 npx kbx dev     # Launch the explorer
 ```
 
+### Non-interactive setup (CI / scripted / no TTY)
+
+The wizard needs a terminal. In CI or any non-interactive shell, pass `--yes`
+to take every answer from flags plus git-remote detection instead of prompting
+(without `--yes` on a non-TTY stdin, `init` now exits with this reminder rather
+than hanging):
+
+```bash
+npx kbx init --yes                         # inside a git repo: owner/repo/branch auto-detected
+npx kbx init --yes --owner acme --repo widgets --title "Acme KB"
+```
+
+Common flags (see `npx kbx init --help` for the full list): `--owner`, `--repo`,
+`--kb-branch`, `--title`, `--content-mode <repo|authored|both>`, `--content`,
+`--visual`, `--theme`, `--runtime <copilot|claude|custom|skip>`, and `--config
+<file>` to load any of them from JSON.
+
 For a full enterprise deployment walkthrough — prerequisites, work-graph YAML
 authoring, the local regeneration loop, and hosting options — see
 **[docs/deploy-to-a-work-repo.md](docs/deploy-to-a-work-repo.md)**.

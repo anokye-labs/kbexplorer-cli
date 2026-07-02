@@ -135,9 +135,18 @@ npx @anokye-labs/kbx init --ref v1.2.0
 
 #### Non-interactive / scripted init
 
-`init` requires a TTY for its interactive prompts. For scripted environments,
-run it interactively on a developer machine first to produce `.env.kbx`
-and `.kbx.json`, then commit those files.
+For scripted or CI environments, pass `--yes` to take every answer from flags
+plus git-remote detection instead of prompting. Without `--yes`, a non-TTY
+stdin makes `init` exit with a clear reminder (it no longer hangs):
+
+```bash
+npx @anokye-labs/kbx init --yes --owner acme --repo widgets --title "Acme KB"
+```
+
+See `npx kbx init --help` for all non-interactive flags (`--kb-branch`,
+`--content-mode`, `--visual`, `--theme`, `--runtime`, `--config <file>`, …).
+Alternatively, run `init` interactively on a developer machine first to produce
+`.env.kbx` and `.kbx.json`, then commit those files.
 
 ### 2.2 Commit the scaffold
 
