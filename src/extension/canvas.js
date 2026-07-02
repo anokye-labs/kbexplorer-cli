@@ -20,8 +20,12 @@
  * `executeAffordance` — so consent + provenance are inherited from the same
  * action core the extension-tool (#163) and MCP (#197) adapters use, and node
  * existence is validated before anything is emitted. `filter` is a pure VIEW
- * instruction — cluster/layer highlighting the panel applies client-side — and
- * emits directly with no affordance call.
+ * instruction — cluster/nodeType highlighting the panel applies client-side
+ * against manifest data it already has — and emits directly with no
+ * affordance call. Semantic/free-text query filtering is NOT supported by
+ * `filter` (that would need a server-side data lookup, unlike cluster/nodeType
+ * which are plain node attributes); see `docs/canvas-loopback-contract.md`'s
+ * honesty note for the tracked follow-up.
  *
  * SSE wire contract (frozen, `docs/canvas-loopback-contract.md`, v2 per #212):
  * `anchor` still emits **exactly** `anchor { nodeId }`, unchanged since A4.
@@ -29,6 +33,9 @@
  * `{ action, params, requestId? }` — rather than three new event types or an
  * overloaded `anchor`/`graph-updated`. `graph-updated` itself is unchanged and
  * not emitted by any action here (reserved for future content/data mutations).
+ * `expand`'s params carry the RESOLVED neighbor nodes (not just the request)
+ * because `/manifest` serves raw authored markdown with no extracted
+ * edge/adjacency data — the client cannot compute a neighborhood on its own.
  * Every action pushes its event through `registry.emit` so the panel that
  * requested it (or any other panel subscribed to the same `instanceId`)
  * updates live over the existing `/events` stream.
@@ -124,13 +131,15 @@ function emitViewAction(registry, instanceId, action, params, requestId) {
  * `anchor`, `expand`, `trace`, `filter`. `anchor`/`expand`/`trace` delegate to
  * `executeAffordance` — so consent, provenance, and node-existence validation
  * are inherited from the same action core the extension-tool (#163) and MCP
- * (#197) adapters use. `filter` is a pure VIEW instruction (cluster/layer
+ * (#197) adapters use. `filter` is a pure VIEW instruction (cluster/nodeType
  * highlighting the panel applies client-side) and never calls an affordance
  * or `registry.search`. On success, every action pushes its event through
  * `registry.emit` so the subscribed `/events` SSE stream(s) for that
  * `instanceId` update live: `anchor` emits the frozen `anchor { nodeId }`
  * event unchanged; `expand`/`trace`/`filter` emit the single additive
- * `view-action { action, params, requestId? }` envelope (#212).
+ * `view-action { action, params, requestId? }` envelope (#212). `expand`'s
+ * `params` include the resolved neighbor nodes (see `/manifest` honesty
+ * note above) so the panel never needs edge data it doesn't have.
  *
  * @param {object} registry  A canvas-server registry (see {@link createCanvasRegistry}).
  *        Must expose `emit(instanceId, event, data)`.
@@ -169,7 +178,7 @@ export function buildCanvasActions(registry, opts = {}) {
     {
       name: 'expand',
       description:
-        "Expand a node's neighbourhood on the canvas up to a given depth. Validates the node via the `graph_neighbors` affordance, then emits a `view-action` SSE event (`{ action: 'expand', params: { nodeId, depth? } }`) for the panel to react to.",
+        "Expand a node's neighbourhood on the canvas up to a given depth. Computes the neighbourhood via the `graph_neighbors` affordance, then emits a `view-action` SSE event (`{ action: 'expand', params: { nodeId, depth?, nodes } }`) carrying the RESOLVED neighbor nodes (`{id, title, cluster, distance}` each) — not just the request — because the `/manifest` payload served to the panel is raw authored markdown with no extracted edge/adjacency data, so the client cannot compute the neighborhood itself.",
       inputSchema: {
         type: 'object',
         properties: {
@@ -189,7 +198,9 @@ export function buildCanvasActions(registry, opts = {}) {
           contextFactory()
         );
         const params =
-          typeof input.depth === 'number' ? { nodeId, depth: input.depth } : { nodeId };
+          typeof input.depth === 'number'
+            ? { nodeId, depth: input.depth, nodes: result.neighbors }
+            : { nodeId, nodes: result.neighbors };
         const delivered = emitViewAction(registry, instanceId, 'expand', params, ctx.requestId);
         return { ...result, delivered };
       },
@@ -226,12 +237,15 @@ export function buildCanvasActions(registry, opts = {}) {
     {
       name: 'filter',
       description:
-        "Filter/highlight the visible node set by cluster and/or layer — a pure VIEW instruction; no data lookup is performed here, the panel applies the highlight client-side. At least one of `cluster`/`layer` is required. Emits a `view-action` SSE event (`{ action: 'filter', params: { cluster?, layer? } }`).",
+        "Filter/highlight the visible node set by cluster and/or node type — a pure VIEW instruction; no data lookup is performed here, the panel applies the highlight client-side using the manifest data it already has. At least one of `cluster`/`nodeType` is required. Emits a `view-action` SSE event (`{ action: 'filter', params: { cluster?, nodeType? } }`). NOTE: semantic/free-text query filtering is intentionally NOT supported here — it would require a server-side data lookup (see `docs/canvas-loopback-contract.md`'s honesty note), unlike cluster/nodeType which are plain node attributes the client already has.",
       inputSchema: {
         type: 'object',
         properties: {
           cluster: { type: 'string', description: 'Restrict the view to a cluster id.' },
-          layer: { type: 'string', description: 'Restrict the view to a layer id.' },
+          nodeType: {
+            type: 'string',
+            description: 'Restrict the view to a node type (entity type).',
+          },
         },
         additionalProperties: false,
       },
@@ -239,12 +253,12 @@ export function buildCanvasActions(registry, opts = {}) {
         const instanceId = instanceIdOf(ctx);
         const input = ctx.input ?? {};
         const cluster = typeof input.cluster === 'string' ? input.cluster.trim() : '';
-        const layer = typeof input.layer === 'string' ? input.layer.trim() : '';
-        requireAtLeastOneOf({ cluster: input.cluster, layer: input.layer }, 'filter');
+        const nodeType = typeof input.nodeType === 'string' ? input.nodeType.trim() : '';
+        requireAtLeastOneOf({ cluster: input.cluster, nodeType: input.nodeType }, 'filter');
 
         const params = {};
         if (cluster) params.cluster = cluster;
-        if (layer) params.layer = layer;
+        if (nodeType) params.nodeType = nodeType;
 
         const delivered = emitViewAction(registry, instanceId, 'filter', params, ctx.requestId);
         return { ...params, delivered };

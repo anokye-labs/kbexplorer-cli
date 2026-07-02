@@ -152,34 +152,55 @@ describe('buildCanvasActions: expand', () => {
     return { registry, action: actions.find((a) => a.name === 'expand') };
   }
 
-  it('delegates to execute("graph_neighbors", ...) and emits a view-action envelope with just nodeId/depth', async () => {
+  it('delegates to execute("graph_neighbors", ...) and emits a view-action envelope with the resolved neighbor nodes', async () => {
     const { registry, action } = build(async (name, input) => {
       assert.equal(name, 'graph_neighbors');
       assert.deepEqual(input, { id: 'home', depth: 2 });
-      return { id: 'home', depth: 2, neighbors: [{ id: 'child', distance: 1 }] };
+      return {
+        id: 'home',
+        depth: 2,
+        neighbors: [{ id: 'child', title: 'Child', cluster: 'core', distance: 1 }],
+      };
     });
     const result = await action.handler({ instanceId: 'p1', input: { nodeId: 'home', depth: 2 } });
     assert.deepEqual(registry.calls.emit, [
       {
         instanceId: 'p1',
         event: SSE_EVENTS.VIEW_ACTION,
-        data: { action: 'expand', params: { nodeId: 'home', depth: 2 } },
+        data: {
+          action: 'expand',
+          params: {
+            nodeId: 'home',
+            depth: 2,
+            nodes: [{ id: 'child', title: 'Child', cluster: 'core', distance: 1 }],
+          },
+        },
       },
     ]);
     assert.equal(result.delivered, true);
   });
 
-  it('omits depth from the emitted params when not given', async () => {
+  it('omits depth from the emitted params when not given, but always includes resolved nodes', async () => {
     const { registry, action } = build(async (name, input) => {
       assert.deepEqual(input, { id: 'home', depth: undefined });
-      return { id: 'home', depth: 1, neighbors: [] };
+      return {
+        id: 'home',
+        depth: 1,
+        neighbors: [{ id: 'child', title: 'Child', cluster: 'core', distance: 1 }],
+      };
     });
     await action.handler({ instanceId: 'p1', input: { nodeId: 'home' } });
     assert.deepEqual(registry.calls.emit, [
       {
         instanceId: 'p1',
         event: SSE_EVENTS.VIEW_ACTION,
-        data: { action: 'expand', params: { nodeId: 'home' } },
+        data: {
+          action: 'expand',
+          params: {
+            nodeId: 'home',
+            nodes: [{ id: 'child', title: 'Child', cluster: 'core', distance: 1 }],
+          },
+        },
       },
     ]);
   });
@@ -270,31 +291,31 @@ describe('buildCanvasActions: filter', () => {
     assert.deepEqual(registry.calls.search, []);
   });
 
-  it('emits a view-action envelope with just layer when only layer is given', async () => {
+  it('emits a view-action envelope with just nodeType when only nodeType is given', async () => {
     const { registry, action } = build();
-    await action.handler({ instanceId: 'p1', input: { layer: 'l2' } });
+    await action.handler({ instanceId: 'p1', input: { nodeType: 'concept' } });
     assert.deepEqual(registry.calls.emit, [
       {
         instanceId: 'p1',
         event: SSE_EVENTS.VIEW_ACTION,
-        data: { action: 'filter', params: { layer: 'l2' } },
+        data: { action: 'filter', params: { nodeType: 'concept' } },
       },
     ]);
   });
 
-  it('emits both cluster and layer when both are given', async () => {
+  it('emits both cluster and nodeType when both are given', async () => {
     const { registry, action } = build();
-    await action.handler({ instanceId: 'p1', input: { cluster: 'core', layer: 'l2' } });
+    await action.handler({ instanceId: 'p1', input: { cluster: 'core', nodeType: 'concept' } });
     assert.deepEqual(registry.calls.emit, [
       {
         instanceId: 'p1',
         event: SSE_EVENTS.VIEW_ACTION,
-        data: { action: 'filter', params: { cluster: 'core', layer: 'l2' } },
+        data: { action: 'filter', params: { cluster: 'core', nodeType: 'concept' } },
       },
     ]);
   });
 
-  it('trims whitespace from cluster/layer before emitting', async () => {
+  it('trims whitespace from cluster/nodeType before emitting', async () => {
     const { registry, action } = build();
     await action.handler({ instanceId: 'p1', input: { cluster: '  core  ' } });
     assert.deepEqual(registry.calls.emit, [
@@ -308,23 +329,23 @@ describe('buildCanvasActions: filter', () => {
 
   it('treats a blank-string field as absent: emits only the other valid field', async () => {
     const { registry, action } = build();
-    await action.handler({ instanceId: 'p1', input: { cluster: '   ', layer: ' l2 ' } });
+    await action.handler({ instanceId: 'p1', input: { cluster: '   ', nodeType: ' concept ' } });
     assert.deepEqual(registry.calls.emit, [
       {
         instanceId: 'p1',
         event: SSE_EVENTS.VIEW_ACTION,
-        data: { action: 'filter', params: { layer: 'l2' } },
+        data: { action: 'filter', params: { nodeType: 'concept' } },
       },
     ]);
   });
 
-  it('throws when neither cluster nor layer is given', async () => {
+  it('throws when neither cluster nor nodeType is given', async () => {
     const { registry, action } = build();
     await assert.rejects(() => action.handler({ instanceId: 'p1', input: {} }), TypeError);
     assert.deepEqual(registry.calls.emit, []);
   });
 
-  it('throws when cluster/layer are blank strings', async () => {
+  it('throws when cluster/nodeType are blank strings', async () => {
     const { action } = build();
     await assert.rejects(
       () => action.handler({ instanceId: 'p1', input: { cluster: '  ' } }),
@@ -428,7 +449,7 @@ describe('canvas actions -> real registry -> real /events SSE (#212 end-to-end p
     sse.abort();
   });
 
-  it('expand: invoking the action delivers a real "view-action" SSE frame', async () => {
+  it('expand: invoking the action delivers a real "view-action" SSE frame with resolved neighbor nodes', async () => {
     const sse = await sseOpen(`${url}/events`);
     await sse.waitForBytes(/event: ready/);
 
@@ -437,7 +458,7 @@ describe('canvas actions -> real registry -> real /events SSE (#212 end-to-end p
     assert.equal(result.delivered, true);
 
     await sse.waitForBytes(
-      /event: view-action\ndata: \{"action":"expand","params":\{"nodeId":"home"\}\}/
+      /event: view-action\ndata: \{"action":"expand","params":\{"nodeId":"home","nodes":\[\{"id":"child","title":"child title","cluster":"core","distance":1\}\]\}\}/
     );
     sse.abort();
   });
@@ -477,19 +498,19 @@ describe('canvas actions -> real registry -> real /events SSE (#212 end-to-end p
     sse.abort();
   });
 
-  it('filter: with cluster+layer, delivers both in the view-action params', async () => {
+  it('filter: with cluster+nodeType, delivers both in the view-action params', async () => {
     const sse = await sseOpen(`${url}/events`);
     await sse.waitForBytes(/event: ready/);
 
     const action = opts.actions.find((a) => a.name === 'filter');
     const result = await action.handler({
       instanceId: 'e2e-inst',
-      input: { cluster: 'core', layer: 'l2' },
+      input: { cluster: 'core', nodeType: 'concept' },
     });
     assert.equal(result.delivered, true);
 
     await sse.waitForBytes(
-      /event: view-action\ndata: \{"action":"filter","params":\{"cluster":"core","layer":"l2"\}\}/
+      /event: view-action\ndata: \{"action":"filter","params":\{"cluster":"core","nodeType":"concept"\}\}/
     );
     sse.abort();
   });

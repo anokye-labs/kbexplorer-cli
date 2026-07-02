@@ -376,7 +376,7 @@ export function toSemanticResult(r = {}) {
  * `cluster`/`entityType` are applied as exact-match post-filters so this
  * fallback stays at parity with the engine-backed path for
  * `registry.search`/`/search` (A3) callers. The canvas `filter` action no
- * longer calls this seam as of #212 (it's now a pure `cluster`/`layer` VIEW
+ * longer calls this seam as of #212 (it's now a pure `cluster`/`nodeType` VIEW
  * instruction with no server-side lookup); this cluster/entityType support
  * remains for `/search` (#192) and any other `registry.search` caller.
  *
@@ -446,7 +446,7 @@ export function textIndexSearch(manifest, query, limit = DEFAULT_SEARCH_LIMIT, f
  * fallback) so any `registry.search`/`/search` (A3) caller gets identical
  * filtering whether or not search artifacts are installed. (Note: the canvas
  * `filter` action no longer calls `registry.search` as of #212 — it's now a
- * pure `cluster`/`layer` VIEW instruction — so this parity is for other
+ * pure `cluster`/`nodeType` VIEW instruction — so this parity is for other
  * `registry.search` callers, not `filter`.) The frozen `/search` HTTP
  * endpoint (#192) does not forward these fields today; this is additive.
  *
@@ -969,7 +969,7 @@ export function createCanvasRegistry({
      * {@link textIndexSearch} over the live manifest when the engine/artifacts
      * are unavailable, so callers get the same graceful degradation the panel
      * gets from its own `/search` call. (Note: as of #212 the canvas `filter`
-     * action is a pure `cluster`/`layer` VIEW instruction and no longer calls
+     * action is a pure `cluster`/`nodeType` VIEW instruction and no longer calls
      * this seam — it remains here as a general registry capability for
      * `/search` and any other consumer that needs artifact-optional search.)
      * @param {{ query: string, limit?: number, cluster?: string, entityType?: string }} params
