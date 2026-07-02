@@ -12,10 +12,14 @@
  * All frozen-contract endpoints are implemented here behind injected seams:
  * `GET /manifest` + `GET /manifest/slice` (A2, #191) via `getManifest`;
  * `POST /search` (A3, #192) via `runSearch`; `GET /events` SSE (A4, #193) via
- * `subscribe`; and `POST /affordance/:name` (A5, #194) via `executeAffordance`
+ * `subscribe`; `POST /affordance/:name` (A5, #194) via `executeAffordance`
  * — the do-seam adapter that routes straight through the affordance registry's
  * fail-closed consent gate, the third delivery surface after extension-tools
- * (#163) and MCP (#197).
+ * (#163) and MCP (#197); and `POST /chat-intent` (A6, #195) via
+ * `sendChatMessage` — turns an iframe click-intent into a real new agent chat
+ * turn on the joined SDK session. By design EVERY intent (read or write)
+ * routes through this seam; there is no direct-execute shortcut, so a
+ * mutating intent can never bypass the agent's own consent gate.
  *
  * All I/O is behind injected seams (`createServer`, `existsSync`, `readFile`,
  * `resolveBuildDir`) so the registry is hermetically testable with a fake server
@@ -192,9 +196,7 @@ export function injectBootConfig(html, config) {
  * @returns {boolean}
  */
 function isNotYet(pathname) {
-  return NOT_YET_ENDPOINTS.some(
-    (base) => pathname === base || pathname.startsWith(`${base}/`),
-  );
+  return NOT_YET_ENDPOINTS.some((base) => pathname === base || pathname.startsWith(`${base}/`));
 }
 
 // ---------------------------------------------------------------------------
@@ -235,10 +237,12 @@ export async function defaultGetManifest({
   generate,
 } = {}) {
   try {
-    const gen = generate || (async () => {
-      const { generateManifest } = await import('../lib/manifest.js');
-      return generateManifest(cwd);
-    });
+    const gen =
+      generate ||
+      (async () => {
+        const { generateManifest } = await import('../lib/manifest.js');
+        return generateManifest(cwd);
+      });
     return await gen();
   } catch (err) {
     for (const candidate of bundledManifestCandidates(cwd)) {
@@ -310,7 +314,10 @@ export function toSemanticResult(r = {}) {
  * @returns {object[]}  SemanticResult-shaped rows.
  */
 export function textIndexSearch(manifest, query, limit = DEFAULT_SEARCH_LIMIT) {
-  const terms = String(query).toLowerCase().split(/[^a-z0-9]+/i).filter(Boolean);
+  const terms = String(query)
+    .toLowerCase()
+    .split(/[^a-z0-9]+/i)
+    .filter(Boolean);
   if (terms.length === 0) return [];
   const authored = manifest?.authoredContent || {};
   const scored = [];
@@ -367,7 +374,7 @@ export function textIndexSearch(manifest, query, limit = DEFAULT_SEARCH_LIMIT) {
  */
 export async function defaultRunSearch(
   { query, limit = DEFAULT_SEARCH_LIMIT, graphRanking } = {},
-  { cwd = process.cwd(), getManifest, loadSearchModule, warn = console.warn } = {},
+  { cwd = process.cwd(), getManifest, loadSearchModule, warn = console.warn } = {}
 ) {
   void graphRanking; // honored implicitly by the engine's ranking; SPA only needs results.
   let driftReason = null;
@@ -404,6 +411,43 @@ export async function defaultRunSearch(
 }
 
 /**
+ * Canonical shape of a manifest node id (kebab-case: lowercase letters,
+ * digits, hyphens — see `docs/canvas-loopback-contract.md` and
+ * `src/commands/scaffold.js`'s `SLUG_RE`). `/chat-intent` enforces this
+ * BEFORE splicing `nodeId` into a canned prompt template, so a crafted
+ * `nodeId` (quotes, newlines, prompt-injection text) can never ride along
+ * into the literal text handed to `sendChatMessage` (#195 rubber-duck review).
+ * @type {RegExp}
+ */
+const CHAT_INTENT_NODE_ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * Canned chat phrasing for the click-intents the template panel is known to
+ * emit (#195 / A6). Used only when the caller doesn't supply an explicit
+ * `prompt` — the iframe is free to send its own caller-authored text instead.
+ * @type {Record<string, (nodeId: string) => string>}
+ */
+const CHAT_INTENT_PROMPTS = Object.freeze({
+  pin: (nodeId) => `Pin "${nodeId}" as the canvas anchor.`,
+  derives: (nodeId) => `What derives from "${nodeId}" in the knowledge graph?`,
+  affected: (nodeId) => `What would be affected by changes to "${nodeId}"?`,
+});
+
+/**
+ * Resolve the literal chat-turn text for a `/chat-intent` request: an explicit
+ * `prompt` always wins; otherwise fall back to a canned phrasing for known
+ * intents. Unknown intents with no `prompt` return `null` — we refuse to
+ * synthesize text for an intent we don't understand.
+ * @param {{ intent: string, nodeId: string, prompt?: string }} params
+ * @returns {string|null}
+ */
+function buildChatIntentPrompt({ intent, nodeId, prompt }) {
+  if (typeof prompt === 'string' && prompt.trim()) return prompt.trim();
+  const template = CHAT_INTENT_PROMPTS[intent];
+  return template ? template(nodeId) : null;
+}
+
+/**
  * Read a request body as a string. Tolerates an injected `req.body` (tests) and
  * a real streaming `IncomingMessage`.
  * @param {object} req
@@ -437,6 +481,11 @@ function readBody(req) {
  * @param {(p: string) => Buffer|string} opts.readFile
  * @param {() => Promise<object>} [opts.getManifest]  A2 manifest seam.
  * @param {(params: object) => Promise<object>} [opts.runSearch]  A3 search seam.
+ * @param {(prompt: string) => Promise<string>} [opts.sendChatMessage]
+ *        A6 (#195) click->chat seam: posts `prompt` as a real new user turn on
+ *        the joined SDK session (mirrors `Session.send`, returning a message
+ *        id). Undefined means no SDK session is joined yet — `/chat-intent`
+ *        fails closed (503) rather than silently no-op-succeeding.
  * @param {string[]} [opts.entryFiles]  Ordered entry candidates (default canvas.html, index.html).
  * @returns {(req, res) => void}
  */
@@ -447,6 +496,7 @@ export function createRequestHandler({
   readFile,
   getManifest,
   runSearch,
+  sendChatMessage,
   subscribe = defaultSubscribe,
   executeAffordance = defaultExecuteAffordance,
   registerCleanup = () => {},
@@ -497,7 +547,10 @@ export function createRequestHandler({
       res.writeHead(200, { 'content-type': MIME['.json'] });
       res.end(JSON.stringify(manifest));
     } catch (err) {
-      sendJson(res, 500, { error: 'manifest generation failed', message: String(err?.message || err) });
+      sendJson(res, 500, {
+        error: 'manifest generation failed',
+        message: String(err?.message || err),
+      });
     }
   };
 
@@ -516,7 +569,10 @@ export function createRequestHandler({
       res.writeHead(200, { 'content-type': MIME['.json'] });
       res.end(JSON.stringify(sliceManifest(manifest, ids)));
     } catch (err) {
-      sendJson(res, 500, { error: 'manifest generation failed', message: String(err?.message || err) });
+      sendJson(res, 500, {
+        error: 'manifest generation failed',
+        message: String(err?.message || err),
+      });
     }
   };
 
@@ -582,9 +638,10 @@ export function createRequestHandler({
     // seam; default is a no-op so the endpoint is live + hermetic today.
     let unsubscribe = () => {};
     try {
-      unsubscribe = subscribe((evt) => {
-        if (evt && typeof evt.event === 'string') writeEvent(evt.event, evt.data);
-      }) || (() => {});
+      unsubscribe =
+        subscribe((evt) => {
+          if (evt && typeof evt.event === 'string') writeEvent(evt.event, evt.data);
+        }) || (() => {});
     } catch {
       /* a failing subscribe must not break the heartbeat stream */
     }
@@ -661,6 +718,70 @@ export function createRequestHandler({
     }
   };
 
+  const serveChatIntent = async (req, res, method) => {
+    if (method !== 'POST') {
+      sendJson(res, 405, { error: 'method not allowed', endpoint: '/chat-intent' });
+      return;
+    }
+    let payload;
+    try {
+      const raw = await readBody(req);
+      payload = raw ? JSON.parse(raw) : {};
+    } catch {
+      sendJson(res, 400, { error: 'invalid json body', endpoint: '/chat-intent' });
+      return;
+    }
+    const intent = typeof payload.intent === 'string' ? payload.intent.trim() : '';
+    const nodeId = typeof payload.nodeId === 'string' ? payload.nodeId.trim() : '';
+    const prompt = typeof payload.prompt === 'string' ? payload.prompt : undefined;
+    if (!intent) {
+      sendJson(res, 400, { error: 'intent required', endpoint: '/chat-intent' });
+      return;
+    }
+    if (!nodeId) {
+      sendJson(res, 400, { error: 'nodeId required', endpoint: '/chat-intent' });
+      return;
+    }
+    if (!CHAT_INTENT_NODE_ID_RE.test(nodeId)) {
+      // Reject BEFORE templating: nodeId gets spliced verbatim into canned
+      // prompt text below, so a malformed/adversarial nodeId (quotes,
+      // newlines, prompt-injection attempts) must never reach that path.
+      sendJson(res, 400, {
+        error: 'invalid nodeId',
+        endpoint: '/chat-intent',
+        message: 'nodeId must be a kebab-case identifier (lowercase letters, digits, hyphens)',
+      });
+      return;
+    }
+    const chatPrompt = buildChatIntentPrompt({ intent, nodeId, prompt });
+    if (!chatPrompt) {
+      sendJson(res, 400, {
+        error: 'prompt required for custom intent',
+        endpoint: '/chat-intent',
+        message: `intent "${intent}" has no built-in phrasing; supply "prompt" explicitly`,
+      });
+      return;
+    }
+    // Fail-closed by construction: EVERY intent — read-only or mutating —
+    // routes through a real agent chat turn. There is no direct-execute path
+    // here, so a mutating click-intent can never bypass the agent's own
+    // consent gate by reaching this endpoint (see docs/canvas-loopback-contract.md).
+    if (typeof sendChatMessage !== 'function') {
+      sendJson(res, 503, {
+        error: 'chat seam unavailable',
+        endpoint: '/chat-intent',
+        message: 'no SDK session is joined; click-to-chat intents cannot be posted right now',
+      });
+      return;
+    }
+    try {
+      const messageId = await sendChatMessage(chatPrompt);
+      sendJson(res, 200, { ok: true, messageId: messageId ?? null });
+    } catch (err) {
+      sendJson(res, 500, { error: 'chat-intent failed', message: String(err?.message || err) });
+    }
+  };
+
   return (req, res) => {
     const method = (req.method || 'GET').toUpperCase();
     const [pathname, rawQuery = ''] = (req.url || '/').split('?');
@@ -683,6 +804,10 @@ export function createRequestHandler({
     }
     if (pathname === '/events') {
       serveEvents(req, res, method);
+      return;
+    }
+    if (pathname === '/chat-intent') {
+      void serveChatIntent(req, res, method);
       return;
     }
     if (pathname === '/affordance' || pathname === '/affordance/') {
@@ -725,6 +850,13 @@ export function createRequestHandler({
  *        A4 `/events` domain-event seam (default {@link defaultSubscribe}, no-op).
  * @param {(name: string, input: object, ctx?: object) => Promise<*>} [deps.executeAffordance]
  *        A5 `/affordance/:name` do-seam entry (default the real registry executor).
+ * @param {(prompt: string) => Promise<string>} [deps.sendChatMessage]
+ *        A6 (#195) `/chat-intent` click->chat seam: posts `prompt` as a new
+ *        real user turn on the joined SDK session (mirrors `Session.send`,
+ *        resolving to a message id). Left undefined by default — production
+ *        wiring binds it once `joinSession()` resolves (see
+ *        `src/extension/index.js`); undefined means `/chat-intent` fails
+ *        closed (503) instead of pretending to have posted a message.
  * @param {number} [deps.heartbeatMs]  SSE keep-alive cadence (default 15000).
  * @param {string[]} [deps.entryFiles]  Ordered entry candidates (default canvas.html, index.html).
  * @returns {{ open: Function, close: Function, get: Function, size: () => number }}
@@ -740,6 +872,7 @@ export function createCanvasRegistry({
   runSearch,
   loadSearchModule,
   subscribe = defaultSubscribe,
+  sendChatMessage,
   executeAffordance = defaultExecuteAffordance,
   heartbeatMs = DEFAULT_HEARTBEAT_MS,
   entryFiles = CANVAS_ENTRY_CANDIDATES,
@@ -797,6 +930,7 @@ export function createCanvasRegistry({
       readFile,
       getManifest: getManifestSeam,
       runSearch: runSearchSeam,
+      sendChatMessage,
       subscribe: (onEvent) => subscribe(instanceId, onEvent),
       executeAffordance,
       registerCleanup,
