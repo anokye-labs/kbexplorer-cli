@@ -143,6 +143,46 @@ Second content.
     }
   });
 
+  it('carries identity and access from frontmatter onto the node (AF-009)', () => {
+    const dir = makeTmpRepo({
+      'content/config.yaml': 'title: "Test"\n',
+      'content/labeled.md': `---
+id: labeled
+title: Labeled
+cluster: default
+identity: "kg://person/jane-doe"
+access: "internal-only"
+connections: []
+---
+Body content.
+`,
+      'content/plain.md': `---
+id: plain
+title: Plain
+cluster: default
+connections: []
+---
+Body content.
+`,
+    });
+
+    try {
+      const graph = buildGraph(dir);
+      const labeled = graph.nodes.find((n) => n.id === 'labeled');
+      assert.ok(labeled);
+      assert.equal(labeled.identity, 'kg://person/jane-doe');
+      assert.equal(labeled.access, 'internal-only');
+
+      // Carry-through only — absent frontmatter fields stay absent, not defaulted.
+      const plain = graph.nodes.find((n) => n.id === 'plain');
+      assert.ok(plain);
+      assert.equal(plain.identity, undefined);
+      assert.equal(plain.access, undefined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('preserves rawContent from markdown body', () => {
     const dir = makeTmpRepo({
       'content/config.yaml': 'title: "Test"\n',

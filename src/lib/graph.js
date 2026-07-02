@@ -138,6 +138,10 @@ export function resolveScanDirs(roots) {
  * @property {string} cluster
  * @property {string|undefined} parent
  * @property {string|undefined} emoji
+ * @property {string|undefined} identity  kg:// identity URN, carried through when present.
+ * @property {string|undefined} access    Access label, carried through when present. Only a
+ *   flat scalar survives today — {@link module:src/lib/frontmatter}'s parser is flat and
+ *   throws on a nested `access:` block (issue #179 tracks nested-object frontmatter support).
  * @property {Array<{to: string, description: string}>} connections
  * @property {string} body
  * @property {string} path     Absolute file path.
@@ -186,6 +190,10 @@ export function loadGraph({ roots, cwd = process.cwd() } = {}) {
         cluster: fm.cluster ?? 'unknown',
         parent: fm.parent || undefined,
         emoji: fm.emoji || undefined,
+        // Carry-through only, no new semantics: whatever the frontmatter parser
+        // handed back for these keys rides onto the node as-is (see #179 above).
+        identity: fm.identity || undefined,
+        access: fm.access || undefined,
         connections: Array.isArray(fm.connections) ? fm.connections : [],
         body: parsed.body ?? '',
         path: file,

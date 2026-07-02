@@ -131,6 +131,12 @@ export function buildGraph(cwd, options = {}) {
       source: { type: 'authored', file: relPath },
       entityType: fm.entityType || fm.entity_type,
       identity: fm.identity,
+      // Carry-through only, no new semantics (AF-009 / kbexplorer-search#13
+      // item 3). Only a flat scalar survives: readContentFile's frontmatter
+      // parser is flat and throws on a nested `access:` block (the page would
+      // be skipped entirely), so a structured access label can't be authored
+      // here yet — tracked in #179 ("needs nested-object parser").
+      access: fm.access,
     };
 
     nodes.push(node);
