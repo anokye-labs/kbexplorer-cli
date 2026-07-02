@@ -127,6 +127,35 @@ export function normalizeAccessLabel(raw) {
 }
 
 /**
+ * Coerce a raw *frontmatter* `access` value into a canonical {@link KBAccessLabel}.
+ *
+ * kbx frontmatter authors access two ways:
+ *   • **scalar shorthand** — `access: restricted` (a bare string). The string is
+ *     the classification tier, so it coerces to `{ classification: 'restricted' }`.
+ *   • **nested block** — `access: { classification, visibility, labels, … }`, an
+ *     already-structured label.
+ *
+ * Both route through {@link normalizeAccessLabel} so the result is the exact
+ * canonical shape core / search / the template gate consume (never a bare
+ * string, which every one of those consumers silently drops as "unlabeled" —
+ * the AF-009 no-op). A blank / garbage value yields `undefined` (= unlabeled).
+ *
+ * TODO(#179): the CLI frontmatter parser (`src/lib/frontmatter.js`) is flat and
+ * rejects a nested `access:` block today (the page would be skipped entirely),
+ * so only the scalar shorthand can actually be authored yet. The object branch
+ * below is already correct for when the parser gains nested-object support;
+ * add an end-to-end nested-`access:` fixture test once #179 lands.
+ *
+ * @param {unknown} raw  The frontmatter `access` value (string | object | absent).
+ * @returns {import('@anokye-labs/kbexplorer-core').KBAccessLabel | undefined}
+ */
+export function coerceAccessLabel(raw) {
+  const scalar = trimmedString(raw);
+  if (scalar) return normalizeAccessLabel({ classification: scalar });
+  return normalizeAccessLabel(raw);
+}
+
+/**
  * A node/edge keeps its OWN access label; only an unlabeled one inherits the
  * fallback. Never overrides a present label, never broadens. Both inputs are
  * normalized; returns a normalized label or `undefined`.

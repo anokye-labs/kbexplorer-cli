@@ -14,6 +14,7 @@ import { resolve, relative, extname } from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
 import { readContentFile, resolveContentDir } from './frontmatter.js';
 import { readConfig } from './manifest.js';
+import { coerceAccessLabel } from './access-label.js';
 
 /**
  * List all .md files recursively under a directory.
@@ -131,12 +132,15 @@ export function buildGraph(cwd, options = {}) {
       source: { type: 'authored', file: relPath },
       entityType: fm.entityType || fm.entity_type,
       identity: fm.identity,
-      // Carry-through only, no new semantics (AF-009 / kbexplorer-search#13
-      // item 3). Only a flat scalar survives: readContentFile's frontmatter
-      // parser is flat and throws on a nested `access:` block (the page would
-      // be skipped entirely), so a structured access label can't be authored
-      // here yet — tracked in #179 ("needs nested-object parser").
-      access: fm.access,
+      // AF-009: normalize `access` into a canonical KBAccessLabel OBJECT
+      // ({classification, …}) here. A bare frontmatter scalar (`access:
+      // restricted`) is what search / core / the template gate silently drop as
+      // "unlabeled" — so search-index's access exclusion never fired for
+      // cli-authored content (the exact no-op AF-009 claimed to fix). The
+      // frontmatter parser is flat and rejects a nested `access:` block today,
+      // so only the scalar shorthand can be authored yet — full nested-object
+      // support is tracked in #179 (see coerceAccessLabel).
+      access: coerceAccessLabel(fm.access),
     };
 
     nodes.push(node);

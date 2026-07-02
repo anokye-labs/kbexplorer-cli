@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const { loadGraph } = await import('../../src/lib/graph.js');
+const { normalizeAccessLabel } = await import('../../src/lib/access-label.js');
 
 /** Build a temp dir with a couple of `.md` nodes (no `content/` subdir, so
  * loadGraph scans the root directly). */
@@ -49,13 +50,16 @@ after(() => {
 });
 
 describe('loadGraph — identity/access carry-through (AF-004 / AF-008)', () => {
-  it('carries identity and access from frontmatter onto the node when present', () => {
+  it('carries identity and normalizes access into a KBAccessLabel object when present', () => {
     dir = makeFixture();
     const graph = loadGraph({ roots: [dir] });
     const node = graph.nodes.get('labeled');
     assert.ok(node, 'labeled node should load');
     assert.equal(node.identity, 'kg://person/jane-doe');
-    assert.equal(node.access, 'internal-only');
+    // AF-009: access is a canonical KBAccessLabel OBJECT, not a bare scalar —
+    // the frontmatter shorthand `access: internal-only` carries the tier as
+    // `classification`. A bare string is silently dropped by every consumer.
+    assert.deepEqual(node.access, { classification: 'internal-only' });
   });
 
   it('leaves identity and access undefined when absent from frontmatter', () => {
@@ -66,10 +70,13 @@ describe('loadGraph — identity/access carry-through (AF-004 / AF-008)', () => 
     assert.equal(node.access, undefined);
   });
 
-  it('does not invent enforcement: access is a plain carried value, not validated', () => {
+  it('does not invent enforcement: access is carried as a canonical object, not validated', () => {
     const graph = loadGraph({ roots: [dir] });
     const node = graph.nodes.get('labeled');
-    // No allowlist of access values — carry-through only.
-    assert.equal(typeof node.access, 'string');
+    // No allowlist of access values — carry-through only — but the shape must
+    // be the object core/search/template consume, and re-normalizing is idempotent.
+    assert.equal(typeof node.access, 'object');
+    assert.deepEqual(normalizeAccessLabel(node.access), node.access);
+    assert.equal(node.access.classification, 'internal-only');
   });
 });

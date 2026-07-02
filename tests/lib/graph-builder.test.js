@@ -5,8 +5,26 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { buildGraph } from '../../src/lib/graph-builder.js';
+import { normalizeAccessLabel } from '../../src/lib/access-label.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Mirror of @anokye-labs/kbexplorer-search's default-SAFE index-build predicate
+// (its README "Access labels": a node is EXCLUDED from the index when its
+// access label's classification is confidential/restricted/unknown, or its
+// visibility is private). Search reads `label.classification` — a bare *string*
+// carries none, so the pre-AF-009-fix carry (`access: fm.access`) silently
+// indexed restricted content. We can't import the search module in the CLI test
+// env (it ships no dist here), so this local predicate proves the label is now
+// actionable. Keep in sync with the search README if that contract changes.
+const EXCLUDED_CLASSIFICATIONS = new Set(['confidential', 'restricted', 'unknown']);
+function isExcludedByAccess(rawAccess) {
+  const label = normalizeAccessLabel(rawAccess);
+  if (!label) return false;
+  if (label.classification && EXCLUDED_CLASSIFICATIONS.has(label.classification)) return true;
+  if (label.visibility === 'private') return true;
+  return false;
+}
 
 function makeTmpRepo(files) {
   const dir = mkdtempSync(resolve(tmpdir(), 'kbgraph-'));
@@ -171,13 +189,61 @@ Body content.
       const labeled = graph.nodes.find((n) => n.id === 'labeled');
       assert.ok(labeled);
       assert.equal(labeled.identity, 'kg://person/jane-doe');
-      assert.equal(labeled.access, 'internal-only');
+      // AF-009: `access` is normalized to a canonical KBAccessLabel object, not
+      // carried as a bare scalar (which search/core/template drop as unlabeled).
+      assert.deepEqual(labeled.access, { classification: 'internal-only' });
 
       // Carry-through only — absent frontmatter fields stay absent, not defaulted.
       const plain = graph.nodes.find((n) => n.id === 'plain');
       assert.ok(plain);
       assert.equal(plain.identity, undefined);
       assert.equal(plain.access, undefined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('carries a restricted access label as an object search actually excludes (AF-009 no-op regression)', () => {
+    const dir = makeTmpRepo({
+      'content/config.yaml': 'title: "Test"\n',
+      'content/secret.md': `---
+id: secret
+title: Secret
+cluster: default
+access: restricted
+connections: []
+---
+Sensitive content that must never reach the search index.
+`,
+      'content/open.md': `---
+id: open
+title: Open
+cluster: default
+access: public
+connections: []
+---
+Public content that stays indexed.
+`,
+    });
+
+    try {
+      const graph = buildGraph(dir);
+      const secret = graph.nodes.find((n) => n.id === 'secret');
+      const open = graph.nodes.find((n) => n.id === 'open');
+      assert.ok(secret && open);
+
+      // Canonical KBAccessLabel object — NOT the bare string `'restricted'` that
+      // the pre-fix carry produced (and that normalizeAccessLabel drops to
+      // undefined = "unlabeled = public", the silent AF-009 no-op).
+      assert.deepEqual(secret.access, { classification: 'restricted' });
+      assert.equal(normalizeAccessLabel(secret.access)?.classification, 'restricted');
+
+      // The label is actionable end-to-end: search's default-SAFE predicate now
+      // EXCLUDES the restricted node (the test class the no-op evaded) while the
+      // public node stays indexed. Under the old bare-string carry,
+      // isExcludedByAccess('restricted') === false — exclusion never fired.
+      assert.equal(isExcludedByAccess(secret.access), true);
+      assert.equal(isExcludedByAccess(open.access), false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

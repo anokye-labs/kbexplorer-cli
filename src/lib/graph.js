@@ -21,6 +21,7 @@ import { resolve, relative, sep, isAbsolute } from 'node:path';
 import { existsSync, readFileSync, readdirSync, statSync, realpathSync } from 'node:fs';
 import { parseFrontmatter } from './frontmatter.js';
 import { resolveContentDir } from './frontmatter.js';
+import { coerceAccessLabel } from './access-label.js';
 
 /** Recursively list `.md` files under a directory (absolute paths). */
 function listMarkdownFiles(dir) {
@@ -190,10 +191,14 @@ export function loadGraph({ roots, cwd = process.cwd() } = {}) {
         cluster: fm.cluster ?? 'unknown',
         parent: fm.parent || undefined,
         emoji: fm.emoji || undefined,
-        // Carry-through only, no new semantics: whatever the frontmatter parser
-        // handed back for these keys rides onto the node as-is (see #179 above).
+        // `identity` is a plain scalar pointer, carried as-is. `access` MUST be
+        // a canonical KBAccessLabel object — a bare scalar is silently dropped
+        // as "unlabeled" by every consumer (AF-009). coerceAccessLabel turns
+        // the flat scalar shorthand (`access: restricted`) into
+        // `{ classification: 'restricted' }`; nested blocks await the flat
+        // parser's #179 nested-object support.
         identity: fm.identity || undefined,
-        access: fm.access || undefined,
+        access: coerceAccessLabel(fm.access),
         connections: Array.isArray(fm.connections) ? fm.connections : [],
         body: parsed.body ?? '',
         path: file,
