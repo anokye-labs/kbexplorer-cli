@@ -12,10 +12,12 @@
  * All frozen-contract endpoints are implemented here behind injected seams:
  * `GET /manifest` + `GET /manifest/slice` (A2, #191) via `getManifest`;
  * `POST /search` (A3, #192) via `runSearch`; `GET /events` SSE (A4, #193) via
- * `subscribe`; and `POST /affordance/:name` (A5, #194) via `executeAffordance`
- * — the do-seam adapter that routes straight through the affordance registry's
- * fail-closed consent gate, the third delivery surface after extension-tools
- * (#163) and MCP (#197).
+ * `subscribe` (a real per-instance {@link createEventBus} by default, so the
+ * canvas actions declared in `src/extension/canvas.js` (#194) can push live
+ * SSE frames through `registry.emit`); and `POST /affordance/:name` (A5, #194)
+ * via `executeAffordance` — the do-seam adapter that routes straight through
+ * the affordance registry's fail-closed consent gate, the third delivery
+ * surface after extension-tools (#163) and MCP (#197).
  *
  * All I/O is behind injected seams (`createServer`, `existsSync`, `readFile`,
  * `resolveBuildDir`) so the registry is hermetically testable with a fake server
@@ -58,11 +60,10 @@ export const SSE_EVENTS = Object.freeze({
 });
 
 /**
- * Default `/events` subscription seam — a no-op (heartbeat-only) emitter. The
- * endpoint stays live and keeps the connection warm via the handler's heartbeat;
- * real domain triggers (file-watch / regenerate → `graph-updated`, canvas action
- * → `anchor`) are a deliberate A-follow-up. Kept injectable so those triggers can
- * land without touching the request handler, and so tests stay hermetic.
+ * Default `/events` subscription seam — a no-op (heartbeat-only) emitter.
+ * Kept exported so `createRequestHandler` callers can opt back into a truly
+ * inert seam in hermetic tests. `createCanvasRegistry`'s real default is now
+ * {@link createEventBus} (see below), not this no-op.
  *
  * @param {string} _instanceId  Canvas instance the subscription belongs to.
  * @param {(evt: { event: string, data: object }) => void} _onEvent  Frame sink.
@@ -70,6 +71,64 @@ export const SSE_EVENTS = Object.freeze({
  */
 export function defaultSubscribe(_instanceId, _onEvent) {
   return () => {};
+}
+
+/**
+ * Create a real, per-canvas-instance domain-event bus: the emit side of the
+ * `/events` (A4) SSE seam. This is what turns a canvas **action** (#194 —
+ * anchor/expand/trace/filter) into a live SSE frame on that instance's
+ * subscribed iframe, replacing the no-op {@link defaultSubscribe} the
+ * registry used to default to.
+ *
+ * `subscribe(instanceId, onEvent)` is the shape `createRequestHandler`'s
+ * `/events` route expects (see `serveEvents`); `emit(instanceId, event, data)`
+ * is the new seam action handlers call. Listeners are scoped per
+ * `instanceId` — an emit for one panel never reaches another panel's stream —
+ * and a throwing listener never breaks its siblings or the emit call itself.
+ *
+ * @returns {{
+ *   subscribe: (instanceId: string, onEvent: (evt: {event: string, data: object}) => void) => (() => void),
+ *   emit: (instanceId: string, event: string, data?: object) => boolean,
+ * }}
+ */
+export function createEventBus() {
+  /** @type {Map<string, Set<(evt: {event: string, data: object}) => void>>} */
+  const listeners = new Map();
+
+  function subscribe(instanceId, onEvent) {
+    let set = listeners.get(instanceId);
+    if (!set) {
+      set = new Set();
+      listeners.set(instanceId, set);
+    }
+    set.add(onEvent);
+    return () => {
+      set.delete(onEvent);
+      if (set.size === 0) listeners.delete(instanceId);
+    };
+  }
+
+  /**
+   * Push a domain event to every listener currently subscribed for
+   * `instanceId` (i.e. every open `/events` SSE stream for that panel).
+   * @returns {boolean} Whether any listener received the event.
+   */
+  function emit(instanceId, event, data) {
+    const set = listeners.get(instanceId);
+    if (!set || set.size === 0) return false;
+    let delivered = false;
+    for (const onEvent of [...set]) {
+      try {
+        onEvent({ event, data });
+        delivered = true;
+      } catch {
+        /* a failing listener must not break its siblings or the emit call */
+      }
+    }
+    return delivered;
+  }
+
+  return { subscribe, emit };
 }
 
 /** How many search results the SPA (useSemanticSearch) asks for by default. */
@@ -192,9 +251,7 @@ export function injectBootConfig(html, config) {
  * @returns {boolean}
  */
 function isNotYet(pathname) {
-  return NOT_YET_ENDPOINTS.some(
-    (base) => pathname === base || pathname.startsWith(`${base}/`),
-  );
+  return NOT_YET_ENDPOINTS.some((base) => pathname === base || pathname.startsWith(`${base}/`));
 }
 
 // ---------------------------------------------------------------------------
@@ -235,10 +292,12 @@ export async function defaultGetManifest({
   generate,
 } = {}) {
   try {
-    const gen = generate || (async () => {
-      const { generateManifest } = await import('../lib/manifest.js');
-      return generateManifest(cwd);
-    });
+    const gen =
+      generate ||
+      (async () => {
+        const { generateManifest } = await import('../lib/manifest.js');
+        return generateManifest(cwd);
+      });
     return await gen();
   } catch (err) {
     for (const candidate of bundledManifestCandidates(cwd)) {
@@ -304,13 +363,23 @@ export function toSemanticResult(r = {}) {
  * content — the fallback when `.search/*` artifacts are absent/unusable.
  * Scores by query-term frequency across title + body; normalizes to 0..1.
  *
+ * `cluster`/`entityType` are applied as exact-match post-filters so this
+ * fallback stays at parity with the engine-backed path for the canvas
+ * `filter` action (#194) — the frozen `/search` HTTP endpoint (#192) does not
+ * forward these fields today and is unaffected by this addition.
+ *
  * @param {object} manifest
  * @param {string} query
  * @param {number} limit
+ * @param {{ cluster?: string, entityType?: string }} [filters]
  * @returns {object[]}  SemanticResult-shaped rows.
  */
-export function textIndexSearch(manifest, query, limit = DEFAULT_SEARCH_LIMIT) {
-  const terms = String(query).toLowerCase().split(/[^a-z0-9]+/i).filter(Boolean);
+export function textIndexSearch(manifest, query, limit = DEFAULT_SEARCH_LIMIT, filters = {}) {
+  const { cluster, entityType } = filters;
+  const terms = String(query)
+    .toLowerCase()
+    .split(/[^a-z0-9]+/i)
+    .filter(Boolean);
   if (terms.length === 0) return [];
   const authored = manifest?.authoredContent || {};
   const scored = [];
@@ -318,6 +387,10 @@ export function textIndexSearch(manifest, query, limit = DEFAULT_SEARCH_LIMIT) {
     const parsed = parseFrontmatter(String(raw));
     const fm = parsed.ok ? parsed.frontmatter || {} : {};
     const body = (parsed.ok ? parsed.body : String(raw)) || '';
+    const rowCluster = fm.cluster ?? '';
+    const rowEntityType = fm.entityType ?? fm.type ?? undefined;
+    if (cluster && rowCluster !== cluster) continue;
+    if (entityType && rowEntityType !== entityType) continue;
     const title = fm.title || path;
     const hayTitle = String(title).toLowerCase();
     const hayBody = body.toLowerCase();
@@ -333,13 +406,13 @@ export function textIndexSearch(manifest, query, limit = DEFAULT_SEARCH_LIMIT) {
     scored.push({
       nodeId: fm.id ?? path,
       title,
-      cluster: fm.cluster ?? '',
+      cluster: rowCluster,
       _hits: hits,
       snippet: snippetSource.slice(0, 200),
       chunkIndex: 0,
       path,
       parentId: fm.parent ?? undefined,
-      entityType: fm.entityType ?? fm.type ?? undefined,
+      entityType: rowEntityType,
       connections: Array.isArray(fm.connections)
         ? fm.connections.map((c) => (typeof c === 'string' ? c : c?.to)).filter(Boolean)
         : [],
@@ -357,7 +430,13 @@ export function textIndexSearch(manifest, query, limit = DEFAULT_SEARCH_LIMIT) {
  * (module missing, artifacts absent, embedding/network error) falls back to the
  * client text index over the live manifest and attaches a `drift` warning.
  *
- * @param {{ query: string, limit?: number, graphRanking?: boolean }} params
+ * `cluster`/`entityType` are honored on both paths (engine query + text-index
+ * fallback) so callers — notably the canvas `filter` action (#194) via
+ * {@link createCanvasRegistry}'s `registry.search` — get identical filtering
+ * whether or not search artifacts are installed. The frozen `/search` HTTP
+ * endpoint (#192) does not forward these fields today; this is additive.
+ *
+ * @param {{ query: string, limit?: number, graphRanking?: boolean, cluster?: string, entityType?: string }} params
  * @param {object} deps
  * @param {string} deps.cwd
  * @param {() => Promise<object>} deps.getManifest
@@ -366,8 +445,8 @@ export function textIndexSearch(manifest, query, limit = DEFAULT_SEARCH_LIMIT) {
  * @returns {Promise<{ results: object[], suggestions: object[], drift?: object }>}
  */
 export async function defaultRunSearch(
-  { query, limit = DEFAULT_SEARCH_LIMIT, graphRanking } = {},
-  { cwd = process.cwd(), getManifest, loadSearchModule, warn = console.warn } = {},
+  { query, limit = DEFAULT_SEARCH_LIMIT, graphRanking, cluster, entityType } = {},
+  { cwd = process.cwd(), getManifest, loadSearchModule, warn = console.warn } = {}
 ) {
   void graphRanking; // honored implicitly by the engine's ranking; SPA only needs results.
   let driftReason = null;
@@ -386,7 +465,7 @@ export async function defaultRunSearch(
         dimensions: artifact.meta?.dimensions,
       });
       const engine = createSearchEngine(artifact, provider);
-      const results = await engine.search(query, { limit });
+      const results = await engine.search(query, { limit, cluster, entityType });
       return { results: results.map(toSemanticResult), suggestions: [] };
     }
   } catch (err) {
@@ -395,7 +474,7 @@ export async function defaultRunSearch(
 
   if (driftReason) warn(`⚠ ${driftReason}`);
   const manifest = await getManifest();
-  const results = textIndexSearch(manifest, query, limit);
+  const results = textIndexSearch(manifest, query, limit, { cluster, entityType });
   return {
     results,
     suggestions: [],
@@ -497,7 +576,10 @@ export function createRequestHandler({
       res.writeHead(200, { 'content-type': MIME['.json'] });
       res.end(JSON.stringify(manifest));
     } catch (err) {
-      sendJson(res, 500, { error: 'manifest generation failed', message: String(err?.message || err) });
+      sendJson(res, 500, {
+        error: 'manifest generation failed',
+        message: String(err?.message || err),
+      });
     }
   };
 
@@ -516,7 +598,10 @@ export function createRequestHandler({
       res.writeHead(200, { 'content-type': MIME['.json'] });
       res.end(JSON.stringify(sliceManifest(manifest, ids)));
     } catch (err) {
-      sendJson(res, 500, { error: 'manifest generation failed', message: String(err?.message || err) });
+      sendJson(res, 500, {
+        error: 'manifest generation failed',
+        message: String(err?.message || err),
+      });
     }
   };
 
@@ -582,9 +667,10 @@ export function createRequestHandler({
     // seam; default is a no-op so the endpoint is live + hermetic today.
     let unsubscribe = () => {};
     try {
-      unsubscribe = subscribe((evt) => {
-        if (evt && typeof evt.event === 'string') writeEvent(evt.event, evt.data);
-      }) || (() => {});
+      unsubscribe =
+        subscribe((evt) => {
+          if (evt && typeof evt.event === 'string') writeEvent(evt.event, evt.data);
+        }) || (() => {});
     } catch {
       /* a failing subscribe must not break the heartbeat stream */
     }
@@ -722,12 +808,15 @@ export function createRequestHandler({
  * @param {(params: object, ctx: object) => Promise<object>} [deps.runSearch]  A3 search seam.
  * @param {() => Promise<object>} [deps.loadSearchModule]  Search-engine module seam.
  * @param {(instanceId: string, onEvent: Function) => (() => void)} [deps.subscribe]
- *        A4 `/events` domain-event seam (default {@link defaultSubscribe}, no-op).
+ *        A4 `/events` domain-event seam. Defaults to a real {@link createEventBus}
+ *        (per-instance, not a no-op) so canvas actions (#194) can push live SSE
+ *        frames via the registry's `emit`. Inject a custom seam (or
+ *        {@link defaultSubscribe}) to keep a test hermetic.
  * @param {(name: string, input: object, ctx?: object) => Promise<*>} [deps.executeAffordance]
  *        A5 `/affordance/:name` do-seam entry (default the real registry executor).
  * @param {number} [deps.heartbeatMs]  SSE keep-alive cadence (default 15000).
  * @param {string[]} [deps.entryFiles]  Ordered entry candidates (default canvas.html, index.html).
- * @returns {{ open: Function, close: Function, get: Function, size: () => number }}
+ * @returns {{ open: Function, close: Function, get: Function, size: () => number, emit: (instanceId: string, event: string, data?: object) => boolean, search: (params: object) => Promise<object> }}
  */
 export function createCanvasRegistry({
   createServer = nodeCreateServer,
@@ -739,7 +828,8 @@ export function createCanvasRegistry({
   getManifest,
   runSearch,
   loadSearchModule,
-  subscribe = defaultSubscribe,
+  eventBus = createEventBus(),
+  subscribe = eventBus.subscribe,
   executeAffordance = defaultExecuteAffordance,
   heartbeatMs = DEFAULT_HEARTBEAT_MS,
   entryFiles = CANVAS_ENTRY_CANDIDATES,
@@ -847,5 +937,29 @@ export function createCanvasRegistry({
     close,
     get: (instanceId) => instances.get(instanceId),
     size: () => instances.size,
+    /**
+     * Push a domain event to instance `instanceId`'s subscribed `/events` SSE
+     * stream(s). Drives the default {@link createEventBus}; a registry opened
+     * with a custom `subscribe` seam that isn't the bus won't receive these
+     * (documented seam-consistency caveat for hermetic tests).
+     * @param {string} instanceId
+     * @param {string} event
+     * @param {object} [data]
+     * @returns {boolean} Whether any live stream received the event.
+     */
+    emit: (instanceId, event, data) => eventBus.emit(instanceId, event, data),
+    /**
+     * The exact search seam the `/search` HTTP endpoint uses (A3, #192):
+     * prefers `@anokye-labs/kbexplorer-search` over checked-in `.search/*`
+     * artifacts, and — critically — falls back to the dependency-free
+     * {@link textIndexSearch} over the live manifest when the engine/artifacts
+     * are unavailable, so callers get the same graceful degradation the panel
+     * gets from its own `/search` call. Exposed so the canvas `filter` action
+     * (#194) has true parity instead of hard-requiring search artifacts via
+     * the `search` affordance.
+     * @param {{ query: string, limit?: number, cluster?: string, entityType?: string }} params
+     * @returns {Promise<{ results: object[], suggestions: object[], drift?: object }>}
+     */
+    search: (params) => runSearchSeam(params),
   };
 }

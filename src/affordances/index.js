@@ -5,7 +5,7 @@
  * layer (PE3-F2) into a single contract surface that both delivery adapters bind
  * to:
  *
- *   search · query_node · graph_neighbors · affected · audit · llm_context · derive
+ *   search · query_node · graph_neighbors · trace · affected · audit · llm_context · derive
  *   start_generate · get_job_status · cancel_job · preview_changes · apply_changes · create_pr
  *
  * The job operations are ordinary affordances classified with the same
@@ -58,6 +58,7 @@ import {
 import search from './operations/search.js';
 import queryNode from './operations/query-node.js';
 import graphNeighbors from './operations/graph-neighbors.js';
+import trace from './operations/trace.js';
 import affected from './operations/affected.js';
 import audit from './operations/audit.js';
 import llmContext from './operations/llm-context.js';
@@ -79,6 +80,7 @@ const AFFORDANCE_LIST = Object.freeze([
   search,
   queryNode,
   graphNeighbors,
+  trace,
   affected,
   audit,
   llmContext,

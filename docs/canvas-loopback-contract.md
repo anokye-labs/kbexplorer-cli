@@ -77,15 +77,75 @@ remains stubbed today.
 emitted periodically to keep the connection warm. Domain events follow the frozen
 names:
 
-- `graph-updated` → `data: { "nodes": [ … ] }` — content/graph mutated; the SPA
-  re-fetches the affected manifest slice and re-renders.
+- `graph-updated` → `data: { "nodes": [ … ] | null, ... }` — content/graph
+  mutated or the visible node set changed; the SPA re-fetches the affected
+  manifest slice and re-renders. The base payload is `{ "nodes": [...] }`; the
+  canvas **actions** below (#194) additionally set a `"reason"` field
+  (`"expand" | "trace" | "filter"`) plus action-specific fields — see
+  [Canvas actions](#canvas-actions-agent-invocable-194) for the exact shape
+  each action emits. `"nodes"` is `null` only for a `filter` with no `query`
+  (see below).
 - `anchor` → `data: { "nodeId": "…" }` — focus/anchor the SPA on a node.
 
 Domain events are delivered through an injected `subscribe(instanceId, onEvent)`
-seam. The default seam is a no-op (heartbeat-only): the endpoint is live and
-hermetic today, and real triggers (file-watch / regenerate → `graph-updated`;
-canvas action → `anchor`) are a deliberate follow-up. A template-side SSE
-consumer (`EmbeddableApp` / `useKnowledgeBase`) is likewise a follow-up.
+seam. `createCanvasRegistry`'s real default (as of #194) is
+`createEventBus()` — a per-`instanceId` pub/sub — **not** a no-op: any live
+`/events` stream for an instance receives every event the registry's
+`emit(instanceId, event, data)` pushes for that same instance, and only that
+instance (an emit for one panel never reaches another panel's stream). The
+old heartbeat-only no-op (`defaultSubscribe`) is still exported for hermetic
+tests that want a truly inert seam, but it is no longer what a real
+`open()`'d registry uses. The trigger side is now real too: every canvas
+**action** below pushes its event through this same bus after its affordance
+call succeeds. A template-side SSE consumer (`EmbeddableApp` /
+`useKnowledgeBase`) remains a template-side follow-up.
+
+### Canvas actions (agent-invocable, #194)
+
+The canvas declares an `actions[]` array (Copilot canvas SDK shape —
+`{ name, description, inputSchema, handler }`) so the **agent** can drive the
+graph the iframe renders, via `invoke_canvas_action`. This is the second half
+of the do-seam: `/affordance/:name` (A5) lets the **iframe** call an
+affordance over HTTP; `actions[]` lets the **agent** call one through the SDK.
+`anchor`/`expand`/`trace` route through the same `executeAffordance` core
+(`src/affordances/index.js`) the iframe do-seam uses, so consent/provenance
+are identical either way. `filter`'s query mode instead calls
+`registry.search(params)` — the exact seam the `/search` HTTP endpoint (A3)
+uses, including its dependency-free text-index fallback — rather than the
+raw `search` affordance, which hard-throws `UNSUPPORTED`/`MISSING_ARTIFACT`
+when no `@anokye-labs/kbexplorer-search` engine or `.search/` artifacts are
+installed; this keeps `filter` usable in a stock checkout. Every action, on
+success, pushes the resulting domain event through
+`registry.emit(instanceId, event, data)` — the real bus described above — so
+the panel that requested the action (or any other panel subscribed to the
+same `instanceId`) updates live over `/events`. `instanceId` is resolved from
+the SDK's action-invoke context (`ctx.instanceId`).
+
+| Action | Input schema | Delegates to | Emits |
+|---|---|---|---|
+| `anchor` | `{ nodeId: string }` (required) | `query_node { id: nodeId }` (existence check) | `anchor { nodeId }` |
+| `expand` | `{ nodeId: string, depth?: number }` (`nodeId` required; `depth` clamped 1–4, default 1) | `graph_neighbors { id: nodeId, depth }` | `graph-updated { nodes: [nodeId, ...neighborIds], reason: "expand", focus: nodeId }` |
+| `trace` | `{ fromId?: string, toId?: string, nodeId?: string }` (one of `fromId`/`nodeId` required; `nodeId` is an alias for `fromId` when `toId` is omitted) | `trace { fromId, toId }` (shortest path, or 1-hop neighbours when `toId` is omitted) | `graph-updated { nodes: path, reason: "trace", path, connected }` |
+| `filter` | `{ query?: string, cluster?: string, nodeType?: string }` (all optional) | `registry.search { query, cluster, entityType: nodeType }` **only when `query` is given** — engine-backed when `.search/*` artifacts exist, else the dependency-free text index | `graph-updated { reason: "filter", filter: { query, cluster, nodeType }, nodes }` — `nodes` is the matched id array when `query` was given, else `null` |
+
+**Honesty note on `filter`:** the `query` path works in a stock checkout —
+`registry.search` degrades gracefully to a dependency-free text index over
+the live manifest (same fallback `/search` uses) when no search engine or
+`.search/*` artifacts are installed, and both paths honor `cluster`/`nodeType`
+as exact-match filters. When only `cluster`/`nodeType` are given (no
+`query`), the action still validates and emits — so the panel gets a live
+`graph-updated` frame to react to — but `nodes` is `null` and the SPA is
+expected to apply the cluster/nodeType predicate client-side against the
+manifest it already has; there is currently no affordance/seam that filters
+purely by cluster/entity type server-side with no query term. This is a
+documented, intentional partial capability, not an oversight.
+
+Action names deliberately avoid the SDK-reserved `canvas.` prefix (lifecycle
+verbs). Handlers throw a plain `TypeError` for a missing required input field
+(e.g. `anchor` with no `nodeId`) before calling any affordance; affordance-level
+errors (`NOT_FOUND`, `INVALID_INPUT`, consent-denied, …) propagate as-is —
+the SDK surfaces the thrown error as the action's failure, no envelope is
+imposed here.
 
 ### `/affordance/:name` (A5) — the do-seam adapter
 
@@ -108,3 +168,6 @@ success → `200 { "ok": true, "result": … }`.
 - **Boot config is injected server-side**, not shipped in the static build, so
   the origin-relative `searchServiceUrl` and `anchorNodeId` are always correct.
 - **Teardown on close** — closing the canvas closes its server and frees the port.
+- **Emit is instance-scoped** — `registry.emit(instanceId, event, data)` (and
+  therefore every canvas action) only reaches `/events` streams open for that
+  same `instanceId`; it never leaks to another panel.

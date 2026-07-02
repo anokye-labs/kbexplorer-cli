@@ -84,6 +84,50 @@ describe('operation: graph_neighbors', () => {
   });
 });
 
+describe('operation: trace', () => {
+  it('traces the shortest path between two connected nodes', async () => {
+    const r = await executeAffordance('trace', { fromId: 'home', toId: 'child' }, ctx);
+    assert.equal(r.connected, true);
+    assert.deepEqual(r.path, ['home', 'child']);
+    assert.equal(r.nodes.length, 2);
+  });
+
+  it('reports connected: false with an empty path for unreachable nodes', async () => {
+    const r = await executeAffordance('trace', { fromId: 'home', toId: 'lonely' }, ctx);
+    assert.equal(r.connected, false);
+    assert.deepEqual(r.path, []);
+    assert.deepEqual(r.nodes, []);
+  });
+
+  it('returns 1-hop neighbours when only fromId/nodeId is given', async () => {
+    const r = await executeAffordance('trace', { nodeId: 'home' }, ctx);
+    assert.equal(r.toId, null);
+    assert.equal(r.connected, true);
+    assert.ok(r.path.includes('child'));
+  });
+
+  it('throws NOT_FOUND for an unknown fromId', async () => {
+    await assert.rejects(
+      () => executeAffordance('trace', { fromId: 'nope', toId: 'home' }, ctx),
+      (e) => e.code === ERROR_CODES.NOT_FOUND
+    );
+  });
+
+  it('throws NOT_FOUND for an unknown toId', async () => {
+    await assert.rejects(
+      () => executeAffordance('trace', { fromId: 'home', toId: 'nope' }, ctx),
+      (e) => e.code === ERROR_CODES.NOT_FOUND
+    );
+  });
+
+  it('throws INVALID_INPUT when neither fromId nor nodeId is given', async () => {
+    await assert.rejects(
+      () => executeAffordance('trace', { toId: 'home' }, ctx),
+      (e) => e.code === ERROR_CODES.INVALID_INPUT
+    );
+  });
+});
+
 describe('operation: llm_context', () => {
   it('assembles a grounded bundle + citations without calling a model', async () => {
     const r = await executeAffordance(
