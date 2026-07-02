@@ -97,21 +97,14 @@ export default async function search(args = []) {
   const cwd = process.cwd();
   const artifactDir = resolve(cwd, opts.dir || DEFAULT_ARTIFACT_DIR);
 
-  // Lazy-import kbx-search
+  // Lazy-import kbx-search to avoid a hard dependency at CLI load time.
   let searchMod;
   try {
     searchMod = await import('@anokye-labs/kbexplorer-search');
   } catch {
-    try {
-      const { resolve: r } = await import('node:path');
-      const { fileURLToPath } = await import('node:url');
-      const devPath = r(fileURLToPath(import.meta.url), '..', '..', '..', '..', 'kbx-search', 'dist', 'index.js');
-      searchMod = await import(devPath);
-    } catch {
-      console.error('✗ @anokye-labs/kbexplorer-search is not installed.');
-      console.error('  Run: npm install @anokye-labs/kbexplorer-search');
-      process.exit(1);
-    }
+    console.error('✗ @anokye-labs/kbexplorer-search is not installed.');
+    console.error('  Run: npm install @anokye-labs/kbexplorer-search');
+    process.exit(1);
   }
 
   const { readArtifacts, createSearchEngine, getProvider } = searchMod;

@@ -96,23 +96,14 @@ export default async function searchIndex(args = []) {
     process.exit(1);
   }
 
-  // Lazy-import kbx-search to avoid hard dependency at CLI load time.
-  // Falls back to a local path if the package isn't installed.
+  // Lazy-import kbx-search to avoid a hard dependency at CLI load time.
   let search;
   try {
     search = await import('@anokye-labs/kbexplorer-search');
   } catch {
-    // Development fallback: try relative path to sibling repo
-    try {
-      const { resolve: r } = await import('node:path');
-      const { fileURLToPath } = await import('node:url');
-      const devPath = r(fileURLToPath(import.meta.url), '..', '..', '..', '..', 'kbx-search', 'dist', 'index.js');
-      search = await import(devPath);
-    } catch {
-      console.error('✗ @anokye-labs/kbexplorer-search is not installed.');
-      console.error('  Run: npm install @anokye-labs/kbexplorer-search');
-      process.exit(1);
-    }
+    console.error('✗ @anokye-labs/kbexplorer-search is not installed.');
+    console.error('  Run: npm install @anokye-labs/kbexplorer-search');
+    process.exit(1);
   }
 
   const { extractSearchUnits, computeContentHash, readArtifacts, writeArtifacts, checkDrift, generateEmbeddings, getProvider } = search;
