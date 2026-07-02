@@ -2,7 +2,7 @@
 
 ## Running the Site Locally
 
-This repo (`@anokye-labs/kbexplorer`) is the **CLI**, not the visual explorer app. The explorer is the separate `anokye-labs/kbexplorer-template` repo, which the CLI installs into `.kbx/`. Because of this, `kbx dev` only works once `.kbx/` exists — otherwise it exits with ``✗ kbx not found. Run `kbx init` first.``
+This repo (`@anokye-labs/kbx`) is the **CLI**, not the visual explorer app. The explorer is the separate `anokye-labs/kbexplorer-template` repo, which the CLI installs into `.kbx/`. Because of this, `kbx dev` only works once `.kbx/` exists — otherwise it exits with ``✗ kbx not found. Run `kbx init` first.``
 
 Requirements: Node >= 22 and network access (the one-time setup clones the template repo).
 
@@ -21,7 +21,7 @@ npx kbx dev
 
 **About step 3 (`dev`):** it regenerates the manifest from local `content/`, the file tree, the README, and best-effort `gh` issues/PRs/commits, then starts Vite with `VITE_KB_LOCAL=true` and `--open`. The authored content in `content/` is what renders.
 
-**How it works / why:** `dev` requires `.kbx/` because this repo isn't the template itself (its `package.json` name is `@anokye-labs/kbexplorer`, not `kbx`/`kbexplorer-template`). If you hit ``kbx not found. Run `kbx init` first``, run the init step above.
+**How it works / why:** `dev` requires `.kbx/` because this repo isn't the template itself (its `package.json` name is `@anokye-labs/kbx`, not `kbx`/`kbexplorer-template`). If you hit ``kbx not found. Run `kbx init` first``, run the init step above.
 
 - **Production build:** `npx kbx build` (outputs to `dist/kb/`).
 - **Headless verification:** with the dev server running, `node scripts/verify-self-kb.js` drives a headless browser and writes screenshots to `dist-screenshots/`.

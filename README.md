@@ -6,10 +6,10 @@ CLI tool for the [kbexplorer-template](https://github.com/anokye-labs/kbexplorer
 
 ```bash
 # Use directly
-npx @anokye-labs/kbexplorer init
+npx @anokye-labs/kbx init
 
 # Or install as dev dependency
-npm install -D @anokye-labs/kbexplorer
+npm install -D @anokye-labs/kbx
 ```
 
 ## Commands
