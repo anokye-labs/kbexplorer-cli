@@ -32,10 +32,9 @@ jobs:
 
       - run: npm ci
 
-      # OIDC trusted publishing is used automatically when configured on npmjs.com.
-      # For the initial publish before trusted publishing is set up, add an
-      # NPM_TOKEN secret to the repo (Settings → Secrets → Actions).
-      # Once trusted publishing is configured, remove the NPM_TOKEN secret.
+      # OIDC trusted publishing (npmjs.com) is the auth path for this workflow.
+      # No NODE_AUTH_TOKEN env var is set: an always-present-but-empty token
+      # risks the npm CLI treating auth as attempted-and-failed instead of
+      # falling through to OIDC. If trusted publishing isn't registered yet,
+      # this step fails with ENEEDAUTH until it is (see npm docs for setup).
       - run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
