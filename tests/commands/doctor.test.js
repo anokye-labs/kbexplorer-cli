@@ -13,7 +13,7 @@ import { join } from 'node:path';
 
 const doctorMod = await import('../../src/commands/doctor.js');
 const doctor = doctorMod.default;
-const { checkRuntime, checkMcp, checkTemplate, checkAdoption, checkEnvironment } = doctorMod;
+const { checkRuntime, checkMcp, checkTemplate, checkAdoption, checkSources, checkEnvironment } = doctorMod;
 
 const { copilotAdapter, claudeAdapter, createCustomAdapter } = await import('../../src/lib/copilot-runtime.js');
 const { parseDoctorArgs } = await import('../../src/lib/args.js');
@@ -715,6 +715,75 @@ describe('checkAdoption — template capabilities', () => {
       assert.ok(cliVersion);
       assert.strictEqual(cliVersion.status, 'warn');
       assert.match(cliVersion.message, /older than template minimum/);
+    });
+  });
+});
+
+// ── checkSources ──────────────────────────────────────────────────────────────
+
+describe('checkSources — module specifier trust boundary (#203)', () => {
+  it('passes with a clear message when no kbx.sources[] is configured', () => {
+    withTempDir((cwd) => {
+      const checks = checkSources({ cwd });
+      const check = checks.find((c) => c.id === 'sources.none');
+      assert.ok(check);
+      assert.strictEqual(check.status, 'pass');
+    });
+  });
+
+  it('passes when every declared module looks like an installed package', () => {
+    withTempDir((cwd) => {
+      writeJson(join(cwd, '.kbx.json'), {
+        sources: [
+          { sourceId: 'gh', module: '@anokye-labs/kbexplorer-provider-rich-markdown' },
+          { sourceId: 'npm-pkg', module: 'some-package' },
+        ],
+      });
+      const checks = checkSources({ cwd });
+      const check = checks.find((c) => c.id === 'sources.module-specifiers');
+      assert.ok(check);
+      assert.strictEqual(check.status, 'pass');
+      assert.ok(!checks.some((c) => c.status === 'fail'));
+    });
+  });
+
+  it('warns (not fails) when a module specifier is a relative path', () => {
+    withTempDir((cwd) => {
+      writeJson(join(cwd, '.kbx.json'), {
+        sources: [{ sourceId: 'local', module: './my-provider.js' }],
+      });
+      const checks = checkSources({ cwd });
+      const check = checks.find((c) => c.id === 'sources.module-specifier.local');
+      assert.ok(check);
+      assert.strictEqual(check.status, 'warn');
+      assert.match(check.message, /raw path\/URL/);
+      assert.ok(!checks.some((c) => c.status === 'fail'), 'never fails, only warns');
+    });
+  });
+
+  it('warns on an absolute path and on a URL specifier', () => {
+    withTempDir((cwd) => {
+      writeJson(join(cwd, '.kbx.json'), {
+        sources: [
+          { sourceId: 'abs', module: '/etc/passwd-provider.js' },
+          { sourceId: 'remote', module: 'https://evil.example/provider.js' },
+        ],
+      });
+      const checks = checkSources({ cwd });
+      assert.strictEqual(checks.find((c) => c.id === 'sources.module-specifier.abs')?.status, 'warn');
+      assert.strictEqual(checks.find((c) => c.id === 'sources.module-specifier.remote')?.status, 'warn');
+    });
+  });
+
+  it('finds sources nested under a top-level kbx key too', () => {
+    withTempDir((cwd) => {
+      writeJson(join(cwd, '.kbx.json'), {
+        kbx: { sources: [{ sourceId: 'nested', module: '../nested-provider.js' }] },
+      });
+      const checks = checkSources({ cwd });
+      const check = checks.find((c) => c.id === 'sources.module-specifier.nested');
+      assert.ok(check);
+      assert.strictEqual(check.status, 'warn');
     });
   });
 });

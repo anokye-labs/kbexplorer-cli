@@ -36,8 +36,13 @@ import {
 
 /**
  * Endpoints owned by later issues; stubbed as `404 not yet` until they land.
- * All contract endpoints are now implemented (`/manifest` A2, `/search` A3,
- * `/events` A4, `/affordance/:name` A5), so nothing remains stubbed.
+ * All contract *routes* are now implemented (`/manifest` A2, `/search` A3,
+ * `/events` A4, `/affordance/:name` A5), so no route remains stubbed. This is
+ * about the HTTP surface only: `/events` (A4) is a live SSE endpoint, but the
+ * *feature* behind it (real domain-event triggers + an SPA consumer) is a
+ * separate, still-open follow-up — see {@link defaultSubscribe} and
+ * `docs/canvas-loopback-contract.md`'s `/events` section. Do not read this
+ * comment as "everything about /events is done."
  */
 const NOT_YET_ENDPOINTS = [];
 
@@ -221,11 +226,17 @@ function bundledManifestCandidates(cwd) {
  * bundled `repo-manifest.json` only when generation throws. Live generation is
  * what makes SSE refresh (A4) rebuild-free.
  *
+ * The bundled-file fallback is a **degraded** mode (#208): the served manifest
+ * can be stale relative to the actual repo. It is never silent — a prominent
+ * operator warning is logged, and the returned manifest carries `degraded:
+ * true` so `/manifest` and `/manifest/slice` responses surface it visibly.
+ *
  * @param {object} [deps]
  * @param {string} [deps.cwd]
  * @param {(p: string) => boolean} [deps.existsSync]
  * @param {(p: string) => Buffer|string} [deps.readFile]
  * @param {() => Promise<object>} [deps.generate]  Injected generator (tests).
+ * @param {(msg: string) => void} [deps.warn]
  * @returns {Promise<object>}
  */
 export async function defaultGetManifest({
@@ -233,6 +244,7 @@ export async function defaultGetManifest({
   existsSync = fsExistsSync,
   readFile = readFileSync,
   generate,
+  warn = console.warn,
 } = {}) {
   try {
     const gen = generate || (async () => {
@@ -244,7 +256,13 @@ export async function defaultGetManifest({
     for (const candidate of bundledManifestCandidates(cwd)) {
       if (existsSync(candidate)) {
         try {
-          return JSON.parse(String(readFile(candidate)));
+          const bundled = JSON.parse(String(readFile(candidate)));
+          warn(
+            `⚠⚠ [kbx canvas] DEGRADED: live manifest generation failed (${err?.message || err}). ` +
+              `Serving a bundled manifest from ${candidate}, which may be stale relative to the ` +
+              'current repo. Fix the underlying generation error to leave degraded mode.',
+          );
+          return { ...bundled, degraded: true };
         } catch {
           /* try next candidate */
         }
@@ -355,7 +373,12 @@ export function textIndexSearch(manifest, query, limit = DEFAULT_SEARCH_LIMIT) {
  * Default search seam. Prefers the `@anokye-labs/kbexplorer-search` engine over
  * checked-in `.search/*` artifacts (same path `kbx_search` uses); on any failure
  * (module missing, artifacts absent, embedding/network error) falls back to the
- * client text index over the live manifest and attaches a `drift` warning.
+ * client text index over the live manifest.
+ *
+ * The text-index fallback is a **degraded** mode (#208), not silent: a
+ * prominent operator warning is logged, and the response carries both
+ * `degraded: true` and the existing `drift` detail so callers/UIs can surface
+ * it without parsing free-text.
  *
  * @param {{ query: string, limit?: number, graphRanking?: boolean }} params
  * @param {object} deps
@@ -363,7 +386,7 @@ export function textIndexSearch(manifest, query, limit = DEFAULT_SEARCH_LIMIT) {
  * @param {() => Promise<object>} deps.getManifest
  * @param {() => Promise<object>} [deps.loadSearchModule]  Injected engine (tests).
  * @param {(msg: string) => void} [deps.warn]
- * @returns {Promise<{ results: object[], suggestions: object[], drift?: object }>}
+ * @returns {Promise<{ results: object[], suggestions: object[], degraded?: boolean, drift?: object }>}
  */
 export async function defaultRunSearch(
   { query, limit = DEFAULT_SEARCH_LIMIT, graphRanking } = {},
@@ -393,12 +416,19 @@ export async function defaultRunSearch(
     driftReason = `search engine unavailable (${err?.message || err}); using client text-index fallback`;
   }
 
-  if (driftReason) warn(`⚠ ${driftReason}`);
+  if (driftReason) {
+    warn(
+      `⚠⚠ [kbx canvas] DEGRADED search: ${driftReason}. Results come from a basic ` +
+        'client-side text index over the manifest, not the configured search engine — ' +
+        'rebuild .search/ (kbx search-index) to leave degraded mode.',
+    );
+  }
   const manifest = await getManifest();
   const results = textIndexSearch(manifest, query, limit);
   return {
     results,
     suggestions: [],
+    degraded: true,
     drift: { stale: true, reason: driftReason || 'text-index fallback' },
   };
 }

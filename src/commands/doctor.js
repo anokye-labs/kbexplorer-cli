@@ -842,6 +842,76 @@ function checkPlugin({ assetsRoot, cwd } = {}) {
   return checks;
 }
 
+// ── Sources section ────────────────────────────────────────────────────────────
+
+/**
+ * Heuristic: does a module specifier look like an installed npm package (a bare
+ * or scoped specifier), rather than a raw filesystem path or URL? Package
+ * specifiers never start with `.`, `/`, `~`, a Windows drive letter, or carry a
+ * URL scheme (`scheme://`, `file:`).
+ *
+ * @param {string} spec
+ * @returns {boolean}
+ */
+function looksLikeInstalledPackageSpecifier(spec) {
+  if (typeof spec !== 'string' || !spec.trim()) return true; // nothing to flag
+  const s = spec.trim();
+  if (s.startsWith('.') || s.startsWith('/') || s.startsWith('~')) return false;
+  if (/^[a-zA-Z]:[\\/]/.test(s)) return false; // Windows drive-absolute path
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(s)) return false; // any scheme: (http:, file:, etc.)
+  return true;
+}
+
+/**
+ * Build checks for the Sources section — the trust boundary around
+ * `kbx.sources[]` provider loading (#203). `defaultLoadProvider()`
+ * dynamic-imports every declared `module` and hands that source's resolved
+ * credentials to whatever loads — so a `module` that is a raw filesystem path
+ * or URL rather than an installed, versioned package means editing config is
+ * equivalent to running arbitrary code with this source's credentials.
+ * Advisory only (warn, never fail): the CLI intentionally does not enforce a
+ * module allowlist (see the README "Trust boundary" section) — config edits
+ * should get the same review rigor as a dependency change.
+ *
+ * @param {object} opts
+ * @param {string} opts.cwd
+ * @returns {object[]} checks
+ */
+function checkSources({ cwd }) {
+  const checks = [];
+  const record = readSourceRecord(cwd);
+  const sources = record?.sources ?? record?.kbx?.sources;
+
+  if (!Array.isArray(sources) || sources.length === 0) {
+    checks.push(pass('sources.none', `No kbx.sources[] configured in ${SOURCE_FILE}`));
+    return checks;
+  }
+
+  let flagged = 0;
+  for (const source of sources) {
+    if (!source || typeof source !== 'object') continue;
+    const id = String(source.sourceId ?? source.id ?? '(unnamed)');
+    const mod = source.module;
+    if (typeof mod !== 'string' || !mod.trim()) continue;
+    if (!looksLikeInstalledPackageSpecifier(mod)) {
+      flagged++;
+      checks.push(warn(
+        `sources.module-specifier.${id.replace(/[^a-z0-9]+/gi, '-')}`,
+        `Source "${id}"'s module "${mod}" is a raw path/URL, not an installed package — ` +
+          "loading it dynamic-imports and executes that code with this source's credentials. " +
+          'Treat config edits like dependency changes; see the README "Trust boundary" section.',
+      ));
+    }
+  }
+  if (flagged === 0) {
+    checks.push(pass(
+      'sources.module-specifiers',
+      `All ${sources.length} declared source module(s) look like installed packages`,
+    ));
+  }
+  return checks;
+}
+
 // ── Environment section ───────────────────────────────────────────────────────
 
 /**
@@ -1096,6 +1166,8 @@ export default async function doctor(args, {
 
   const pluginChecks = checkPlugin({ cwd });
 
+  const sourcesChecks = checkSources({ cwd });
+
   const envChecks = checkEnvironment({ cwd, env, spawnSync: spawnSyncImpl });
 
   const sections = [
@@ -1104,6 +1176,7 @@ export default async function doctor(args, {
     { name: 'Template', checks: templateChecks },
     { name: 'Adoption readiness', checks: adoptionChecks },
     { name: 'Plugin', checks: pluginChecks },
+    { name: 'Sources', checks: sourcesChecks },
     { name: 'Environment', checks: envChecks },
   ];
 
@@ -1129,4 +1202,4 @@ export default async function doctor(args, {
 }
 
 // Export section runners for testing
-export { checkRuntime, checkMcp, checkTemplate, checkAdoption, checkPlugin, checkEnvironment };
+export { checkRuntime, checkMcp, checkTemplate, checkAdoption, checkPlugin, checkSources, checkEnvironment };

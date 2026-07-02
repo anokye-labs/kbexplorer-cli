@@ -21,6 +21,7 @@ import { resolve, relative, sep, isAbsolute } from 'node:path';
 import { existsSync, readFileSync, readdirSync, statSync, realpathSync } from 'node:fs';
 import { parseFrontmatter } from './frontmatter.js';
 import { resolveContentDir } from './frontmatter.js';
+import { coerceAccessLabel } from './access-label.js';
 
 /** Recursively list `.md` files under a directory (absolute paths). */
 function listMarkdownFiles(dir) {
@@ -138,6 +139,10 @@ export function resolveScanDirs(roots) {
  * @property {string} cluster
  * @property {string|undefined} parent
  * @property {string|undefined} emoji
+ * @property {string|undefined} identity  kg:// identity URN, carried through when present.
+ * @property {string|undefined} access    Access label, carried through when present. Only a
+ *   flat scalar survives today — {@link module:src/lib/frontmatter}'s parser is flat and
+ *   throws on a nested `access:` block (issue #179 tracks nested-object frontmatter support).
  * @property {Array<{to: string, description: string}>} connections
  * @property {string} body
  * @property {string} path     Absolute file path.
@@ -186,6 +191,14 @@ export function loadGraph({ roots, cwd = process.cwd() } = {}) {
         cluster: fm.cluster ?? 'unknown',
         parent: fm.parent || undefined,
         emoji: fm.emoji || undefined,
+        // `identity` is a plain scalar pointer, carried as-is. `access` MUST be
+        // a canonical KBAccessLabel object — a bare scalar is silently dropped
+        // as "unlabeled" by every consumer (AF-009). coerceAccessLabel turns
+        // the flat scalar shorthand (`access: restricted`) into
+        // `{ classification: 'restricted' }`; nested blocks await the flat
+        // parser's #179 nested-object support.
+        identity: fm.identity || undefined,
+        access: coerceAccessLabel(fm.access),
         connections: Array.isArray(fm.connections) ? fm.connections : [],
         body: parsed.body ?? '',
         path: file,

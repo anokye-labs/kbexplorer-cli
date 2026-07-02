@@ -30,6 +30,17 @@ describe('mcp/tools — buildMcpTools', () => {
       assert.match(t.description, new RegExp(`^\\[${t.actionClass}\\]`));
     }
   });
+
+  it('is the structural twin of the extension-tool adapter: no dead `affordance` field (AF-027)', async () => {
+    const { buildAffordanceTools } = await import('../../src/extension/tools.js');
+    const mcpTool = buildMcpTools()[0];
+    const extTool = buildAffordanceTools()[0];
+    assert.equal('affordance' in mcpTool, false);
+    // Same field set except the one documented wire-shape difference:
+    // `inputSchema` (MCP) vs `parameters` (Copilot CLI Tool).
+    const normalize = (keys) => keys.map((k) => (k === 'parameters' ? 'inputSchema' : k)).sort();
+    assert.deepEqual(normalize(Object.keys(mcpTool)), normalize(Object.keys(extTool)));
+  });
 });
 
 describe('mcp/tools — affordanceToMcpTool handler', () => {
