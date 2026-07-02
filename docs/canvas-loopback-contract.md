@@ -1,10 +1,10 @@
 # Loopback canvas contract (frozen A/B seam)
 
-> **Status: frozen.** This document is the *entire* boundary between the CLI
+> **Status: frozen.** This document is the _entire_ boundary between the CLI
 > (which serves) and the template (which renders). It is the trackable seam that
 > [#189](https://github.com/anokye-labs/kbexplorer-cli/issues/189) freezes and
 > that [#190](https://github.com/anokye-labs/kbexplorer-cli/issues/190) (A1) and
-> the later data/SSE/action issues (A2–A5) implement against, alongside
+> the later data/SSE/action issues (A2–A6) implement against, alongside
 > `kbexplorer-template#406` / `#408`.
 >
 > **The CLI never renders; the template never touches disk or spawns servers.**
@@ -31,10 +31,10 @@ runtime bundle executes:
 
 ```js
 window.__KBX_CANVAS__ = {
-  local: true,                          // always true on the loopback host
-  visualMode: 'inherit-host',           // canvas inherits the host's visual mode
-  searchServiceUrl: '<origin>/search',  // absolute URL the SPA POSTs search to
-  anchorNodeId,                         // optional: node to focus/anchor on open
+  local: true, // always true on the loopback host
+  visualMode: 'inherit-host', // canvas inherits the host's visual mode
+  searchServiceUrl: '<origin>/search', // absolute URL the SPA POSTs search to
+  anchorNodeId, // optional: node to focus/anchor on open
 };
 ```
 
@@ -43,14 +43,15 @@ present only when the canvas was opened against a specific node.
 
 ## Endpoints
 
-| Method | Path                | Owner | Purpose |
-|--------|---------------------|-------|---------|
-| `GET`  | `/`                 | **A1** | Embeddable canvas entry — `canvas.html` (from the template build, #406) when present, else `index.html` as a best-effort fallback, else a minimal built-in page — with injected `window.__KBX_CANVAS__` boot config. Static assets (JS/CSS/etc.) are served from the same build directory. |
-| `GET`  | `/manifest`         | A2    | `repo-manifest.json` bytes (the full host manifest). |
-| `GET`  | `/manifest/slice?ids=` | A2 | Incremental manifest slice for the comma-separated node `ids`. |
-| `POST` | `/search`           | A3    | `{ query }` → the SPA's `VITE_SEARCH_SERVICE_URL` result shape. |
-| `GET`  | `/events`           | A4    | SSE stream: `graph-updated { nodes[] }` and `anchor { nodeId }` events. |
-| `POST` | `/affordance/:name` | A5    | `{ input }` → `executeAffordance` result (consent-gated via `src/affordances/index.js`). |
+| Method | Path                   | Owner  | Purpose                                                                                                                                                                                                                                                                                    |
+| ------ | ---------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET`  | `/`                    | **A1** | Embeddable canvas entry — `canvas.html` (from the template build, #406) when present, else `index.html` as a best-effort fallback, else a minimal built-in page — with injected `window.__KBX_CANVAS__` boot config. Static assets (JS/CSS/etc.) are served from the same build directory. |
+| `GET`  | `/manifest`            | A2     | `repo-manifest.json` bytes (the full host manifest).                                                                                                                                                                                                                                       |
+| `GET`  | `/manifest/slice?ids=` | A2     | Incremental manifest slice for the comma-separated node `ids`.                                                                                                                                                                                                                             |
+| `POST` | `/search`              | A3     | `{ query }` → the SPA's `VITE_SEARCH_SERVICE_URL` result shape.                                                                                                                                                                                                                            |
+| `GET`  | `/events`              | A4     | SSE stream: `graph-updated { nodes[] }` and `anchor { nodeId }` events.                                                                                                                                                                                                                    |
+| `POST` | `/affordance/:name`    | A5     | `{ input }` → `executeAffordance` result (consent-gated via `src/affordances/index.js`).                                                                                                                                                                                                   |
+| `POST` | `/chat-intent`         | A6     | `{ intent, nodeId, prompt? }` → posts a real new agent chat turn on the joined SDK session; `{ ok: true, messageId }`.                                                                                                                                                                     |
 
 ### A1 scope vs. later issues
 
@@ -64,6 +65,7 @@ endpoints landed in follow-up issues and are now all implemented:
 - `/events` → A4 ✅ **endpoint** is live; domain-event wiring is **not** (see below —
   heartbeat-only scaffolding today, no real triggers, no consumer)
 - `/affordance/:name` → A5 ✅ (behind the injected `executeAffordance` seam)
+- `/chat-intent` → A6 ✅ (behind the injected `sendChatMessage` seam)
 
 Historically, until each owning issue landed, its endpoint responded `404` with a
 small JSON body `{ "error": "not yet", "endpoint": "<path>" }` so callers got a
@@ -178,6 +180,69 @@ route unconditionally gets the fail-closed default and returns
 `403 CONSENT_REQUIRED`; only `read`-class affordances complete end-to-end
 through `/affordance/:name` as shipped. Implementing a canvas-side consent UX
 is tracked as **post-launch** work.
+
+### `/chat-intent` (A6, #195) — click→chat seam
+
+`POST /chat-intent` is how the iframe turns a UI click into a **real new agent
+chat turn** in the same session the canvas is embedded in — the mechanism
+`kbexplorer-template#410`'s click affordances (`pin`, `derives`, `affected`, …)
+build on.
+
+**Request body:**
+
+```jsonc
+{ "intent": "pin" | "derives" | "affected" | string, "nodeId": "string", "prompt": "string?" }
+```
+
+`intent` and `nodeId` are required (non-empty strings). `prompt` is optional —
+when given it is used **verbatim** as the chat-turn text (the iframe is free
+to author its own phrasing); when omitted, a canned phrasing is used for the
+three known intents (`pin`/`derives`/`affected`); an **unknown** `intent` with
+no `prompt` is rejected `400` rather than guessing at text for an intent the
+CLI doesn't recognize.
+
+**Response:** `200 { "ok": true, "messageId": "<sdk-message-id>" | null }`. The
+`messageId` is the id `Session.send()` returns — additive beyond the `{ ok:
+true }` the consumer issue asked for; safe to ignore.
+
+**By design, this endpoint never executes anything directly.** Every intent —
+read-only (`derives`, `affected`) or mutating (`pin`) — is turned into a real
+`Session.send(prompt)` chat turn on the joined SDK session; there is no
+direct-execute shortcut through `/affordance/:name` here. This is a
+deliberately conservative choice, not a missed optimization: the frozen
+contract _permits_ read-only intents to resolve directly, but routing
+everything through the agent trivially guarantees a mutating intent can
+**never** bypass the agent's own consent gate by reaching this endpoint, and
+it matches the consumer issue's own acceptance criterion that even a
+read-only intent like "what derives from this?" must produce a real,
+observable chat turn (not a silent direct fetch).
+
+**Failure modes:**
+
+- No SDK session is joined yet (canvas opened standalone, or `/chat-intent`
+  reached before `joinSession()` resolves) → **fails closed**, never a fake
+  `200`. Depending on exactly how "not ready" is detected this surfaces as
+  either `503 { "error": "chat seam unavailable" }` (no `sendChatMessage` seam
+  configured at all) or `500 { "error": "chat-intent failed" }` (a seam is
+  configured but the session it lazily reads isn't bound yet) — both are
+  fail-closed, neither ever returns `{ ok: true }` without a real message
+  having been sent.
+- Missing `intent`/`nodeId`, invalid JSON body → `400`.
+- `nodeId` that isn't kebab-case (lowercase letters, digits, hyphens) → `400`.
+  Enforced **before** templating, so a crafted `nodeId` (quotes, newlines,
+  prompt-injection text) can never ride along into the canned prompt text
+  handed to `sendChatMessage`.
+- Unknown `intent` with no `prompt` → `400`.
+- Non-`POST` → `405`.
+- `sendChatMessage` itself throwing (e.g. the SDK call rejects) → `500`.
+
+**Production wiring:** `src/extension/index.js`'s `registerKbxExtension`
+builds the canvas registry with a `sendChatMessage` seam that closes over a
+`session` variable set only _after_ `joinSession()` resolves (the registry —
+and its HTTP server — must exist _before_ `joinSession()` is called, since the
+canvas has to be constructed first and handed to it). The closure reads
+`session` lazily, so a `/chat-intent` request that arrives after `join`
+resolves reaches the real `session.send(prompt)`.
 
 ## Invariants
 
