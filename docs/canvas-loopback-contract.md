@@ -93,12 +93,21 @@ consumer (`EmbeddableApp` / `useKnowledgeBase`) is likewise a follow-up.
 `executeAffordance`, making the canvas a first-class **do-seam adapter** — the
 third delivery surface after the extension-tool adapter (#163) and the MCP
 adapter (#197). Consent and provenance are enforced **at the action core**
-(`src/affordances/index.js`), fail-closed, identically to the other adapters; the
-handler imports the registry, never a transport, and never re-implements consent.
-The request body is the affordance input (a `{ "input": … }` envelope is also
-accepted). Error mapping: unknown affordance → `404`, invalid input → `400`,
-consent required/denied → `403` (surfaced, not crashed), non-POST → `405`;
-success → `200 { "ok": true, "result": … }`.
+(`src/affordances/index.js`); the handler imports the registry, never a
+transport, and never re-implements consent. The request body is the affordance
+input (a `{ "input": … }` envelope is also accepted). Error mapping: unknown
+affordance → `404`, invalid input → `400`, consent required/denied → `403`
+(surfaced, not crashed), non-POST → `405`; success → `200 { "ok": true, "result": … }`.
+
+**Consent status today: this route supplies no `requestConsent` seam.** The
+choke point is the same one every adapter shares, but "fail-closed identically"
+does not mean "capable identically" — only the MCP adapter
+([`docs/mcp-adapter.md`](mcp-adapter.md)) currently wires an interactive
+consent seam. Every `write` / `sample`-class affordance called through this
+route unconditionally gets the fail-closed default and returns
+`403 CONSENT_REQUIRED`; only `read`-class affordances complete end-to-end
+through `/affordance/:name` as shipped. Implementing a canvas-side consent UX
+is tracked as **post-launch** work.
 
 ## Invariants
 
