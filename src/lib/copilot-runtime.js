@@ -420,6 +420,65 @@ function quoteForDisplay(token) {
   return /[\s"'()]/.test(token) ? JSON.stringify(token) : token;
 }
 
+/** Extensions that require the platform shell to launch on Windows (EINVAL under shell:false). */
+const WINDOWS_SHELL_EXTENSIONS = new Set(['.cmd', '.bat']);
+/** Extensions that Windows cannot exec directly and must be run through `node` (EFTYPE under shell:false). */
+const NODE_SCRIPT_EXTENSIONS = new Set(['.mjs', '.js']);
+
+/**
+ * Quote a single argv token for cmd.exe when re-invoking through the shell.
+ *
+ * Node's `shell:true` path on Windows does no escaping of its own — it just
+ * joins `[file, ...args]` with spaces before handing the line to cmd.exe — so
+ * any token containing whitespace or a cmd.exe metacharacter must be quoted
+ * here or it will be split/interpreted incorrectly.
+ */
+export function quoteCmdArg(token) {
+  const text = String(token ?? '');
+  if (text === '') return '""';
+  if (!/[\s"^&|<>()%!]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+/**
+ * Decide how to actually invoke `binary`/`args` for the given platform.
+ *
+ * Pure and side-effect free (platform/execPath are injectable) so the
+ * dispatch decision can be unit-tested from any host OS without touching a
+ * real spawn call. See issue #66: `shell:false` cannot exec `.cmd`/`.bat`
+ * shims (EINVAL) or a bare `.mjs`/`.js` file (EFTYPE) on Windows.
+ *
+ *   - `.cmd` / `.bat` on win32  → re-invoke via the shell (`shell: true`),
+ *     with every argument pre-quoted for cmd.exe (see `quoteCmdArg`).
+ *   - `.mjs` / `.js` on win32   → re-invoke as `process.execPath <script> …`.
+ *   - everything else (incl. all non-win32 platforms) → unchanged.
+ *
+ * @returns {{ command: string, args: string[], shell: boolean }}
+ */
+export function resolveSpawnPlan(binary, args, { platform = process.platform, execPath = process.execPath } = {}) {
+  const plainArgs = asArray(args);
+
+  if (platform !== 'win32') {
+    return { command: binary, args: plainArgs, shell: false };
+  }
+
+  const ext = String(binary ?? '').match(/\.[^./\\]+$/)?.[0]?.toLowerCase() ?? '';
+
+  if (WINDOWS_SHELL_EXTENSIONS.has(ext)) {
+    return {
+      command: quoteCmdArg(binary),
+      args: plainArgs.map(quoteCmdArg),
+      shell: true,
+    };
+  }
+
+  if (NODE_SCRIPT_EXTENSIONS.has(ext)) {
+    return { command: execPath, args: [binary, ...plainArgs], shell: false };
+  }
+
+  return { command: binary, args: plainArgs, shell: false };
+}
+
 /**
  * @typedef {object} RuntimeResult
  * @property {boolean} ok
@@ -457,6 +516,7 @@ export function runRuntimeTask(options = {}) {
     spawn: spawnImpl = nodeSpawn,
     onEvent,
     errorClass = RuntimeAdapterError,
+    platform = process.platform,
     ...task
   } = options;
 
@@ -477,14 +537,19 @@ export function runRuntimeTask(options = {}) {
   const args = [...asArray(binaryArgs), ...runtimeArgs];
   const command = [binary, ...args].map(quoteForDisplay).join(' ');
   const startedAt = Date.now();
+  // What actually gets spawned may differ from `binary`/`args` above (e.g. a
+  // `.cmd` shim re-invoked via the shell, or a `.mjs` wrapped with `node`) —
+  // see resolveSpawnPlan(). The display `command` and result fields still
+  // reflect the logical binary/args so logs/errors read naturally.
+  const spawnPlan = resolveSpawnPlan(binary, args, { platform });
 
   return new Promise((resolve, reject) => {
     let child;
     try {
-      child = spawnImpl(binary, args, {
+      child = spawnImpl(spawnPlan.command, spawnPlan.args, {
         cwd,
         env: env ?? process.env,
-        shell: false,
+        shell: spawnPlan.shell,
         stdio: ['pipe', 'pipe', 'pipe'],
       });
     } catch (err) {
