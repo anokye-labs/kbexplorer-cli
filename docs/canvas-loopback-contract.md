@@ -61,21 +61,31 @@ endpoints landed in follow-up issues and are now all implemented:
 
 - `/manifest`, `/manifest/slice` → A2 ✅ (behind the injected `getManifest` seam)
 - `/search` → A3 ✅ (behind the injected `runSearch` seam)
-- `/events` → A4 ✅ (SSE; behind the injected `subscribe` seam)
+- `/events` → A4 ✅ **endpoint** is live; domain-event wiring is **not** (see below —
+  heartbeat-only scaffolding today, no real triggers, no consumer)
 - `/affordance/:name` → A5 ✅ (behind the injected `executeAffordance` seam)
 
 Historically, until each owning issue landed, its endpoint responded `404` with a
 small JSON body `{ "error": "not yet", "endpoint": "<path>" }` so callers got a
 clear, stable signal rather than a hang or a generic error. No contract endpoint
-remains stubbed today.
+route remains stubbed today — but see `/events` below: the *transport* is
+finished, the *feature* (real domain events reaching a real consumer) is not.
 
 ### `/events` (A4) — SSE event schema
+
+**Status: heartbeat-only scaffolding, not a finished feature.** The HTTP
+endpoint is real and live (correct headers, `ready` event, periodic
+heartbeat), but no code anywhere in this repo or its template emits an actual
+`graph-updated` or `anchor` event, and no SPA consumer subscribes to any of
+this. Treat `/events` today as "the wire is connected and idles cleanly," not
+"canvas updates push live" — that remains future work, not something already
+shipped.
 
 `GET /events` opens a `text/event-stream` (`cache-control: no-cache`,
 `connection: keep-alive`). On connect it writes a `: connected` comment, a
 `retry: 3000` advisory, and an initial `ready` event; a `: heartbeat` comment is
 emitted periodically to keep the connection warm. Domain events follow the frozen
-names:
+names (schema only — see status note above for what actually fires today):
 
 - `graph-updated` → `data: { "nodes": [ … ] }` — content/graph mutated; the SPA
   re-fetches the affected manifest slice and re-renders.
