@@ -17,7 +17,7 @@ kbx turns a content store — a GitHub repo, or a directory of markdown — into
 **interactive knowledge graph**: a constellation of clickable cards and a force-directed network
 you can explore, search, and read, instead of a flat wiki. You run one setup command, choose
 where the content comes from, preview it locally, and publish it as a static website you host
-wherever you like ([`README.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/README.md), [`SKILL.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/SKILL.md)).
+wherever you like ([`README.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/README.md), [`SKILL.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbx/SKILL.md)).
 
 Because the graph is regenerated from the *live* repo each time you preview or build, it
 reflects what's actually there — issues, pull requests, the README, the file tree, and any pages
@@ -66,7 +66,7 @@ grows.
 You run setup with a single command inside the repo you want to map:
 
 ```bash
-npx @anokye-labs/kbexplorer init
+npx @anokye-labs/kbx init
 ```
 
 `init` is an interactive wizard. It installs the explorer app into `.kbx/`, copies in the
@@ -101,7 +101,7 @@ This is the most important choice you make. It decides where the nodes in your g
 | **Authored** | A directory of markdown files you write. Each file's frontmatter defines the node and its links. | Full editorial control — curated docs, essays, hand-shaped graphs. | Choose "Authored" and set a content directory (default `content/`). |
 | **Both** | Repo-aware *plus* your authored pages, merged into one graph. | Layering a few hand-written overview pages on top of the auto-map. | Choose "Both". |
 
-<!-- Sources: src/assets/skills/kbexplorer/references/setup.md, src/commands/init.js:235-243 -->
+<!-- Sources: src/assets/skills/kbx/references/setup.md, src/commands/init.js:235-243 -->
 
 Not sure which to pick? This decides it:
 
@@ -155,7 +155,7 @@ erDiagram
     }
 ```
 
-<!-- Sources: src/assets/skills/kbexplorer/SKILL.md:106-121, src/assets/skills/kbexplorer/references/content-generation.md:6-25 -->
+<!-- Sources: src/assets/skills/kbx/SKILL.md:106-121, src/assets/skills/kbx/references/content-generation.md:6-25 -->
 
 - A **page** (also called a *node*) is one topic — a single markdown file. It has an `id`, a
   `title`, and lives in a `cluster`.
@@ -164,7 +164,7 @@ erDiagram
 - **Issues** and **pull requests** appear as pages automatically in repo-aware mode.
 
 A node file is just markdown with a YAML frontmatter header
-([`content-generation.md:6-25`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/content-generation.md#L6-L25)):
+([`content-generation.md:6-25`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbx/references/content-generation.md#L6-L25)):
 
 ```yaml
 ---
@@ -186,7 +186,7 @@ Your page content in Markdown — with headings, tables, and Mermaid diagrams.
 The only hard rules: `id`, `title`, and `cluster` must be present, and the `cluster` must be
 defined in your `config.yaml`. Write good connection descriptions — `"authenticates access to"`,
 `"feeds data to"` — not vague ones like `"related to"`
-([`content-generation.md:91-102`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/content-generation.md#L91-L102)).
+([`content-generation.md:91-102`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbx/references/content-generation.md#L91-L102)).
 
 ---
 
@@ -203,7 +203,7 @@ reviews the output ([`README.md:74-92`](https://github.com/anokye-labs/kbexplore
 npx kbx generate
 ```
 
-The pipeline runs in stages ([`content-generation.md:104-114`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/content-generation.md#L104-L114)):
+The pipeline runs in stages ([`content-generation.md:104-114`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbx/references/content-generation.md#L104-L114)):
 
 | Stage | Who | What it produces |
 |-------|-----|------------------|
@@ -214,7 +214,7 @@ The pipeline runs in stages ([`content-generation.md:104-114`](https://github.co
 
 To add a *single* topic without regenerating everything: create one new `.md` file with valid
 frontmatter, ask the kb-writer agent to flesh it out, and re-run the manifest step
-([`content-generation.md:116-128`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/content-generation.md#L116-L128)).
+([`content-generation.md:116-128`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbx/references/content-generation.md#L116-L128)).
 
 ---
 
@@ -222,7 +222,7 @@ frontmatter, ask the kb-writer agent to flesh it out, and re-run the manifest st
 
 These settings live in your `config.yaml` (and the `.env.kbx` created at setup), and you
 can change them **without touching any code**
-([`configuration.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/configuration.md)):
+([`configuration.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbx/references/configuration.md)):
 
 | Setting | What it controls | Default |
 |---------|------------------|---------|
@@ -234,12 +234,12 @@ can change them **without touching any code**
 | HUD, minimap, reading tools, keyboard nav | On-screen helpers | On |
 | Intro screen ("BLUF") | Optional opening quote screen | Off |
 
-<!-- Sources: src/assets/skills/kbexplorer/references/presentation.md, src/commands/init.js:245-249 -->
+<!-- Sources: src/assets/skills/kbx/references/presentation.md, src/commands/init.js:245-249 -->
 
 The visual modes map to different content styles — `emoji` is lightweight, `sprites` suits
 technical docs, `heroes` suits editorial/narrative content, and `none` is text-only. The
 full mapping and switching procedure lives in
-[`references/presentation.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/presentation.md).
+[`references/presentation.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbx/references/presentation.md).
 
 ---
 
@@ -296,7 +296,7 @@ npx kbx scaffold my-new-topic --cluster getting-started
 This creates `content/my-new-topic.md` with valid id / cluster / title / emoji
 frontmatter and a writer-prompt placeholder, then you fill in the body
 ([`src/commands/scaffold.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/scaffold.js); see
-[`references/add-node.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/add-node.md)
+[`references/add-node.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbx/references/add-node.md)
 for the full workflow).
 
 ### After a code change: refresh only what's affected
@@ -310,7 +310,7 @@ npx kbx affected HEAD~10
 
 It walks the citations in every `content/*.md` file, intersects with the changed files,
 and prints the impacted node ids ([`src/commands/affected.js`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/affected.js); see
-[`references/incremental-refresh.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/incremental-refresh.md)).
+[`references/incremental-refresh.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbx/references/incremental-refresh.md)).
 
 ---
 
@@ -360,12 +360,12 @@ and stores nothing on external servers — the only outbound calls are to GitHub
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Empty graph | Wrong owner/repo, or no issues/content | Check `.env.kbx`; confirm the repo has issues or content files ([`references/setup.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/setup.md)) |
-| "Rate limit" errors fetching issues | Unauthenticated GitHub API (60/hr) | Run `gh auth login`, or set a `GITHUB_TOKEN` ([`references/setup.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/setup.md)) |
+| Empty graph | Wrong owner/repo, or no issues/content | Check `.env.kbx`; confirm the repo has issues or content files ([`references/setup.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbx/references/setup.md)) |
+| "Rate limit" errors fetching issues | Unauthenticated GitHub API (60/hr) | Run `gh auth login`, or set a `GITHUB_TOKEN` ([`references/setup.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbx/references/setup.md)) |
 | `kbx not found` on `dev`/`build` | `.kbx/` isn't installed | Run `kbx init` first ([`dev.js:13-16`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/commands/dev.js#L13-L16)) |
 | Build fails | Template dependencies missing | Run `npm install` inside `.kbx/` |
-| Config not loading | `config.yaml` missing or wrong path | Ensure `content/config.yaml` exists where the wizard set it ([`references/configuration.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/configuration.md)) |
-| `kbx audit` reports errors | Duplicate ids, broken parents, dead connections | See [`references/audit.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbexplorer/references/audit.md) for each rule and remediation |
+| Config not loading | `config.yaml` missing or wrong path | Ensure `content/config.yaml` exists where the wizard set it ([`references/configuration.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbx/references/configuration.md)) |
+| `kbx audit` reports errors | Duplicate ids, broken parents, dead connections | See [`references/audit.md`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/assets/skills/kbx/references/audit.md) for each rule and remediation |
 
 ---
 

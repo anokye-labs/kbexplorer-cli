@@ -61,21 +61,31 @@ endpoints landed in follow-up issues and are now all implemented:
 
 - `/manifest`, `/manifest/slice` → A2 ✅ (behind the injected `getManifest` seam)
 - `/search` → A3 ✅ (behind the injected `runSearch` seam)
-- `/events` → A4 ✅ (SSE; behind the injected `subscribe` seam)
+- `/events` → A4 ✅ **endpoint** is live; domain-event wiring is **not** (see below —
+  heartbeat-only scaffolding today, no real triggers, no consumer)
 - `/affordance/:name` → A5 ✅ (behind the injected `executeAffordance` seam)
 
 Historically, until each owning issue landed, its endpoint responded `404` with a
 small JSON body `{ "error": "not yet", "endpoint": "<path>" }` so callers got a
 clear, stable signal rather than a hang or a generic error. No contract endpoint
-remains stubbed today.
+route remains stubbed today — but see `/events` below: the *transport* is
+finished, the *feature* (real domain events reaching a real consumer) is not.
 
 ### `/events` (A4) — SSE event schema
+
+**Status: heartbeat-only scaffolding, not a finished feature.** The HTTP
+endpoint is real and live (correct headers, `ready` event, periodic
+heartbeat), but no code anywhere in this repo or its template emits an actual
+`graph-updated` or `anchor` event, and no SPA consumer subscribes to any of
+this. Treat `/events` today as "the wire is connected and idles cleanly," not
+"canvas updates push live" — that remains future work, not something already
+shipped.
 
 `GET /events` opens a `text/event-stream` (`cache-control: no-cache`,
 `connection: keep-alive`). On connect it writes a `: connected` comment, a
 `retry: 3000` advisory, and an initial `ready` event; a `: heartbeat` comment is
 emitted periodically to keep the connection warm. Domain events follow the frozen
-names:
+names (schema only — see status note above for what actually fires today):
 
 - `graph-updated` → `data: { "nodes": [ … ] | null, ... }` — content/graph
   mutated or the visible node set changed; the SPA re-fetches the affected
@@ -153,12 +163,21 @@ imposed here.
 `executeAffordance`, making the canvas a first-class **do-seam adapter** — the
 third delivery surface after the extension-tool adapter (#163) and the MCP
 adapter (#197). Consent and provenance are enforced **at the action core**
-(`src/affordances/index.js`), fail-closed, identically to the other adapters; the
-handler imports the registry, never a transport, and never re-implements consent.
-The request body is the affordance input (a `{ "input": … }` envelope is also
-accepted). Error mapping: unknown affordance → `404`, invalid input → `400`,
-consent required/denied → `403` (surfaced, not crashed), non-POST → `405`;
-success → `200 { "ok": true, "result": … }`.
+(`src/affordances/index.js`); the handler imports the registry, never a
+transport, and never re-implements consent. The request body is the affordance
+input (a `{ "input": … }` envelope is also accepted). Error mapping: unknown
+affordance → `404`, invalid input → `400`, consent required/denied → `403`
+(surfaced, not crashed), non-POST → `405`; success → `200 { "ok": true, "result": … }`.
+
+**Consent status today: this route supplies no `requestConsent` seam.** The
+choke point is the same one every adapter shares, but "fail-closed identically"
+does not mean "capable identically" — only the MCP adapter
+([`docs/mcp-adapter.md`](mcp-adapter.md)) currently wires an interactive
+consent seam. Every `write` / `sample`-class affordance called through this
+route unconditionally gets the fail-closed default and returns
+`403 CONSENT_REQUIRED`; only `read`-class affordances complete end-to-end
+through `/affordance/:name` as shipped. Implementing a canvas-side consent UX
+is tracked as **post-launch** work.
 
 ## Invariants
 

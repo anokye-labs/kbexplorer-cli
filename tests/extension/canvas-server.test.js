@@ -889,8 +889,28 @@ describe('defaultRunSearch (drift fallback)', () => {
       }
     );
     assert.equal(out.drift, undefined);
+    assert.equal(out.degraded, undefined, 'not degraded when the real engine serves the request');
     assert.equal(out.results[0].nodeId, 'node-a');
     assert.equal(out.results[0].score, 0.8);
+  });
+
+  it('flags degraded: true and logs a prominent operator warning on fallback (#208)', async () => {
+    const warnings = [];
+    const out = await defaultRunSearch(
+      { query: 'audit' },
+      {
+        cwd: process.cwd(),
+        getManifest: async () => FIXTURE_MANIFEST,
+        loadSearchModule: async () => {
+          throw new Error('not installed');
+        },
+        warn: (m) => warnings.push(m),
+      },
+    );
+    assert.equal(out.degraded, true);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /DEGRADED/);
+    assert.match(warnings[0], /kbx canvas/);
   });
 });
 
@@ -898,6 +918,7 @@ describe('defaultGetManifest (live + bundled fallback)', () => {
   it('returns the live-generated manifest when generation succeeds', async () => {
     const m = await defaultGetManifest({ generate: async () => FIXTURE_MANIFEST });
     assert.deepEqual(m, FIXTURE_MANIFEST);
+    assert.equal(m.degraded, undefined, 'not degraded on the live-generation path');
   });
 
   it('falls back to a bundled repo-manifest.json when generation throws', async () => {
@@ -911,6 +932,24 @@ describe('defaultGetManifest (live + bundled fallback)', () => {
       readFile: () => bundled,
     });
     assert.equal(m.configRaw, 'bundled');
+  });
+
+  it('flags degraded: true and logs a prominent operator warning on bundled fallback (#208)', async () => {
+    const bundled = JSON.stringify({ configRaw: 'bundled' });
+    const warnings = [];
+    const m = await defaultGetManifest({
+      cwd: '/repo',
+      generate: async () => {
+        throw new Error('no gh');
+      },
+      existsSync: (p) => p.replace(/\\/g, '/').endsWith('/repo/dist/kb/repo-manifest.json'),
+      readFile: () => bundled,
+      warn: (msg) => warnings.push(msg),
+    });
+    assert.equal(m.degraded, true);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /DEGRADED/);
+    assert.match(warnings[0], /kbx canvas/);
   });
 
   it('rethrows when generation fails and no bundle exists', async () => {

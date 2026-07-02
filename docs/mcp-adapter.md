@@ -59,17 +59,32 @@ Options: `--allow` (non-interactive consent), `--name <name>`,
 
 ## Consent over MCP
 
-Consent is enforced **once, at the action core**, so both adapters behave
-identically:
+Consent is enforced **once, at the action core** (`src/affordances/consent.js`):
+every adapter goes through the same `enforceConsent` gate, and every adapter
+fails closed the same way when no `context.seams.requestConsent` callback is
+wired — that choke point really is shared. But "the gate is shared" is not the
+same claim as "consent behaves identically across adapters", and today it
+doesn't:
 
-- **read** actions never prompt.
-- **write / sample** actions request approval **before** any side effect, via the
-  injected `context.seams.requestConsent(request)` callback. Over MCP that seam
-  is rendered as an **elicitation** (`elicitation/create`) carrying the
-  deterministic disclosure (model cost, credential *names*, write targets).
-- **Fail-closed:** if the client doesn't advertise `elicitation`, the seam denies
-  with an actionable reason. `--allow` (or `KBX_MCP_CONSENT=allow`) opts into
-  non-interactive consent for trusted automation.
+- **The MCP adapter is the only one with a working consent seam.** `read`
+  actions never prompt; `write` / `sample` actions request approval **before**
+  any side effect via the injected `context.seams.requestConsent(request)`
+  callback, which this adapter renders as an **elicitation**
+  (`elicitation/create`) carrying the deterministic disclosure (model cost,
+  credential *names*, write targets). If the client doesn't advertise
+  `elicitation`, the seam denies with an actionable reason. `--allow` (or
+  `KBX_MCP_CONSENT=allow`) opts into non-interactive consent for trusted
+  automation.
+- **The extension-tool adapter (`src/extension/`) and the canvas adapter
+  (`src/extension/canvas-server.js`'s `/affordance/:name`) supply no
+  `requestConsent` seam at all.** Every `write` / `sample`-class call through
+  either surface unconditionally hits the fail-closed default and returns
+  `CONSENT_REQUIRED` (surfaced as HTTP `403` on the canvas). This is safe — it
+  never approves something it shouldn't — but it also means neither surface can
+  *ever* complete a write or sample-class affordance as shipped today; only
+  read actions work end-to-end through them. Implementing an interactive
+  consent UX for those two surfaces is tracked as **post-launch** work, not
+  something this document should imply already exists.
 
 BYO-cred: the server inherits the ambient environment (`gh`, provider keys)
 exactly like the rest of the CLI.

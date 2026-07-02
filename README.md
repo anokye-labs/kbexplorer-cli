@@ -6,11 +6,14 @@ CLI tool for the [kbexplorer-template](https://github.com/anokye-labs/kbexplorer
 
 ```bash
 # Use directly
-npx @anokye-labs/kbexplorer init
+npx @anokye-labs/kbx init
 
 # Or install as dev dependency
-npm install -D @anokye-labs/kbexplorer
+npm install -D @anokye-labs/kbx
 ```
+
+> Until the first npm publish lands, install from GitHub instead:
+> `npm install -D github:anokye-labs/kbexplorer-cli`.
 
 ## Commands
 
@@ -36,6 +39,23 @@ npm install -D @anokye-labs/kbexplorer
 npx kbx init    # Interactive setup wizard
 npx kbx dev     # Launch the explorer
 ```
+
+### Non-interactive setup (CI / scripted / no TTY)
+
+The wizard needs a terminal. In CI or any non-interactive shell, pass `--yes`
+to take every answer from flags plus git-remote detection instead of prompting
+(without `--yes` on a non-TTY stdin, `init` now exits with this reminder rather
+than hanging):
+
+```bash
+npx kbx init --yes                         # inside a git repo: owner/repo/branch auto-detected
+npx kbx init --yes --owner acme --repo widgets --title "Acme KB"
+```
+
+Common flags (see `npx kbx init --help` for the full list): `--owner`, `--repo`,
+`--kb-branch`, `--title`, `--content-mode <repo|authored|both>`, `--content`,
+`--visual`, `--theme`, `--runtime <copilot|claude|custom|skip>`, and `--config
+<file>` to load any of them from JSON.
 
 For a full enterprise deployment walkthrough — prerequisites, work-graph YAML
 authoring, the local regeneration loop, and hosting options — see
@@ -374,9 +394,61 @@ The named adapters honour existing env vars for binary paths:
 
 These work alongside (not instead of) the runtime selection above.
 
+## Multi-source Ingestion (`kbx.sources[]`)
+
+`src/lib/composite-config.js` + `src/lib/composite-ingest.js` implement a
+generalized, multi-source knowledge-base build: instead of one authored
+`content/` tree, a `sources[]` array declares several providers whose fragments
+get resolved and merged into one source-qualified graph. It is currently a
+library surface (`loadCompositeKnowledgeBase`) consumed by a host you wire up
+yourself — no `kbx` command reads it from `.kbx.json` today. The shape:
+
+```jsonc
+{
+  "sources": [
+    {
+      "sourceId": "docs",                          // unique, stable id
+      "kind": "rich-markdown",                      // advisory provider type
+      "module": "@anokye-labs/kbexplorer-provider-rich-markdown", // ES specifier
+      "options": { "cluster": "docs" },              // provider-specific options
+      "credentials": { "token": "GH_TOKEN" }         // logical key -> ENV VAR NAME
+    }
+  ],
+  "ingestion": {
+    "failureMode": "fail-fast",
+    "budgets": { "maxSources": 10, "timeoutMs": 30000 }
+  }
+}
+```
+
+Credentials are declared by **environment-variable name only**; the value is
+resolved from `process.env` at load time and never persisted to config.
+
+### Trust boundary
+
+**`kbx.sources[]` config is code.** Each source's `module` is passed straight
+into a dynamic `import()` — loading a provider module *executes* it, with that
+source's resolved credentials handed to whatever loads. There is intentionally
+no module allowlist or sandboxing: the CLI cannot distinguish a legitimate
+provider package from something malicious once it agrees to import it.
+
+Practical consequences:
+
+- **Treat edits to `kbx.sources[]` (and any config that can add or change a
+  `module` entry) with the same review rigor as a dependency change** — a new
+  or modified `module` specifier is, in effect, a new piece of installed code
+  that runs with credentials.
+- Each source only ever receives the credentials **it declares under its own
+  `credentials:` block** — `buildProviderConfig()` forwards exactly that
+  source's resolved bag, never a broader one another source might hold.
+- Prefer installed, versioned packages (`@scope/name`) over raw filesystem
+  paths or URLs for `module`. `kbx doctor` warns (does not fail — this is
+  advisory, not enforced) when a declared `module` looks like a raw path/URL
+  instead of an installed package.
+
 ## Doctor
 
-`kbx doctor` is the first thing to run when regeneration fails on a teammate's machine. It diagnoses the full local setup in five sections:
+`kbx doctor` is the first thing to run when regeneration fails on a teammate's machine. It diagnoses the full local setup across several sections (Runtime, MCP, Template, Adoption readiness, Plugin, Sources, Environment):
 
 ```
 Runtime
@@ -400,6 +472,10 @@ Adoption readiness
   ✅ Structured-content path: content-model/ (default convention); 5 YAML descriptors found
   ✅ Structured-content path is repo-relative (content-model/), so local and remote builds can use the same layout
   ⚠️  Template compatibility/capabilities are not advertised yet — cannot confirm content-model ingestion, diagram rendering, or edge semantics
+
+Sources
+───────
+  ✅ No kbx.sources[] configured in .kbx.json
 
 Environment
 ───────────

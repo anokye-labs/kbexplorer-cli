@@ -122,12 +122,39 @@ export class MemoryGraphStore {
   }
 }
 
+/**
+ * Scope a resolved credential bag down to exactly the logical keys THIS source
+ * declared under its own `credentials:` block (#203). `source.credentialEnv` —
+ * produced alongside `source.credentials` by {@link module:lib/composite-config}
+ * — is the authoritative allowlist of keys `normalizeCompositeConfig` actually
+ * resolved for this entry; anything else on `source.credentials` is dropped
+ * rather than trusted. Defense in depth: a provider module is untrusted,
+ * dynamically-imported code (see the Trust boundary docs), so even a future
+ * caller/refactor that accidentally attaches extra keys to `source.credentials`
+ * (e.g. by sharing an object reference across sources) can never widen what a
+ * given provider receives beyond what its own config entry declared.
+ */
+function scopeCredentialsToSource(source) {
+  const bag = source.credentials;
+  if (!bag || typeof bag !== 'object') return {};
+  const declaredKeys = source.credentialEnv && typeof source.credentialEnv === 'object'
+    ? Object.keys(source.credentialEnv)
+    : Object.keys(bag);
+  const scoped = {};
+  for (const key of declaredKeys) {
+    if (Object.prototype.hasOwnProperty.call(bag, key)) scoped[key] = bag[key];
+  }
+  return scoped;
+}
+
 /** Build the {@link ExternalProviderConfig} handed to a provider factory. */
 export function buildProviderConfig(source) {
   const options = { ...source.options };
-  // Resolved secrets ride under options.credentials (never the raw env names).
-  if (source.credentials && Object.keys(source.credentials).length > 0) {
-    options.credentials = { ...source.credentials };
+  // Resolved secrets ride under options.credentials (never the raw env names) —
+  // and only the ones declared for THIS source (#203); never a broader bag.
+  const credentials = scopeCredentialsToSource(source);
+  if (Object.keys(credentials).length > 0) {
+    options.credentials = credentials;
   }
   const config = { type: source.kind ?? 'custom', options };
   if (source.name ?? source.sourceId) config.name = source.name ?? source.sourceId;
