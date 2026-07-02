@@ -124,7 +124,13 @@ The following rules are enforced on this repository's default branch:
 2. Make changes and commit
 3. Open a pull request targeting the default branch
 4. Address all review comments and resolve conversations
-5. Get at least 1 approval
+5. Get at least 1 approval — **except** PRs authored by the allowlisted bot
+   accounts in `.github/workflows/auto-merge.yml` (currently
+   `devin-ai-integration[bot]`, `copilot-swe-agent[bot]`, `Copilot`), which
+   auto-merge at **0 human approvals** once the required status checks pass
+   and all conversations are resolved. Human-authored PRs are never
+   auto-merged. If you're an agent whose account isn't on that allowlist,
+   don't assume auto-merge applies to you — check the workflow file.
 6. Merge via the PR (squash or merge commit)
 
 Never commit directly to the default branch. Never force push.
@@ -137,6 +143,11 @@ Never commit directly to the default branch. Never force push.
 2. **Create a branch** to implement
 3. **Open a PR** that references the issue
 4. **Review and merge** the PR, which closes the issue
+
+See ["GitHub & Work-Item Conventions"](#github--work-item-conventions) below
+for the commit-message-level rule (`refs #N`, never `closes #N`) and the
+verify-before-close expectation — the "closes the issue" step above is about
+the *reviewed PR description*, not individual commits along the way.
 
 ## Issue Types (Required)
 
@@ -170,13 +181,63 @@ Create `blocked-by` / `blocking` relationships between issues to track dependenc
 
 Use the GraphQL API for issue types, sub-issues, and relationship management. The REST API does not support these features. Include the `GraphQL-Features: sub_issues` header for sub-issue operations.
 
-## Delegating Work to Copilot
+## GitHub & Work-Item Conventions
 
-**Assigning issues to `@copilot` is the preferred way to get work done.** To delegate:
+These rules are **tool-agnostic** — they describe outcomes, not a specific
+CLI or SDK. Use whatever GitHub access your runtime actually has (a `gh` CLI
+install, a GitHub MCP server, direct REST/GraphQL calls, or another agent
+platform's built-in GitHub integration); none of the rules below assume one
+particular mechanism.
+
+- **GitHub access:** issue/PR reads and writes, comments, and label
+  management can go through any of the mechanisms above. **Sub-issues and
+  `blocked-by`/`blocking` relationships specifically require the GraphQL
+  API** (see "GraphQL Required" above) — the REST API cannot express them
+  regardless of which tool is issuing the request.
+- **`refs #N`, never `closes #N`, in commit messages.** Reference the issue a
+  commit addresses with `refs #N` so the link is visible without triggering
+  GitHub's auto-close keywords. This matters most on a branch/PR that touches
+  several issues across several commits — an early commit's auto-close
+  keyword would close an issue before the rest of the branch (and review) is
+  actually done. A PR's own description may use a closing keyword
+  (`Closes #N`) once that PR is genuinely ready to merge and its own review
+  confirms the issue is fully addressed — that is a deliberate, reviewed
+  decision, not an accidental side effect of an intermediate commit message.
+- **Verify before you close.** Never close an issue (or let a merge
+  auto-close one) on the strength of "a commit referencing it merged" alone.
+  Confirm the fix actually works per the "Verification and Validation"
+  section below, then close explicitly (or let the reviewed PR description's
+  closing keyword do it) — don't rely on an accidental close from an
+  unrelated commit's keyword.
+- **Conventional Commits.** Format commit messages as `type(scope):
+  description` (`feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`,
+  `ci`, …). Keep commits atomic — one logical change per commit — and write
+  messages that explain *why*, not just *what*.
+- **Workback scheduling / work breakdown.** When a task calls for turning an
+  epic or a large piece of work into a real Epic → Feature → Task hierarchy
+  of GitHub issues (types, sub-issues, `blocked-by` edges) *before*
+  implementation starts, use the `wbs-builder` skill/playbook from
+  `kbexplorer-template`'s [`.agents/skills/wbs-builder/`](https://github.com/anokye-labs/kbexplorer-template/tree/main/.agents/skills/wbs-builder)
+  rather than improvising an ad hoc issue-creation script.
+
+## Delegating Work to an Agent
+
+This org is worked by multiple AI coding agents, not just one — treat the
+delegation mechanics below as tool-agnostic. To hand an issue to an
+agent:
 
 1. Create the issue with proper type, description, and relationships
-2. Edit the issue and assign it to `@copilot`
-3. Copilot will pick up the issue and open a PR
+2. Assign it to whichever agent (or agent-backed account, e.g. `@copilot`) is
+   set up to pick up issues in this repo
+3. The agent picks up the issue and opens a PR referencing it
+
+`@copilot` is one available option, not "the" preferred one — pick whichever
+agent fits the task. Separately, and unconditionally regardless of which agent
+runs it: `generate` and `derive`'s fuzzy phases have a hard **runtime**
+dependency on GitHub Copilot CLI (`copilot -p`), documented under
+["Prerequisite: Copilot CLI"](#prerequisite-copilot-cli-for-fuzzy-phases)
+above — that is a factual dependency of those two commands, independent of
+which agent is doing the delegating or the implementing.
 
 ## Verification and Validation
 
@@ -187,7 +248,7 @@ Use the GraphQL API for issue types, sub-issues, and relationship management. Th
 1. **Build and test** — Run the build and all existing tests. Fix failures before declaring done.
 2. **Runtime verification** — If the change affects runtime behavior, run the application and confirm it works. Don't just assume passing tests means the system is correct.
 3. **Web UI verification** — If web pages or browser-based interfaces are involved, use the **Playwright CLI** skill to navigate, interact, screenshot, and validate the UI behaves correctly.
-4. **Desktop/GUI verification** — If desktop GUI or graphical applications are involved and you're running in Copilot CLI, check for the availability of the **computer-use MCP server**. If available, use it to interact with and verify the GUI. If not available and you believe you need it, **ask the user to install it**.
+4. **Desktop/GUI verification** — If desktop GUI or graphical applications are involved, check whether your runtime has access to a **computer-use MCP server** (availability depends on which agent/runtime you are). If available, use it to interact with and verify the GUI. If not available and you believe you need it, **ask the user to install it**.
 5. **Integration verification** — If the change involves APIs, services, or external systems, make real calls and confirm responses. Don't mock what you can test live.
 
 ### When You Cannot Verify
