@@ -33,8 +33,12 @@ jobs:
       - run: npm ci
 
       # OIDC trusted publishing (npmjs.com) is the auth path for this workflow.
-      # No NODE_AUTH_TOKEN env var is set: an always-present-but-empty token
-      # risks the npm CLI treating auth as attempted-and-failed instead of
-      # falling through to OIDC. If trusted publishing isn't registered yet,
-      # this step fails with ENEEDAUTH until it is (see npm docs for setup).
+      # NODE_AUTH_TOKEN is explicitly set to '' rather than omitted: setup-node
+      # unconditionally writes `_authToken=${NODE_AUTH_TOKEN}` into .npmrc, and
+      # per npm's own docs an env var referenced via ${VAR} that is completely
+      # UNDEFINED is left unreplaced (the literal, bogus string), whereas a
+      # DEFINED-but-empty var substitutes cleanly to "". If trusted publishing
+      # isn't registered yet, this step fails with ENEEDAUTH until it is.
       - run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ''
