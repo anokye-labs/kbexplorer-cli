@@ -21,9 +21,21 @@
  * no timestamps and nothing about it is written to git by the store. The
  * "git-as-store / no timestamps in committed artifacts" rule applies to the
  * write-back products: `apply_changes` writes caller-provided file contents
- * **verbatim** (the store injects no clock), and job ids are **deterministic
- * content hashes** of the operation + canonical input + a per-store creation index
- * — reproducible for a given sequence of calls, never time-derived.
+ * **verbatim** (the store injects no clock).
+ *
+ * **Job ids are NOT a pure content hash — read this before relying on them as
+ * an idempotency key (#206).** `_nextId()` hashes `operation + canonical
+ * input + this._seq` where `_seq` is a process-local counter that increments
+ * on every call, so the digest mixes in *creation order*, not content alone:
+ * calling `start()` twice with identical `operation`/`request` on the same
+ * store yields two *different* ids (the counter advances), while replaying
+ * an identical *sequence* of calls against a fresh store reproduces the same
+ * ids one-for-one (same counter values in the same order). What the guarantee
+ * actually buys you: ids are never time-derived (no clock is read, so replay
+ * across processes/days is stable) and never random (so tests can assert on
+ * them) — but two calls with the same content are not deduplicated to the
+ * same id, and the id alone does not prove "this exact input has been seen
+ * before" without also knowing its position in the call sequence.
  *
  * @module src/affordances/jobs/store
  */
@@ -67,6 +79,11 @@ export class CredentialRequiredError extends Error {
   }
 }
 
+/** Redact a credential bag down to its (sorted) key names — never the values. */
+function redactCredentialNames(credentials) {
+  return Object.keys(credentials ?? {}).sort();
+}
+
 /** Stable, key-sorted JSON for deterministic id derivation (no timestamps). */
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
@@ -101,15 +118,30 @@ function snapshot(job) {
  * process-wide by default ({@link defaultJobStore}) so a job started in one
  * stateless affordance call is observable from the next; tests inject their own
  * fresh store through `context.seams.jobStore` for isolation.
+ *
+ * Credential handling: real credential *values* are never attached to a job
+ * record. They live only in `this._credentialVault` (id → name→value bag),
+ * read solely by `getCredential()` inside `_launch()` at actual exec time. The
+ * job record itself carries `credentialNames` — the (sorted) key names a
+ * caller supplied, never the values — so anything that logs, serializes, or
+ * otherwise dumps a raw job object (e.g. `_raw()`, a future debug endpoint, an
+ * error report) cannot leak a secret just by touching the job.
  */
 export class JobStore {
   constructor() {
     /** @type {Map<string, object>} */
     this._jobs = new Map();
     this._seq = 0;
+    /** @type {Map<string, object>} Real credential values, isolated from job records. */
+    this._credentialVault = new Map();
   }
 
-  /** Deterministic id: hash of operation + canonical input + creation index. */
+  /**
+   * Id: a digest of operation + canonical input + this store's creation-order
+   * counter. Not a pure content hash (see the class docstring, #206) — the
+   * counter means id equality tracks "same content at the same position in
+   * the call sequence", not "same content ever submitted".
+   */
   _nextId(operation, request) {
     const seq = this._seq++;
     const digest = createHash('sha256')
@@ -165,7 +197,9 @@ export class JobStore {
    * @param {object} spec
    * @param {string} spec.operation                 Logical op name (e.g. `generate`).
    * @param {object} spec.request                   Opaque, serialisable job request.
-   * @param {object} [spec.credentials]             Name→value credential bag.
+   * @param {object} [spec.credentials]             Name→value credential bag. Real values are
+   *        isolated into `this._credentialVault`, never attached to the job record itself
+   *        (only the redacted key names are — see the class docstring).
    * @param {object} [spec.derivation]              Deterministic sampled-content
    *        provenance ({@link module:src/affordances/provenance}); recorded on the
    *        job and stamped onto its generated changes. Omitted for non-sampled work.
@@ -176,13 +210,15 @@ export class JobStore {
   start({ operation, request, credentials = {}, derivation = null, run }) {
     const id = this._nextId(operation, request);
     const controller = new AbortController();
+    this._credentialVault.set(id, { ...credentials });
     const job = {
       id,
       operation,
       status: JOB_STATUS.RUNNING,
       progress: { phase: 'starting', completed: 0, total: 0, message: '' },
       request,
-      credentials: { ...credentials },
+      // Redacted: names only, never values (see class docstring + getCredential).
+      credentialNames: redactCredentialNames(credentials),
       derivation: derivation ?? null,
       changes: null,
       partial: null,
@@ -210,7 +246,9 @@ export class JobStore {
   resume(id, credentials, run) {
     const job = this._jobs.get(id);
     if (!job) return undefined;
-    job.credentials = { ...job.credentials, ...credentials };
+    const merged = { ...this._credentialVault.get(id), ...credentials };
+    this._credentialVault.set(id, merged);
+    job.credentialNames = redactCredentialNames(merged);
     job.needs = null;
     job.error = null;
     job.status = JOB_STATUS.RUNNING;
@@ -226,7 +264,8 @@ export class JobStore {
       job.progress = { ...job.progress, ...progress };
     };
     const getCredential = (name) => {
-      const v = job.credentials?.[name];
+      // Real values live only in the vault, never on `job` — see class docstring.
+      const v = this._credentialVault.get(job.id)?.[name];
       if (v === undefined || v === null || v === '') throw new CredentialRequiredError(name);
       return v;
     };
