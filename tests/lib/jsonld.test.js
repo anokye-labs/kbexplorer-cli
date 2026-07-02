@@ -48,10 +48,14 @@ describe('slugify / normalizeType / buildId', () => {
   it('buildId yields kg://<type>/<slug>', () => {
     assert.strictEqual(buildId('Person', 'Jane Doe'), 'kg://person/jane-doe');
   });
-  it('buildEdgeId strips schemes and joins with the relation', () => {
+  it('buildEdgeId embeds full endpoint addresses (scheme + body) and joins with the relation', () => {
+    // Per @anokye-labs/kbexplorer-core CHANGELOG (v0.4.0, kbexplorer#12 Outcome 1):
+    // buildEdgeId no longer strips endpoint schemes before composing the edge id —
+    // endpoints are embedded in full so ids stay injective over scheme/authority
+    // (stripping previously collapsed e.g. `https://x` and `kg://x` into the same id).
     assert.strictEqual(
       buildEdgeId('kg://person/jane', 'leads', 'kg://team/platform'),
-      'kg://edge/person/jane~leads~team/platform',
+      'kg://edge/kg://person/jane~leads~kg://team/platform',
     );
   });
 });
