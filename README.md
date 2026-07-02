@@ -12,6 +12,9 @@ npx @anokye-labs/kbx init
 npm install -D @anokye-labs/kbx
 ```
 
+> Until the first npm publish lands, install from GitHub instead:
+> `npm install -D github:anokye-labs/kbexplorer-cli`.
+
 ## Commands
 
 | Command | Description |
