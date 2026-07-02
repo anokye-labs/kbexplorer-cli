@@ -1,11 +1,11 @@
 /**
- * Canvas declaration (PE3-F5 wiring; A1 server, #190; actions + emit bus, #212).
+ * Canvas declaration (PE3-F5 wiring; A1 server, #190; actions + emit bus, #194).
  *
  * The affordance `tools` ship in the **same** `joinSession({ canvases, tools })`
  * call as this canvas: "if the plugin provides a canvas, the action tools come
  * with it." This module supplies the canvas declaration, a real `open()`/`onClose()`
  * backed by a per-instance loopback HTTP server
- * (see {@link module:src/extension/canvas-server}), and — as of #212 — the
+ * (see {@link module:src/extension/canvas-server}), and — as of #194 — the
  * agent-invocable `actions[]` (`anchor`/`expand`/`trace`/`filter`) that close the
  * loop the loopback contract left open: the iframe renders the graph over HTTP,
  * and these actions are how the **agent** (via `invoke_canvas_action`) drives it.
@@ -18,20 +18,15 @@
  *
  * `anchor`/`expand`/`trace` delegate to {@link module:src/affordances}'
  * `executeAffordance` — so consent + provenance are inherited from the same
- * action core the extension-tool (#163) and MCP (#197) adapters use, and node
- * existence is validated before anything is emitted. `filter` is a pure VIEW
- * instruction — cluster/layer highlighting the panel applies client-side — and
- * emits directly with no affordance call.
- *
- * SSE wire contract (frozen, `docs/canvas-loopback-contract.md`, v2 per #212):
- * `anchor` still emits **exactly** `anchor { nodeId }`, unchanged since A4.
- * `expand`/`trace`/`filter` emit the single additive `view-action` envelope —
- * `{ action, params, requestId? }` — rather than three new event types or an
- * overloaded `anchor`/`graph-updated`. `graph-updated` itself is unchanged and
- * not emitted by any action here (reserved for future content/data mutations).
- * Every action pushes its event through `registry.emit` so the panel that
- * requested it (or any other panel subscribed to the same `instanceId`)
- * updates live over the existing `/events` stream.
+ * action core the extension-tool (#163) and MCP (#197) adapters use. `filter`'s
+ * query mode instead calls `registry.search` (the same seam the loopback
+ * `/search` endpoint uses, including its dependency-free text-index fallback)
+ * rather than the raw `search` affordance, which hard-requires installed
+ * search artifacts — this keeps `filter` usable in a stock checkout. Every
+ * action then pushes the corresponding SSE event through `registry.emit` so
+ * the panel that requested the action (or any other panel subscribed to the
+ * same `instanceId`) updates live over the existing `/events` stream. Frozen
+ * event names only: `anchor` and `graph-updated` (`docs/canvas-loopback-contract.md`).
  *
  * Mostly SDK-free: this returns a plain `CanvasOptions`-shaped object (action
  * handlers receive the SDK's `CanvasProviderInvokeActionRequest` shape but never
@@ -80,60 +75,16 @@ function requireString(value, field, actionName) {
 }
 
 /**
- * Require at least one of two optional string fields to be a non-empty
- * string, throwing a clear `TypeError` when both are omitted/blank.
- *
- * @param {object} fields  Map of `{ [field]: value }` to check.
- * @param {string} actionName
- * @returns {void}
- */
-function requireAtLeastOneOf(fields, actionName) {
-  const hasAny = Object.values(fields).some((v) => typeof v === 'string' && v.trim() !== '');
-  if (!hasAny) {
-    const names = Object.keys(fields).join('`/`');
-    throw new TypeError(`${actionName}: at least one of \`${names}\` is required`);
-  }
-}
-
-/**
- * Emit the single, additive `view-action` SSE envelope (#212,
- * `docs/canvas-loopback-contract.md` v2): `{ action, params, requestId? }`.
- * Shared by `expand`/`trace`/`filter` so the envelope shape can't drift
- * between actions. `anchor` is exempt — it stays on its own frozen,
- * unchanged `anchor { nodeId }` event.
- *
- * @param {object} registry
- * @param {string} instanceId
- * @param {'expand'|'trace'|'filter'} action
- * @param {object} params
- * @param {string} [requestId]  Best-effort correlation id pass-through. The
- *        current Copilot canvas SDK action-invoke context does not guarantee
- *        a `requestId` field exists — this is forward-compatible plumbing,
- *        not a documented SDK contract. Omitted entirely (not `null`/`undefined`
- *        keyed) when absent.
- * @returns {boolean} Whether a subscriber received the frame (registry.emit's return).
- */
-function emitViewAction(registry, instanceId, action, params, requestId) {
-  const data = { action, params };
-  if (requestId) data.requestId = requestId;
-  return registry.emit(instanceId, SSE_EVENTS.VIEW_ACTION, data);
-}
-
-/**
  * Build the `actions[]` the canvas declares for `invoke_canvas_action`:
  * `anchor`, `expand`, `trace`, `filter`. `anchor`/`expand`/`trace` delegate to
- * `executeAffordance` — so consent, provenance, and node-existence validation
- * are inherited from the same action core the extension-tool (#163) and MCP
- * (#197) adapters use. `filter` is a pure VIEW instruction (cluster/layer
- * highlighting the panel applies client-side) and never calls an affordance
- * or `registry.search`. On success, every action pushes its event through
- * `registry.emit` so the subscribed `/events` SSE stream(s) for that
- * `instanceId` update live: `anchor` emits the frozen `anchor { nodeId }`
- * event unchanged; `expand`/`trace`/`filter` emit the single additive
- * `view-action { action, params, requestId? }` envelope (#212).
+ * `executeAffordance`; `filter`'s query mode delegates to `registry.search`
+ * (see {@link createCanvasRegistry}) instead, for parity with `/search`'s
+ * artifact-optional fallback. On success, every action pushes the resulting
+ * domain event through `registry.emit` so the subscribed `/events` SSE
+ * stream(s) for that `instanceId` update live.
  *
  * @param {object} registry  A canvas-server registry (see {@link createCanvasRegistry}).
- *        Must expose `emit(instanceId, event, data)`.
+ *        Must expose `emit(instanceId, event, data)` and `search(params)`.
  * @param {object} [opts]
  * @param {(name: string, input: object, context?: object) => Promise<*>} [opts.execute]
  *        Registry executor seam (defaults to {@link executeAffordance}).
@@ -169,7 +120,7 @@ export function buildCanvasActions(registry, opts = {}) {
     {
       name: 'expand',
       description:
-        "Expand a node's neighbourhood on the canvas up to a given depth. Validates the node via the `graph_neighbors` affordance, then emits a `view-action` SSE event (`{ action: 'expand', params: { nodeId, depth? } }`) for the panel to react to.",
+        "Expand a node's neighbourhood on the canvas up to a given depth. Emits a `graph-updated` SSE event with the expanded node set.",
       inputSchema: {
         type: 'object',
         properties: {
@@ -188,16 +139,19 @@ export function buildCanvasActions(registry, opts = {}) {
           { id: nodeId, depth: input.depth },
           contextFactory()
         );
-        const params =
-          typeof input.depth === 'number' ? { nodeId, depth: input.depth } : { nodeId };
-        const delivered = emitViewAction(registry, instanceId, 'expand', params, ctx.requestId);
+        const nodes = [nodeId, ...result.neighbors.map((n) => n.id)];
+        const delivered = registry.emit(instanceId, SSE_EVENTS.GRAPH_UPDATED, {
+          nodes,
+          reason: 'expand',
+          focus: nodeId,
+        });
         return { ...result, delivered };
       },
     },
     {
       name: 'trace',
       description:
-        "Trace the shortest connection between two nodes (fromId/toId), or the immediate connections of one node (nodeId). Computes the path via the `trace` affordance, then emits a `view-action` SSE event (`{ action: 'trace', params: { path } }`) with just the traced path.",
+        'Trace the shortest connection between two nodes (fromId/toId), or the immediate connections of one node (nodeId). Emits a `graph-updated` SSE event with the traced path.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -213,41 +167,60 @@ export function buildCanvasActions(registry, opts = {}) {
         const fromId = input.fromId || input.nodeId;
         requireString(fromId, 'fromId (or nodeId)', 'trace');
         const result = await execute('trace', { fromId, toId: input.toId }, contextFactory());
-        const delivered = emitViewAction(
-          registry,
-          instanceId,
-          'trace',
-          { path: result.path },
-          ctx.requestId
-        );
+        const delivered = registry.emit(instanceId, SSE_EVENTS.GRAPH_UPDATED, {
+          nodes: result.path,
+          reason: 'trace',
+          path: result.path,
+          connected: result.connected,
+        });
         return { ...result, delivered };
       },
     },
     {
       name: 'filter',
       description:
-        "Filter/highlight the visible node set by cluster and/or layer — a pure VIEW instruction; no data lookup is performed here, the panel applies the highlight client-side. At least one of `cluster`/`layer` is required. Emits a `view-action` SSE event (`{ action: 'filter', params: { cluster?, layer? } }`).",
+        'Filter/highlight the visible node set by a semantic query and/or cluster/entity type. When `query` is given, searches (with a dependency-free text-index fallback when no search artifacts are installed) and emits a `graph-updated` SSE event with the matching node ids; `cluster`/`nodeType` alone are returned for the panel to apply client-side.',
       inputSchema: {
         type: 'object',
         properties: {
-          cluster: { type: 'string', description: 'Restrict the view to a cluster id.' },
-          layer: { type: 'string', description: 'Restrict the view to a layer id.' },
+          query: { type: 'string', description: 'Semantic search query.' },
+          cluster: { type: 'string', description: 'Restrict results to a cluster id.' },
+          nodeType: {
+            type: 'string',
+            description: 'Restrict results to an entity type (passed through as `entityType`).',
+          },
         },
         additionalProperties: false,
       },
       async handler(ctx = {}) {
         const instanceId = instanceIdOf(ctx);
         const input = ctx.input ?? {};
-        const cluster = typeof input.cluster === 'string' ? input.cluster.trim() : '';
-        const layer = typeof input.layer === 'string' ? input.layer.trim() : '';
-        requireAtLeastOneOf({ cluster: input.cluster, layer: input.layer }, 'filter');
+        const query = typeof input.query === 'string' ? input.query.trim() : '';
+        const cluster = input.cluster ?? null;
+        const nodeType = input.nodeType ?? null;
 
-        const params = {};
-        if (cluster) params.cluster = cluster;
-        if (layer) params.layer = layer;
+        let nodes = null;
+        if (query) {
+          // Uses `registry.search` (the same seam `/search` uses, including its
+          // dependency-free text-index fallback) rather than the raw `search`
+          // affordance, which hard-throws `UNSUPPORTED`/`MISSING_ARTIFACT` when
+          // no search engine/artifacts are installed. This keeps `filter`
+          // working in a stock checkout instead of only in repos with a
+          // `.search/` index built.
+          const result = await registry.search({
+            query,
+            cluster: cluster ?? undefined,
+            entityType: nodeType ?? undefined,
+          });
+          nodes = result.results.map((r) => r.nodeId ?? r.id);
+        }
 
-        const delivered = emitViewAction(registry, instanceId, 'filter', params, ctx.requestId);
-        return { ...params, delivered };
+        const delivered = registry.emit(instanceId, SSE_EVENTS.GRAPH_UPDATED, {
+          reason: 'filter',
+          filter: { query: query || null, cluster, nodeType },
+          nodes,
+        });
+        return { query: query || null, cluster, nodeType, nodes, delivered };
       },
     },
   ];

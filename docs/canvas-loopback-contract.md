@@ -1,6 +1,6 @@
 # Loopback canvas contract (frozen A/B seam)
 
-> **Status: frozen.** This document is the _entire_ boundary between the CLI
+> **Status: frozen.** This document is the *entire* boundary between the CLI
 > (which serves) and the template (which renders). It is the trackable seam that
 > [#189](https://github.com/anokye-labs/kbexplorer-cli/issues/189) freezes and
 > that [#190](https://github.com/anokye-labs/kbexplorer-cli/issues/190) (A1) and
@@ -9,10 +9,6 @@
 >
 > **The CLI never renders; the template never touches disk or spawns servers.**
 > The only thing that crosses this line is HTTP on a per-instance loopback origin.
->
-> **Contract version: v2** (adds the `view-action` SSE event, #212 —
-> `anchor`/`graph-updated`/`ready` are unchanged from v1; see
-> [Changelog](#changelog)).
 
 Part of the epic
 [#188 — Canvas serving & data path](https://github.com/anokye-labs/kbexplorer-cli/issues/188).
@@ -35,10 +31,10 @@ runtime bundle executes:
 
 ```js
 window.__KBX_CANVAS__ = {
-  local: true, // always true on the loopback host
-  visualMode: 'inherit-host', // canvas inherits the host's visual mode
-  searchServiceUrl: '<origin>/search', // absolute URL the SPA POSTs search to
-  anchorNodeId, // optional: node to focus/anchor on open
+  local: true,                          // always true on the loopback host
+  visualMode: 'inherit-host',           // canvas inherits the host's visual mode
+  searchServiceUrl: '<origin>/search',  // absolute URL the SPA POSTs search to
+  anchorNodeId,                         // optional: node to focus/anchor on open
 };
 ```
 
@@ -47,14 +43,14 @@ present only when the canvas was opened against a specific node.
 
 ## Endpoints
 
-| Method | Path                   | Owner  | Purpose                                                                                                                                                                                                                                                                                    |
-| ------ | ---------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET`  | `/`                    | **A1** | Embeddable canvas entry — `canvas.html` (from the template build, #406) when present, else `index.html` as a best-effort fallback, else a minimal built-in page — with injected `window.__KBX_CANVAS__` boot config. Static assets (JS/CSS/etc.) are served from the same build directory. |
-| `GET`  | `/manifest`            | A2     | `repo-manifest.json` bytes (the full host manifest).                                                                                                                                                                                                                                       |
-| `GET`  | `/manifest/slice?ids=` | A2     | Incremental manifest slice for the comma-separated node `ids`.                                                                                                                                                                                                                             |
-| `POST` | `/search`              | A3     | `{ query }` → the SPA's `VITE_SEARCH_SERVICE_URL` result shape.                                                                                                                                                                                                                            |
-| `GET`  | `/events`              | A4     | SSE stream: `anchor { nodeId }`, `graph-updated { nodes[] }`, and `view-action { action, params, requestId? }` (#212) events.                                                                                                                                                              |
-| `POST` | `/affordance/:name`    | A5     | `{ input }` → `executeAffordance` result (consent-gated via `src/affordances/index.js`).                                                                                                                                                                                                   |
+| Method | Path                | Owner | Purpose |
+|--------|---------------------|-------|---------|
+| `GET`  | `/`                 | **A1** | Embeddable canvas entry — `canvas.html` (from the template build, #406) when present, else `index.html` as a best-effort fallback, else a minimal built-in page — with injected `window.__KBX_CANVAS__` boot config. Static assets (JS/CSS/etc.) are served from the same build directory. |
+| `GET`  | `/manifest`         | A2    | `repo-manifest.json` bytes (the full host manifest). |
+| `GET`  | `/manifest/slice?ids=` | A2 | Incremental manifest slice for the comma-separated node `ids`. |
+| `POST` | `/search`           | A3    | `{ query }` → the SPA's `VITE_SEARCH_SERVICE_URL` result shape. |
+| `GET`  | `/events`           | A4    | SSE stream: `graph-updated { nodes[] }` and `anchor { nodeId }` events. |
+| `POST` | `/affordance/:name` | A5    | `{ input }` → `executeAffordance` result (consent-gated via `src/affordances/index.js`). |
 
 ### A1 scope vs. later issues
 
@@ -81,25 +77,18 @@ remains stubbed today.
 emitted periodically to keep the connection warm. Domain events follow the frozen
 names:
 
-- `anchor` → `data: { "nodeId": "…" }` — focus/anchor the SPA on a node.
-  **Unchanged since A4.**
 - `graph-updated` → `data: { "nodes": [ … ] | null, ... }` — content/graph
   mutated or the visible node set changed; the SPA re-fetches the affected
-  manifest slice and re-renders. **Unchanged since A4** — reserved for future
-  content/data mutations; no canvas action emits this event as of #212 (see
-  `view-action` below for the agent-driven VIEW actions).
-- `view-action` (added #212, contract v2) → `data: { "action":
-"expand"|"trace"|"filter", "params": { … }, "requestId"?: "…" }` — a single,
-  additive envelope for agent-driven VIEW mutations. Added instead of growing
-  the wire vocabulary with one event per action, and instead of overloading
-  `anchor` (which is `{ nodeId }`-shaped and can't express a path or a
-  cluster/layer filter). Consumers that don't recognize `view-action` can
-  safely ignore it — this is additive, not a breaking change. See
-  [Canvas actions](#canvas-actions-agent-invocable-212) for the exact `params`
-  shape per `action`.
+  manifest slice and re-renders. The base payload is `{ "nodes": [...] }`; the
+  canvas **actions** below (#194) additionally set a `"reason"` field
+  (`"expand" | "trace" | "filter"`) plus action-specific fields — see
+  [Canvas actions](#canvas-actions-agent-invocable-194) for the exact shape
+  each action emits. `"nodes"` is `null` only for a `filter` with no `query`
+  (see below).
+- `anchor` → `data: { "nodeId": "…" }` — focus/anchor the SPA on a node.
 
 Domain events are delivered through an injected `subscribe(instanceId, onEvent)`
-seam. `createCanvasRegistry`'s real default (as of #212) is
+seam. `createCanvasRegistry`'s real default (as of #194) is
 `createEventBus()` — a per-`instanceId` pub/sub — **not** a no-op: any live
 `/events` stream for an instance receives every event the registry's
 `emit(instanceId, event, data)` pushes for that same instance, and only that
@@ -108,10 +97,10 @@ old heartbeat-only no-op (`defaultSubscribe`) is still exported for hermetic
 tests that want a truly inert seam, but it is no longer what a real
 `open()`'d registry uses. The trigger side is now real too: every canvas
 **action** below pushes its event through this same bus after its affordance
-call (where applicable) succeeds. A template-side SSE consumer (`EmbeddableApp` /
+call succeeds. A template-side SSE consumer (`EmbeddableApp` /
 `useKnowledgeBase`) remains a template-side follow-up.
 
-### Canvas actions (agent-invocable, #212)
+### Canvas actions (agent-invocable, #194)
 
 The canvas declares an `actions[]` array (Copilot canvas SDK shape —
 `{ name, description, inputSchema, handler }`) so the **agent** can drive the
@@ -120,57 +109,43 @@ of the do-seam: `/affordance/:name` (A5) lets the **iframe** call an
 affordance over HTTP; `actions[]` lets the **agent** call one through the SDK.
 `anchor`/`expand`/`trace` route through the same `executeAffordance` core
 (`src/affordances/index.js`) the iframe do-seam uses, so consent/provenance
-and node-existence validation are identical either way — even though, for
-`expand`/`trace`, the SSE frame they emit is narrower than the affordance's
-full result (see the honesty note below). `filter` is a pure VIEW instruction
-— cluster/layer highlighting is expected to apply **client-side** against the
-manifest the panel already has — and never calls an affordance or
-`registry.search`. Every action, on success, pushes its event through
+are identical either way. `filter`'s query mode instead calls
+`registry.search(params)` — the exact seam the `/search` HTTP endpoint (A3)
+uses, including its dependency-free text-index fallback — rather than the
+raw `search` affordance, which hard-throws `UNSUPPORTED`/`MISSING_ARTIFACT`
+when no `@anokye-labs/kbexplorer-search` engine or `.search/` artifacts are
+installed; this keeps `filter` usable in a stock checkout. Every action, on
+success, pushes the resulting domain event through
 `registry.emit(instanceId, event, data)` — the real bus described above — so
 the panel that requested the action (or any other panel subscribed to the
 same `instanceId`) updates live over `/events`. `instanceId` is resolved from
-the SDK's action-invoke context (`ctx.instanceId`); the envelope's `requestId`
-field is a forward-compatible, best-effort pass-through of `ctx.requestId`
-when the invocation context happens to supply one — the current Copilot
-canvas SDK action-invoke shape does not guarantee this field exists, so
-consumers **must not** assume `requestId` is reliably present; treat it as
-optional correlation metadata only.
+the SDK's action-invoke context (`ctx.instanceId`).
 
-| Action   | Input schema                                                                                                                                        | Delegates to                                                                         | Emits                                                                                                                            |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `anchor` | `{ nodeId: string }` (required)                                                                                                                     | `query_node { id: nodeId }` (existence check)                                        | `anchor { nodeId }` — **unchanged since A4**                                                                                     |
-| `expand` | `{ nodeId: string, depth?: number }` (`nodeId` required; `depth` clamped 1–4, default 1, by the `graph_neighbors` affordance)                       | `graph_neighbors { id: nodeId, depth }` (existence + depth validation)               | `view-action { action: "expand", params: { nodeId, depth? } }` — `depth` is present in `params` only when the caller supplied it |
-| `trace`  | `{ fromId?: string, toId?: string, nodeId?: string }` (one of `fromId`/`nodeId` required; `nodeId` is an alias for `fromId` when `toId` is omitted) | `trace { fromId, toId }` (shortest path, or 1-hop neighbours when `toId` is omitted) | `view-action { action: "trace", params: { path } }` — `path` is the affordance's computed node-id array                          |
-| `filter` | `{ cluster?: string, layer?: string }` (at least one of `cluster`/`layer` required)                                                                 | _(none — pure view instruction, no affordance/search call)_                          | `view-action { action: "filter", params: { cluster?, layer? } }` — only the supplied field(s) are present in `params`            |
+| Action | Input schema | Delegates to | Emits |
+|---|---|---|---|
+| `anchor` | `{ nodeId: string }` (required) | `query_node { id: nodeId }` (existence check) | `anchor { nodeId }` |
+| `expand` | `{ nodeId: string, depth?: number }` (`nodeId` required; `depth` clamped 1–4, default 1) | `graph_neighbors { id: nodeId, depth }` | `graph-updated { nodes: [nodeId, ...neighborIds], reason: "expand", focus: nodeId }` |
+| `trace` | `{ fromId?: string, toId?: string, nodeId?: string }` (one of `fromId`/`nodeId` required; `nodeId` is an alias for `fromId` when `toId` is omitted) | `trace { fromId, toId }` (shortest path, or 1-hop neighbours when `toId` is omitted) | `graph-updated { nodes: path, reason: "trace", path, connected }` |
+| `filter` | `{ query?: string, cluster?: string, nodeType?: string }` (all optional) | `registry.search { query, cluster, entityType: nodeType }` **only when `query` is given** — engine-backed when `.search/*` artifacts exist, else the dependency-free text index | `graph-updated { reason: "filter", filter: { query, cluster, nodeType }, nodes }` — `nodes` is the matched id array when `query` was given, else `null` |
 
-**Honesty note on `expand`/`trace`'s narrower emit:** as of #212, the
-`view-action` payload for `expand` only echoes the input `{ nodeId, depth? }`
-and for `trace` only carries the computed `{ path }` — **not** the full
-computed neighbor/node list the affordances return. The affordance call still
-happens (and its full result is returned to the _agent_ as the action's
-return value, for its own use), so node existence and path computation are
-still validated server-side; but the SPA is expected to re-fetch/recompute
-the expanded neighborhood or rendered path itself (e.g. via `/manifest/slice`)
-in reaction to the event, rather than receive a ready-made node list over SSE.
-This is a deliberate scope-down from the pre-#212 design (which put the
-computed node list directly on the wire) — the template-side consumer for
-`view-action` is a template-side follow-up.
-
-**Honesty note on `filter`:** `filter` dropped its `query`/`nodeType`/
-semantic-search mode entirely (previously via `registry.search`) in favor of
-being a pure `cluster`/`layer` VIEW instruction — no data lookup happens
-server-side at all; the panel applies the cluster/layer highlight
-client-side against the manifest it already has. At least one of
-`cluster`/`layer` is required (both may be given together); the handler
-throws a `TypeError` when neither is a non-empty string.
+**Honesty note on `filter`:** the `query` path works in a stock checkout —
+`registry.search` degrades gracefully to a dependency-free text index over
+the live manifest (same fallback `/search` uses) when no search engine or
+`.search/*` artifacts are installed, and both paths honor `cluster`/`nodeType`
+as exact-match filters. When only `cluster`/`nodeType` are given (no
+`query`), the action still validates and emits — so the panel gets a live
+`graph-updated` frame to react to — but `nodes` is `null` and the SPA is
+expected to apply the cluster/nodeType predicate client-side against the
+manifest it already has; there is currently no affordance/seam that filters
+purely by cluster/entity type server-side with no query term. This is a
+documented, intentional partial capability, not an oversight.
 
 Action names deliberately avoid the SDK-reserved `canvas.` prefix (lifecycle
 verbs). Handlers throw a plain `TypeError` for a missing required input field
-(e.g. `anchor` with no `nodeId`, or `filter` with neither `cluster` nor
-`layer`) before calling any affordance or emitting; affordance-level errors
-(`NOT_FOUND`, `INVALID_INPUT`, consent-denied, …) propagate as-is — the SDK
-surfaces the thrown error as the action's failure, no envelope is imposed
-here.
+(e.g. `anchor` with no `nodeId`) before calling any affordance; affordance-level
+errors (`NOT_FOUND`, `INVALID_INPUT`, consent-denied, …) propagate as-is —
+the SDK surfaces the thrown error as the action's failure, no envelope is
+imposed here.
 
 ### `/affordance/:name` (A5) — the do-seam adapter
 
@@ -196,15 +171,3 @@ success → `200 { "ok": true, "result": … }`.
 - **Emit is instance-scoped** — `registry.emit(instanceId, event, data)` (and
   therefore every canvas action) only reaches `/events` streams open for that
   same `instanceId`; it never leaks to another panel.
-
-## Changelog
-
-- **v1** (A1–A5, #190–#193, #201): server lifecycle, `/manifest`+`/manifest/slice`
-  (A2), `/search` (A3), `/events` SSE with `anchor`/`graph-updated` (A4),
-  `/affordance/:name` do-seam (A5).
-- **v2** (#212): added the `actions[]` agent-invoke surface
-  (`anchor`/`expand`/`trace`/`filter`) and a real per-instance SSE emit bus
-  (replacing the no-op `defaultSubscribe` default). Added exactly one new,
-  additive SSE event — `view-action { action, params, requestId? }` — for the
-  `expand`/`trace`/`filter` actions. `anchor`/`graph-updated`/`ready` are
-  **unchanged**.

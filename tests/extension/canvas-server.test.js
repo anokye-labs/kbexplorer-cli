@@ -770,13 +770,11 @@ describe('textIndexSearch (fallback)', () => {
     assert.ok(rows.length <= 1);
   });
 
-  // The `/search` (A3) endpoint honors cluster/entityType filters in its
-  // dependency-free text-index fallback exactly like the real search engine
-  // path does — otherwise filter-by-cluster/type silently degrades whenever
-  // search artifacts are missing. (Note: as of #212 the canvas `filter`
-  // action is a pure view-instruction and no longer calls `registry.search`
-  // itself; this coverage is for the `/search` HTTP seam directly.)
-  describe('cluster/entityType filters (A3 /search fallback parity)', () => {
+  // #194: the canvas `filter` action calls registry.search -> textIndexSearch
+  // directly with cluster/entityType, so the fallback path must honor them
+  // exactly like the engine path does — otherwise filter-by-cluster/type
+  // silently degrades whenever search artifacts are missing.
+  describe('cluster/entityType filters (#194 filter-action parity)', () => {
     const manifest = {
       configRaw: 'title: X',
       authoredContent: {
@@ -1063,13 +1061,8 @@ describe('GET /events (A4, #193 — SSE)', () => {
     handler(res, res);
     emit({ event: SSE_EVENTS.GRAPH_UPDATED, data: { nodes: ['n1', 'n2'] } });
     emit({ event: SSE_EVENTS.ANCHOR, data: { nodeId: 'n3' } });
-    emit({ event: SSE_EVENTS.VIEW_ACTION, data: { action: 'expand', params: { nodeId: 'n3' } } });
     assert.match(res.body, /event: graph-updated\ndata: \{"nodes":\["n1","n2"\]\}/);
     assert.match(res.body, /event: anchor\ndata: \{"nodeId":"n3"\}/);
-    assert.match(
-      res.body,
-      /event: view-action\ndata: \{"action":"expand","params":\{"nodeId":"n3"\}\}/
-    );
     res.emitClose();
   });
 
@@ -1130,11 +1123,11 @@ describe('defaultSubscribe (A4 no-op seam)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Real per-instance event bus (#212) — replaces defaultSubscribe as the
+// Real per-instance event bus (#194) — replaces defaultSubscribe as the
 // registry's default so canvas actions can push live SSE frames.
 // ---------------------------------------------------------------------------
 
-describe('createEventBus (#212 real emit bus)', () => {
+describe('createEventBus (#194 real emit bus)', () => {
   it('delivers an emit to a subscribed listener on the same instance', () => {
     const bus = createEventBus();
     const received = [];
@@ -1193,23 +1186,9 @@ describe('createEventBus (#212 real emit bus)', () => {
       assert.equal(bus.emit('nobody-home', SSE_EVENTS.ANCHOR, {}), false);
     });
   });
-
-  it('delivers the new view-action envelope like any other event (#212)', () => {
-    const bus = createEventBus();
-    const received = [];
-    bus.subscribe('inst-a', (evt) => received.push(evt));
-    const delivered = bus.emit('inst-a', SSE_EVENTS.VIEW_ACTION, {
-      action: 'filter',
-      params: { cluster: 'core' },
-    });
-    assert.equal(delivered, true);
-    assert.deepEqual(received, [
-      { event: SSE_EVENTS.VIEW_ACTION, data: { action: 'filter', params: { cluster: 'core' } } },
-    ]);
-  });
 });
 
-describe('createCanvasRegistry.search (A3 /search seam)', () => {
+describe('createCanvasRegistry.search (#194 filter-action seam)', () => {
   it('exposes a search(params) method backed by the same runSearch seam /search uses', async () => {
     const seen = [];
     const registry = createCanvasRegistry({
@@ -1249,7 +1228,7 @@ describe('createCanvasRegistry.search (A3 /search seam)', () => {
   });
 });
 
-describe('createCanvasRegistry default subscribe + emit (#212)', () => {
+describe('createCanvasRegistry default subscribe + emit (#194)', () => {
   it("registry's default subscribe is the real event bus, not the old no-op", async () => {
     // No custom subscribe/eventBus injected — registry.emit must still reach a
     // live SSE stream opened through its own default-wired request handler.
