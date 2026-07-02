@@ -18,6 +18,7 @@ on:
       - dependency-review
       - linked-issue
       - pr-title
+      - test
     types: [completed]
   # Backstop sweep catches PRs whose gating settled between events
   # (late thread resolution, races, manual updates).
