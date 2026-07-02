@@ -111,7 +111,7 @@ npx kbx init --template https://github.com/my-org/kb-template.git --vendor --ref
 
 The default URL is only a fallback constant
 ([`version.js:12`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/version.js#L12)); `--template` overrides it and the choice is recorded
-in `.kbx.json` (see [§5](#5-the-source-record-kbexplorerjson)). To create an org template,
+in `.kbx.json` (see [§5](#5-the-source-record-kbxjson)). To create an org template,
 the simplest path is to **fork the official template** and rebrand it.
 
 ### The template contract

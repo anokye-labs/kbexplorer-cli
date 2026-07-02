@@ -22,7 +22,7 @@ one that matches what you're doing — or read several if you wear multiple hats
 
 ## What this project is, in one minute
 
-- **Type:** A CLI distributed on npm as [`@anokye-labs/kbexplorer`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/package.json#L2), run via `npx kbx <command>`.
+- **Type:** A CLI distributed on npm as [`@anokye-labs/kbx`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/package.json#L2), run via `npx kbx <command>`.
 - **Language/runtime:** JavaScript (ES modules), Node.js **≥ 22** — see [`package.json:26-28`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/package.json#L26-L28).
 - **Dependencies:** **None at runtime.** The CLI shells out to `git`, `gh`, and `vite`. This keeps `npx` cold-starts fast and the supply chain tiny.
 - **Two halves:** this repo is the **CLI** (the installer/orchestrator). The visual app it installs lives in a separate repo, [`anokye-labs/kbexplorer-template`](https://github.com/anokye-labs/kbexplorer-cli/blob/main/src/lib/version.js#L12).
