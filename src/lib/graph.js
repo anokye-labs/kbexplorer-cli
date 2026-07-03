@@ -23,6 +23,8 @@ import { parseFrontmatter } from './markdown.js';
 import { resolveContentDir } from './kb-env.js';
 import { coerceAccessLabel } from './access-label.js';
 
+// Shared markdown enumeration lives in ./fs-utils.js.
+
 /** Recursively list `.md` files under a directory (absolute paths). */
 function listMarkdownFiles(dir) {
   const out = [];

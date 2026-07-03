@@ -17,6 +17,8 @@ import { resolveContentDir } from './kb-env.js';
 import { readConfig } from './manifest.js';
 import { coerceAccessLabel } from './access-label.js';
 
+// Shared markdown enumeration lives in ./fs-utils.js.
+
 /**
  * List all .md files recursively under a directory.
  * @param {string} dir
