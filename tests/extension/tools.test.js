@@ -39,6 +39,11 @@ describe('affordance → tool binding', () => {
     assert.equal(tools.length, EXPECTED.length);
   });
 
+  it('enumerates the same affordance set as the MCP host', async () => {
+    const { buildMcpTools } = await import('../../src/mcp/tools.js');
+    assert.deepEqual(buildAffordanceTools().map((t) => t.name), buildMcpTools().map((t) => t.name));
+  });
+
   it('each tool has a JSON-Schema parameters object derived from the contract', () => {
     const byName = Object.fromEntries(describeAffordances().map((d) => [d.name, d]));
     for (const tool of buildAffordanceTools()) {
