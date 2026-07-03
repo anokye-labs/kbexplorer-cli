@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "allowJs": true,
+    "checkJs": false,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.js",
+    "tests/**/*.js",
+    "tests/**/*.ts",
+    "bin/**/*.js",
+    "bin/**/*.ts",
+    "scripts/**/*.js",
+    "scripts/**/*.ts"
+  ],
+  "exclude": ["dist", "node_modules", ".kbx"]
+}
