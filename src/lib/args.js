@@ -370,28 +370,27 @@ export function parseBuildArgs(args = []) {
 }
 
 export function parseConnectArgs(args = []) {
-  return parseArgs(
-   {
-     defaults: { check: false, help: false, unknown: [] },
-     options: [
-       { name: 'check', aliases: ['--check'], type: 'boolean' },
-       { name: 'help', aliases: ['--help', '-h'], type: 'boolean' },
-     ],
-   },
-   args,
-  );
+  const out = { check: false, help: false, unknown: [] };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--check') out.check = true;
+    else if (arg === '--help' || arg === '-h') out.help = true;
+    else if (arg.startsWith('-')) out.unknown.push(arg);
+  }
+  return out;
 }
 
 export function parseDevArgs(args = []) {
-  return parseArgs(
+  const out = parseArgs(
    {
      defaults: { noWatch: false, viteArgs: [], unknown: [] },
      options: [{ name: 'noWatch', aliases: ['--no-watch'], type: 'boolean' }],
-     positionals: 'viteArgs',
      collectUnknown: false,
    },
    args,
   );
+  out.viteArgs = args.filter((arg) => arg !== '--no-watch');
+  return out;
 }
 
 export function parseLinksArgs(args = []) {
@@ -523,7 +522,7 @@ export function parseSearchArgs(args = []) {
      options: [
        { name: 'help', aliases: ['--help', '-h'], type: 'boolean' },
        { name: 'json', aliases: ['--json'], type: 'boolean' },
-       { name: 'limit', aliases: ['--limit'], type: 'value' },
+       { name: 'limit', aliases: ['--limit'], type: 'number' },
        { name: 'cluster', aliases: ['--cluster'], type: 'value' },
        { name: 'entityType', aliases: ['--entity-type'], type: 'value' },
        { name: 'minScore', aliases: ['--min-score'], type: 'number' },
