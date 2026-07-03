@@ -1,7 +1,27 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { parseInitArgs, parseUpdateArgs, parseGenerateArgs, parseDeriveArgs, parseDoctorArgs } = await import('../../src/lib/args.js');
+const {
+  parseInitArgs,
+  parseUpdateArgs,
+  parseGenerateArgs,
+  parseDeriveArgs,
+  parseDoctorArgs,
+  parseAffectedArgs,
+  parseAuditArgs,
+  parseBuildArgs,
+  parseConnectArgs,
+  parseDevArgs,
+  parseLinksArgs,
+  parseManifestArgs,
+  parseMcpArgs,
+  parsePluginArgs,
+  parseScaffoldArgs,
+  parseSearchIndexArgs,
+  parseSearchArgs,
+  parseSyncArgs,
+  parseValidateArgs,
+} = await import('../../src/lib/args.js');
 
 describe('parseInitArgs', () => {
   it('returns defaults for no args', () => {
@@ -257,5 +277,116 @@ describe('parseDoctorArgs', () => {
     assert.strictEqual(opts.runtime, 'claude');
     assert.strictEqual(opts.json, true);
     assert.strictEqual(opts.offline, true);
+  });
+});
+
+describe('parseAffectedArgs', () => {
+  it('uses positional ref and defaults', () => {
+    const out = parseAffectedArgs(['feature', '--content', 'README.md']);
+    assert.strictEqual(out.ref, 'feature');
+    assert.strictEqual(out.content, 'README.md');
+    assert.strictEqual(out.json, false);
+  });
+});
+
+describe('parseAuditArgs', () => {
+  it('parses json and content flags', () => {
+    const out = parseAuditArgs(['--json', '--content', 'docs']);
+    assert.strictEqual(out.json, true);
+    assert.strictEqual(out.content, 'docs');
+  });
+});
+
+describe('parseBuildArgs', () => {
+  it('parses base', () => {
+    assert.strictEqual(parseBuildArgs(['--base', 'main']).base, 'main');
+  });
+});
+
+describe('parseConnectArgs', () => {
+  it('ignores bare positionals and only tracks dashed unknowns', () => {
+    const out = parseConnectArgs(['--check', 'ignored', '--bogus']);
+    assert.strictEqual(out.check, true);
+    assert.deepStrictEqual(out.unknown, ['--bogus']);
+  });
+});
+
+describe('parseDevArgs', () => {
+  it('forwards passthrough vite args while stripping --no-watch', () => {
+    const out = parseDevArgs(['--host', '0.0.0.0', '--port', '5173', '--no-watch']);
+    assert.strictEqual(out.noWatch, true);
+    assert.deepStrictEqual(out.viteArgs, ['--host', '0.0.0.0', '--port', '5173']);
+  });
+});
+
+describe('parseLinksArgs', () => {
+  it('parses json', () => {
+    assert.strictEqual(parseLinksArgs(['--json']).json, true);
+  });
+});
+
+describe('parseManifestArgs', () => {
+  it('returns empty defaults', () => {
+    assert.deepStrictEqual(parseManifestArgs([]), { unknown: [] });
+  });
+});
+
+describe('parseMcpArgs', () => {
+  it('parses flags and normalizes name', () => {
+    const out = parseMcpArgs(['--name', 'demo', '--skip-preflight']);
+    assert.strictEqual(out.name, 'demo');
+    assert.strictEqual(out.skipPreflight, true);
+  });
+});
+
+describe('parsePluginArgs', () => {
+  it('parses positional subcommand and value options', () => {
+    const out = parsePluginArgs(['install', '--scope', 'user', '--session-dir', 'tmp']);
+    assert.strictEqual(out.sub, 'install');
+    assert.deepStrictEqual(out._, []);
+    assert.strictEqual(out.scope, 'user');
+    assert.strictEqual(out.sessionDir, 'tmp');
+  });
+
+  it('supports =-form values', () => {
+    assert.strictEqual(parsePluginArgs(['install', '--scope=user']).scope, 'user');
+  });
+});
+
+describe('parseScaffoldArgs', () => {
+  it('uses first positional as slug and parses options', () => {
+    const out = parseScaffoldArgs(['page', '--title', 'My page']);
+    assert.strictEqual(out.slug, 'page');
+    assert.strictEqual(out.title, 'My page');
+  });
+});
+
+describe('parseSearchIndexArgs', () => {
+  it('parses numeric batch size', () => {
+    assert.strictEqual(parseSearchIndexArgs(['--batch-size', '4']).batchSize, 4);
+    assert.strictEqual(parseSearchIndexArgs(['--batch-size', 'abc']).batchSize, null);
+  });
+});
+
+describe('parseSearchArgs', () => {
+  it('parses numeric limit and positional query', () => {
+    const out = parseSearchArgs(['--limit', '10', 'hello world']);
+    assert.strictEqual(out.limit, 10);
+    assert.strictEqual(out.query, 'hello world');
+  });
+});
+
+describe('parseSyncArgs', () => {
+  it('parses graph and against values', () => {
+    const out = parseSyncArgs(['--graph', 'graph.json', '--against', 'main']);
+    assert.strictEqual(out.graph, 'graph.json');
+    assert.strictEqual(out.against, 'main');
+  });
+});
+
+describe('parseValidateArgs', () => {
+  it('parses dir alias forms', () => {
+    assert.strictEqual(parseValidateArgs(['--content-model', 'docs']).dir, 'docs');
+    assert.strictEqual(parseValidateArgs(['--dir', 'src']).dir, 'src');
   });
 });

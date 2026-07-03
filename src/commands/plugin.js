@@ -19,23 +19,18 @@ import {
   assembleBundle,
   gistShareManifest,
 } from '../lib/plugin-bundle.js';
+import { parsePluginArgs as parseSharedPluginArgs } from '../lib/args.js';
 
 function parsePluginArgs(args = []) {
-  const opts = { sub: null, scope: 'project', sessionDir: null, json: false, help: false };
-  const rest = [];
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--help' || a === '-h') opts.help = true;
-    else if (a === '--json') opts.json = true;
-    else if (a === '--scope' || a === '-s') opts.scope = args[++i];
-    else if (a === '--session-dir') opts.sessionDir = args[++i];
-    else if (a.startsWith('--scope=')) opts.scope = a.slice('--scope='.length);
-    else if (a.startsWith('--session-dir=')) opts.sessionDir = a.slice('--session-dir='.length);
-    else if (!a.startsWith('-') && !opts.sub) opts.sub = a;
-    else rest.push(a);
-  }
-  opts._ = rest;
-  return opts;
+  const out = parseSharedPluginArgs(args);
+  return {
+    sub: out.sub ?? null,
+    scope: out.scope ?? 'project',
+    sessionDir: out.sessionDir ?? null,
+    json: out.json ?? false,
+    help: out.help ?? false,
+    _: out._ ?? [],
+  };
 }
 
 const USAGE = `

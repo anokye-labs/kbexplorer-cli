@@ -12,47 +12,10 @@
  */
 
 import { resolve, relative } from 'node:path';
+import { parseSearchArgs } from '../lib/args.js';
 
 const DEFAULT_ARTIFACT_DIR = '.search';
 const DEFAULT_LIMIT = 5;
-
-function parseArgs(args) {
-  const out = {
-    query: null,
-    help: false,
-    json: false,
-    limit: null,
-    cluster: null,
-    entityType: null,
-    minScore: null,
-    dir: null,
-    provider: null,
-    model: null,
-  };
-  const positional = [];
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '-h' || a === '--help') out.help = true;
-    else if (a === '--json') out.json = true;
-    else if (a === '--limit') out.limit = parseInt(args[++i], 10);
-    else if (a.startsWith('--limit=')) out.limit = parseInt(a.slice('--limit='.length), 10);
-    else if (a === '--cluster') out.cluster = args[++i];
-    else if (a.startsWith('--cluster=')) out.cluster = a.slice('--cluster='.length);
-    else if (a === '--entity-type') out.entityType = args[++i];
-    else if (a.startsWith('--entity-type=')) out.entityType = a.slice('--entity-type='.length);
-    else if (a === '--min-score') out.minScore = parseFloat(args[++i]);
-    else if (a.startsWith('--min-score=')) out.minScore = parseFloat(a.slice('--min-score='.length));
-    else if (a === '--dir') out.dir = args[++i];
-    else if (a.startsWith('--dir=')) out.dir = a.slice('--dir='.length);
-    else if (a === '--provider') out.provider = args[++i];
-    else if (a.startsWith('--provider=')) out.provider = a.slice('--provider='.length);
-    else if (a === '--model') out.model = args[++i];
-    else if (a.startsWith('--model=')) out.model = a.slice('--model='.length);
-    else if (!a.startsWith('-')) positional.push(a);
-  }
-  out.query = positional.join(' ') || null;
-  return out;
-}
 
 function printHelp() {
   console.log(`
@@ -83,7 +46,7 @@ function formatScore(score) {
 }
 
 export default async function search(args = []) {
-  const opts = parseArgs(args);
+  const opts = parseSearchArgs(args);
   if (opts.help) {
     printHelp();
     return;

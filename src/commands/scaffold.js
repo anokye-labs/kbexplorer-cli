@@ -15,36 +15,7 @@ import { resolve } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { inferIcon } from '../lib/transform.js';
 import { resolveContentDir } from '../lib/kb-env.js';
-
-function parseArgs(args) {
-  const out = {
-    slug: null,
-    cluster: null,
-    parent: null,
-    title: null,
-    emoji: null,
-    content: null,
-    force: false,
-  };
-  const positional = [];
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--cluster') out.cluster = args[++i];
-    else if (a.startsWith('--cluster=')) out.cluster = a.slice('--cluster='.length);
-    else if (a === '--parent') out.parent = args[++i];
-    else if (a.startsWith('--parent=')) out.parent = a.slice('--parent='.length);
-    else if (a === '--title') out.title = args[++i];
-    else if (a.startsWith('--title=')) out.title = a.slice('--title='.length);
-    else if (a === '--emoji') out.emoji = args[++i];
-    else if (a.startsWith('--emoji=')) out.emoji = a.slice('--emoji='.length);
-    else if (a === '--content') out.content = args[++i];
-    else if (a.startsWith('--content=')) out.content = a.slice('--content='.length);
-    else if (a === '--force' || a === '-f') out.force = true;
-    else if (!a.startsWith('--')) positional.push(a);
-  }
-  if (positional[0]) out.slug = positional[0];
-  return out;
-}
+import { parseScaffoldArgs } from '../lib/args.js';
 
 function toTitle(slug) {
   return slug
@@ -62,7 +33,7 @@ function printUsage() {
 }
 
 export default async function scaffoldCommand(args) {
-  const opts = parseArgs(args);
+  const opts = parseScaffoldArgs(args);
 
   if (!opts.slug) {
     console.error('error: <slug> is required');

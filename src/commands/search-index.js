@@ -18,42 +18,11 @@
 
 import { resolve, relative } from 'node:path';
 import { buildGraph } from '../lib/graph-builder.js';
+import { parseSearchIndexArgs } from '../lib/args.js';
 
 const DEFAULT_ARTIFACT_DIR = '.search';
 const DEFAULT_PROVIDER = 'openai';
 const DEFAULT_MODEL = 'text-embedding-3-small';
-
-function parseArgs(args) {
-  const out = {
-    check: false,
-    dryRun: false,
-    help: false,
-    json: false,
-    dir: null,
-    provider: null,
-    model: null,
-    content: null,
-    batchSize: null,
-  };
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--check') out.check = true;
-    else if (a === '--dry-run') out.dryRun = true;
-    else if (a === '--json') out.json = true;
-    else if (a === '-h' || a === '--help') out.help = true;
-    else if (a === '--dir') out.dir = args[++i];
-    else if (a.startsWith('--dir=')) out.dir = a.slice('--dir='.length);
-    else if (a === '--provider') out.provider = args[++i];
-    else if (a.startsWith('--provider=')) out.provider = a.slice('--provider='.length);
-    else if (a === '--model') out.model = args[++i];
-    else if (a.startsWith('--model=')) out.model = a.slice('--model='.length);
-    else if (a === '--content') out.content = args[++i];
-    else if (a.startsWith('--content=')) out.content = a.slice('--content='.length);
-    else if (a === '--batch-size') out.batchSize = parseInt(args[++i], 10);
-    else if (a.startsWith('--batch-size=')) out.batchSize = parseInt(a.slice('--batch-size='.length), 10);
-  }
-  return out;
-}
 
 function printHelp() {
   console.log(`
@@ -78,7 +47,7 @@ function printHelp() {
 }
 
 export default async function searchIndex(args = []) {
-  const opts = parseArgs(args);
+  const opts = parseSearchIndexArgs(args);
   if (opts.help) {
     printHelp();
     return;
