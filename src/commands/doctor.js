@@ -19,8 +19,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { loadRuntimeConfig, resolveRuntime, RUNTIME_ENV } from '../lib/runtime-config.js';
-import { detectConfiguredMcpServers } from '../lib/mcp-preflight.js';
-import { runMcpServerPreflight } from '../mcp/preflight.js';
+import { detectConfiguredMcpServers } from '../lib/mcp-config-preflight.js';
+import { runMcpServerPreflight } from '../mcp/server-preflight.js';
 import { readSourceRecord, SOURCE_FILE, classifyRef } from '../lib/source.js';
 import { isAdapterAvailable, resolveBinary } from '../lib/copilot-runtime.js';
 import { getSubmoduleUrl, getAppRoot } from '../lib/detect-repo.js';

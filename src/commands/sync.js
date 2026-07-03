@@ -24,8 +24,9 @@
  */
 
 import { resolve, relative } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { computeSyncStatus, sourceContentDrift } from '../lib/drift.js';
+import { readGraphFile } from '../lib/graph-file.js';
 import { loadBaselineGraph } from './affected.js';
 import { runConnectCommand } from './connect.js';
 import { CONNECT_DIR, ARTIFACT_FILES, ConnectError } from '../lib/connect.js';
@@ -79,18 +80,6 @@ function printHelp() {
         --json             Emit machine-readable JSON
     -h, --help             Show this help
 `);
-}
-
-/** Coerce assorted persisted graph shapes into `{ nodes, edges }`. */
-function normalizeGraph(raw) {
-  if (!raw || typeof raw !== 'object') return { nodes: [], edges: [] };
-  const nodes = raw.nodes ?? raw['@graph'] ?? [];
-  const edges = raw.edges ?? raw['@edges'] ?? [];
-  return { nodes: Array.isArray(nodes) ? nodes : [], edges: Array.isArray(edges) ? edges : [] };
-}
-
-function readGraphFile(path) {
-  return normalizeGraph(JSON.parse(readFileSync(path, 'utf-8')));
 }
 
 /**

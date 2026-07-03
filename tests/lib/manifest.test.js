@@ -69,9 +69,36 @@ describe('readAuthoredContent', () => {
     assert.ok(content['content/overview.md']?.includes('# Overview'));
   });
 
+  it('normalizes CRLF to LF in authored markdown content', () => {
+    const crlfPath = join(FIXTURES, 'content', 'crlf.md');
+    writeFileSync(crlfPath, 'line one\r\nline two\r\n', 'utf8');
+    try {
+      const content = readAuthoredContent(join(FIXTURES, 'content'), 'content');
+      assert.equal(content['content/crlf.md'], 'line one\nline two\n');
+      assert.ok(!content['content/crlf.md']?.includes('\r'));
+    } finally {
+      rmSync(crlfPath, { force: true });
+    }
+  });
+
   it('returns empty for non-existent dir', () => {
     const content = readAuthoredContent(join(FIXTURES, 'missing'), 'missing');
     assert.deepStrictEqual(content, {});
+  });
+
+  it('normalizes CRLF to LF for deterministic manifest output', () => {
+    const crlfRoot = join(FIXTURES, 'crlf-manifest');
+    mkdirSync(join(crlfRoot, 'content', 'wiki'), { recursive: true });
+
+    writeFileSync(join(crlfRoot, 'README.md'), 'Line 1\r\nLine 2\r\n');
+    writeFileSync(join(crlfRoot, 'content', 'config.yaml'), 'title: "Test"\r\n');
+    writeFileSync(join(crlfRoot, 'content', 'wiki', 'guide.md'), '# Guide\r\n\r\nBody\r\n');
+
+    assert.strictEqual(readReadme(crlfRoot), 'Line 1\nLine 2\n');
+    assert.strictEqual(readConfig(crlfRoot, 'content'), 'title: "Test"\n');
+
+    const content = readAuthoredContent(join(crlfRoot, 'content'), 'content');
+    assert.strictEqual(content['content/wiki/guide.md'], '# Guide\n\nBody\n');
   });
 });
 

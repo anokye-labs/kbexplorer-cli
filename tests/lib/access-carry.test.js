@@ -62,8 +62,8 @@ describe('mergeSourceQualified — source access inheritance', () => {
       },
     ]);
     const byId = Object.fromEntries(graph.nodes.map((n) => [n.id, n]));
-    assert.deepEqual(byId.a.access, { classification: 'restricted' });
-    assert.deepEqual(byId.b.access, { classification: 'public' });
+    assert.deepEqual(byId['kg://a'].access, { classification: 'restricted' });
+    assert.deepEqual(byId['kg://b'].access, { classification: 'public' });
     assert.deepEqual(graph.edges[0].access, { classification: 'restricted' });
   });
 
@@ -98,8 +98,8 @@ describe('loadCompositeKnowledgeBase — end-to-end source access carry', () => 
       loadProvider: async () => provider,
     });
     const byId = Object.fromEntries(graph.nodes.map((n) => [n.id, n]));
-    assert.deepEqual(byId.n1.access, { classification: 'restricted' });
-    assert.deepEqual(byId.n2.access, { classification: 'public' });
+    assert.deepEqual(byId['kg://n1'].access, { classification: 'restricted' });
+    assert.deepEqual(byId['kg://n2'].access, { classification: 'public' });
   });
 });
 

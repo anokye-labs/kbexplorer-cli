@@ -28,10 +28,11 @@
  */
 
 import { resolve, relative } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { affected } from '../lib/affected.js';
 import { affectedFromGraphs } from '../lib/affected-graph.js';
+import { normalizeGraph, readGraphFile } from '../lib/graph-file.js';
 import { resolveContentDir } from '../lib/kb-env.js';
 
 function parseArgs(args) {
@@ -99,19 +100,6 @@ function printHumanReport(result) {
 }
 
 // -- Composite content-hash dispatch -----------------------------------------
-
-/** Coerce assorted persisted graph shapes into `{ nodes, edges }`. */
-function normalizeGraph(raw) {
-  if (!raw || typeof raw !== 'object') return { nodes: [], edges: [] };
-  const nodes = raw.nodes ?? raw['@graph'] ?? [];
-  const edges = raw.edges ?? raw['@edges'] ?? [];
-  return { nodes: Array.isArray(nodes) ? nodes : [], edges: Array.isArray(edges) ? edges : [] };
-}
-
-/** Read + parse a graph JSON file into `{ nodes, edges }`. */
-function readGraphFile(path) {
-  return normalizeGraph(JSON.parse(readFileSync(path, 'utf-8')));
-}
 
 /**
  * Read the baseline graph (the same file at `since`) from git. Returns `null`

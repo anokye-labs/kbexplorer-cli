@@ -36,7 +36,7 @@ import {
 import {
   runMcpPreflight,
   formatMcpPreflightErrors,
-} from '../lib/mcp-preflight.js';
+} from '../lib/mcp-config-preflight.js';
 
 const CATALOGUE_FILE = 'catalogue.json';
 

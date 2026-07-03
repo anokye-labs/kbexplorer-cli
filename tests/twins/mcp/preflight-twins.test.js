@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const { detectConfiguredMcpServers, runMcpPreflight, formatMcpPreflightErrors } = await import(
-  '../../../src/lib/mcp-preflight.js'
+  '../../../src/lib/mcp-config-preflight.js'
 );
 const { claudeAdapter, copilotAdapter, createCustomAdapter } = await import(
   '../../../src/lib/copilot-runtime.js'

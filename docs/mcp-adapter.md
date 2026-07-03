@@ -91,9 +91,9 @@ exactly like the rest of the CLI.
 
 ## Two "MCP preflights" — don't conflate them
 
-- **Consumer** (`src/lib/mcp-preflight.js`, #46): before a fuzzy phase, verifies
+- **Consumer** (`src/lib/mcp-config-preflight.js`, #46): before a fuzzy phase, verifies
   the *upstream* MCP servers kbx *calls* are configured. About servers kbx uses.
-- **Provider** (`src/mcp/preflight.js`, this feature): before starting `kbx mcp`,
+- **Provider** (`src/mcp/server-preflight.js`, this feature): before starting `kbx mcp`,
   verifies the local environment can *run our server* (Node ≥ 22, registry
   loads). `doctor` surfaces both (see the `mcp.server` check).
 

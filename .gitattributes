@@ -21,8 +21,10 @@ src/assets/commands/*.md text eol=lf
 # itself is stored as LF, causing a false golden mismatch. Pin them to LF.
 content/*.md text eol=lf
 
-# Same rationale for the derive-baseline sample sources under docs/samples —
-# these are read raw and hashed (src/lib/ingest.js) for the derive --check
-# determinism gate (T0c.2), so a CRLF checkout produces a different hash than
-# the LF bytes actually stored in git and checked out on Linux CI.
+# Derive-baseline sample sources are hashed byte-for-byte by `kbx derive` to
+# produce the sha256 embedded in their committed *.jsonld artifact (see above).
+# Pin them to LF too, otherwise autocrlf rewrites them to CRLF on Windows
+# checkouts and any re-derivation on Windows bakes a Windows-only hash into the
+# artifact, which then fails `derive --check`'s determinism baseline on Linux CI
+# (observed: content/derived/platform-squad.jsonld drifting across several PRs).
 docs/samples/*.md text eol=lf

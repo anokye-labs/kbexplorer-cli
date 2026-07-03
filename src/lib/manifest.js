@@ -63,6 +63,10 @@ import { resolveRepositoryRef } from './forge-adapter.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+function normalizeLineEndings(text) {
+  return String(text ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
 // Detect host root for submodule scenarios
 function detectHostRoot(kbRoot) {
   const parentRoot = resolve(kbRoot, '..', '..');
@@ -148,7 +152,7 @@ export function readAuthoredContent(contentDir, contentPath) {
         walk(fullPath, relPath.replace(new RegExp(`^${contentPath}/`), contentPath + '/'));
       } else if (entry.isFile() && extname(entry.name) === '.md') {
         try {
-          content[relPath] = readFileSync(fullPath, 'utf-8');
+          content[relPath] = normalizeLineEndings(readFileSync(fullPath, 'utf-8'));
         } catch {
           console.warn(`[generate-manifest] Failed to read ${fullPath}`);
         }
@@ -177,7 +181,7 @@ export function readConfig(root, contentPath = 'content') {
   for (const p of paths) {
     if (existsSync(p)) {
       try {
-        return readFileSync(p, 'utf-8');
+        return normalizeLineEndings(readFileSync(p, 'utf-8'));
       } catch { /* continue */ }
     }
   }
@@ -195,7 +199,7 @@ export function readReadme(root) {
   const readmePath = resolve(root, 'README.md');
   if (existsSync(readmePath)) {
     try {
-      return readFileSync(readmePath, 'utf-8');
+      return normalizeLineEndings(readFileSync(readmePath, 'utf-8'));
     } catch { /* fall through */ }
   }
   return null;
