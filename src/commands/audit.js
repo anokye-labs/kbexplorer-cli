@@ -15,17 +15,7 @@
 import { resolve } from 'node:path';
 import { audit } from '../lib/audit.js';
 import { resolveContentDir } from '../lib/kb-env.js';
-
-function parseArgs(args) {
-  const out = { json: false, content: null };
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--json') out.json = true;
-    else if (a === '--content') out.content = args[++i];
-    else if (a.startsWith('--content=')) out.content = a.slice('--content='.length);
-  }
-  return out;
-}
+import { parseAuditArgs } from '../lib/args.js';
 
 function printHumanReport({ findings, summary }) {
   console.log('');
@@ -71,7 +61,7 @@ function printHumanReport({ findings, summary }) {
 }
 
 export default async function auditCommand(args) {
-  const opts = parseArgs(args);
+  const opts = parseAuditArgs(args);
   const cwd = process.cwd();
   const { contentDir, contentPath } = resolveContentDir(cwd, opts.content);
 

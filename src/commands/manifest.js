@@ -20,8 +20,10 @@ import { spawnSync } from 'node:child_process';
 import { getAppRoot } from '../lib/detect-repo.js';
 import { generateManifest } from '../lib/manifest.js';
 import { manifestOutPath } from './dev.js';
+import { parseManifestArgs } from '../lib/args.js';
 
 export default async function manifest(args) {
+  parseManifestArgs(args);
   const cwd = process.cwd();
   const appRoot = getAppRoot(cwd);
 

@@ -15,6 +15,7 @@ import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { getAppRoot, isTemplateRepo } from '../lib/detect-repo.js';
 import { writeHostManifest } from './dev.js';
+import { parseBuildArgs } from '../lib/args.js';
 
 /**
  * Environment for the Vite production build. Threads VITE_KB_HOST_ROOT (the
@@ -44,9 +45,8 @@ export default async function build(args) {
     process.exit(1);
   }
 
-  // Parse --base flag
-  const baseIdx = args.indexOf('--base');
-  const basePath = baseIdx >= 0 ? args[baseIdx + 1] : undefined;
+  const opts = parseBuildArgs(args);
+  const basePath = opts.base;
 
   // Generate the manifest against the HOST repo (identical to `dev`). Seeds an
   // initial host-correct manifest before Vite spins up; the vite plugin re-runs

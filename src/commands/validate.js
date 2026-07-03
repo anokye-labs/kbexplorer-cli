@@ -19,19 +19,10 @@
 
 import { resolve } from 'node:path';
 import { validateContentModel } from '../lib/content-model.js';
+import { parseValidateArgs as parseSharedValidateArgs } from '../lib/args.js';
 
 function parseArgs(args) {
-  const out = { json: false, dir: null, help: false, unknown: [] };
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--json') out.json = true;
-    else if (a === '--help' || a === '-h') out.help = true;
-    else if (a === '--content-model' || a === '--dir') out.dir = args[++i] ?? null;
-    else if (a.startsWith('--content-model=')) out.dir = a.slice('--content-model='.length);
-    else if (a.startsWith('--dir=')) out.dir = a.slice('--dir='.length);
-    else out.unknown.push(a);
-  }
-  return out;
+  return parseSharedValidateArgs(args);
 }
 
 function printHelp() {

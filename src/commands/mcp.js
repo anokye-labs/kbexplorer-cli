@@ -22,6 +22,7 @@
 
 import { main as runServer, SERVER_NAME } from '../mcp/index.js';
 import { runMcpServerPreflight, formatMcpServerPreflight } from '../mcp/server-preflight.js';
+import { parseMcpArgs as parseSharedMcpArgs } from '../lib/args.js';
 
 const HELP = `
   kbx mcp — knowledge-graph affordances as an MCP server (optional, non-canvas hosts)
@@ -54,32 +55,7 @@ const HELP = `
  * @returns {{ help: boolean, allow: boolean, skipPreflight: boolean, name: string|undefined, unknown: string[] }}
  */
 export function parseMcpArgs(args = []) {
-  const opts = { help: false, allow: false, skipPreflight: false, name: undefined, unknown: [] };
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    switch (arg) {
-      case '--help':
-      case '-h':
-        opts.help = true;
-        break;
-      case '--allow':
-        opts.allow = true;
-        break;
-      case '--skip-preflight':
-        opts.skipPreflight = true;
-        break;
-      case '--name':
-        opts.name = args[++i];
-        break;
-      default:
-        if (typeof arg === 'string' && arg.startsWith('--name=')) {
-          opts.name = arg.slice('--name='.length);
-        } else {
-          opts.unknown.push(arg);
-        }
-    }
-  }
-  return opts;
+  return parseSharedMcpArgs(args);
 }
 
 /**

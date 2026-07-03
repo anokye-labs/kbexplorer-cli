@@ -30,6 +30,7 @@ import { readGraphFile } from '../lib/graph-file.js';
 import { loadBaselineGraph } from './affected.js';
 import { runConnectCommand } from './connect.js';
 import { CONNECT_DIR, ARTIFACT_FILES, ConnectError } from '../lib/connect.js';
+import { parseSyncArgs as parseSharedSyncArgs } from '../lib/args.js';
 
 /** Default committed composite graph, relative to the repo root. */
 export const DEFAULT_GRAPH = `${CONNECT_DIR}/composite-graph.json`;
@@ -39,21 +40,7 @@ function toPosix(p) {
 }
 
 function parseArgs(args) {
-  const out = { check: false, json: false, graph: DEFAULT_GRAPH, since: 'HEAD', against: null, help: false };
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--check') out.check = true;
-    else if (a === '--json') out.json = true;
-    else if (a === '-h' || a === '--help') out.help = true;
-    else if (a === '--graph') out.graph = args[++i];
-    else if (a.startsWith('--graph=')) out.graph = a.slice('--graph='.length);
-    else if (a === '--since') out.since = args[++i];
-    else if (a.startsWith('--since=')) out.since = a.slice('--since='.length);
-    else if (a === '--against') out.against = args[++i];
-    else if (a.startsWith('--against=')) out.against = a.slice('--against='.length);
-    else out.unknown = [...(out.unknown ?? []), a];
-  }
-  return out;
+  return parseSharedSyncArgs(args);
 }
 
 function printHelp() {
