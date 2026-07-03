@@ -19,8 +19,8 @@
 
 import { resolve, relative, sep, isAbsolute } from 'node:path';
 import { existsSync, readFileSync, readdirSync, statSync, realpathSync } from 'node:fs';
-import { parseFrontmatter } from './frontmatter.js';
-import { resolveContentDir } from './frontmatter.js';
+import { parseFrontmatter } from './markdown.js';
+import { resolveContentDir } from './kb-env.js';
 import { coerceAccessLabel } from './access-label.js';
 
 /** Recursively list `.md` files under a directory (absolute paths). */
@@ -140,9 +140,11 @@ export function resolveScanDirs(roots) {
  * @property {string|undefined} parent
  * @property {string|undefined} emoji
  * @property {string|undefined} identity  kg:// identity URN, carried through when present.
- * @property {string|undefined} access    Access label, carried through when present. Only a
- *   flat scalar survives today — {@link module:src/lib/frontmatter}'s parser is flat and
- *   throws on a nested `access:` block (issue #179 tracks nested-object frontmatter support).
+ * @property {string|undefined} access    Access label, carried through when present.
+ *   {@link module:src/lib/markdown}'s parser (backed by the rich-markdown provider)
+ *   preserves nested `access:` blocks as well as the scalar shorthand — see
+ *   {@link module:src/lib/access-label.coerceAccessLabel} (issue #179 tracked the
+ *   prior flat parser's inability to author a nested block at all).
  * @property {Array<{to: string, description: string}>} connections
  * @property {string} body
  * @property {string} path     Absolute file path.
@@ -194,9 +196,9 @@ export function loadGraph({ roots, cwd = process.cwd() } = {}) {
         // `identity` is a plain scalar pointer, carried as-is. `access` MUST be
         // a canonical KBAccessLabel object — a bare scalar is silently dropped
         // as "unlabeled" by every consumer (AF-009). coerceAccessLabel turns
-        // the flat scalar shorthand (`access: restricted`) into
-        // `{ classification: 'restricted' }`; nested blocks await the flat
-        // parser's #179 nested-object support.
+        // the scalar shorthand (`access: restricted`) into
+        // `{ classification: 'restricted' }`, and also accepts an already
+        // nested block now that the parser preserves nested objects (#179).
         identity: fm.identity || undefined,
         access: coerceAccessLabel(fm.access),
         connections: Array.isArray(fm.connections) ? fm.connections : [],

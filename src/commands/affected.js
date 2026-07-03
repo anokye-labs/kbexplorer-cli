@@ -32,7 +32,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { affected } from '../lib/affected.js';
 import { affectedFromGraphs } from '../lib/affected-graph.js';
-import { resolveContentDir } from '../lib/frontmatter.js';
+import { resolveContentDir } from '../lib/kb-env.js';
 
 function parseArgs(args) {
   const out = { json: false, ref: 'HEAD', content: null, graph: null, since: 'HEAD' };

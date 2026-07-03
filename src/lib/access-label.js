@@ -140,11 +140,12 @@ export function normalizeAccessLabel(raw) {
  * string, which every one of those consumers silently drops as "unlabeled" —
  * the AF-009 no-op). A blank / garbage value yields `undefined` (= unlabeled).
  *
- * TODO(#179): the CLI frontmatter parser (`src/lib/frontmatter.js`) is flat and
- * rejects a nested `access:` block today (the page would be skipped entirely),
- * so only the scalar shorthand can actually be authored yet. The object branch
- * below is already correct for when the parser gains nested-object support;
- * add an end-to-end nested-`access:` fixture test once #179 lands.
+ * NOTE(#179): the CLI's content-file parser (`src/lib/markdown.js`, backed by
+ * `@anokye-labs/kbexplorer-provider-rich-markdown`) now preserves nested
+ * objects, so the object branch below is exercised for real — it previously
+ * described `src/lib/frontmatter.js`, a flat parser that rejected a nested
+ * `access:` block outright (the page would be skipped entirely). #179 still
+ * tracks adding an end-to-end nested-`access:` fixture test.
  *
  * @param {unknown} raw  The frontmatter `access` value (string | object | absent).
  * @returns {import('@anokye-labs/kbexplorer-core').KBAccessLabel | undefined}

@@ -10,7 +10,8 @@
 import { resolve, extname } from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { readContentFile, extractCitedFiles } from './frontmatter.js';
+import { readContentFile } from './markdown.js';
+import { extractCitedFiles } from './citations.js';
 
 function listMarkdownFiles(dir) {
   const out = [];

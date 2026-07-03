@@ -34,7 +34,7 @@ import { createServer as nodeCreateServer } from 'node:http';
 import { existsSync as fsExistsSync, readFileSync } from 'node:fs';
 import { resolve, join, normalize, extname, sep } from 'node:path';
 import { getAppRoot } from '../lib/detect-repo.js';
-import { parseFrontmatter } from '../lib/frontmatter.js';
+import { parseFrontmatter } from '../lib/markdown.js';
 import {
   executeAffordance as defaultExecuteAffordance,
   ERROR_CODES,
