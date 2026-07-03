@@ -8,7 +8,7 @@ deployment's two real MCP backbones:
 | `ado` | Azure DevOps work-items MCP server | canned work items |
 | `sharepoint-docs` | SharePoint documents MCP server | canned documents |
 
-They exist so the CLI's **MCP-preflight** (`src/lib/mcp-preflight.js`) and the
+They exist so the CLI's **MCP-preflight** (`src/lib/mcp-config-preflight.js`) and the
 derive/ingest paths that depend on a work-item / document source can be exercised
 **without touching real ADO or SharePoint** — no network, no auth, no live org.
 

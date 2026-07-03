@@ -73,6 +73,21 @@ describe('readAuthoredContent', () => {
     const content = readAuthoredContent(join(FIXTURES, 'missing'), 'missing');
     assert.deepStrictEqual(content, {});
   });
+
+  it('normalizes CRLF to LF for deterministic manifest output', () => {
+    const crlfRoot = join(FIXTURES, 'crlf-manifest');
+    mkdirSync(join(crlfRoot, 'content', 'wiki'), { recursive: true });
+
+    writeFileSync(join(crlfRoot, 'README.md'), 'Line 1\r\nLine 2\r\n');
+    writeFileSync(join(crlfRoot, 'content', 'config.yaml'), 'title: "Test"\r\n');
+    writeFileSync(join(crlfRoot, 'content', 'wiki', 'guide.md'), '# Guide\r\n\r\nBody\r\n');
+
+    assert.strictEqual(readReadme(crlfRoot), 'Line 1\nLine 2\n');
+    assert.strictEqual(readConfig(crlfRoot, 'content'), 'title: "Test"\n');
+
+    const content = readAuthoredContent(join(crlfRoot, 'content'), 'content');
+    assert.strictEqual(content['content/wiki/guide.md'], '# Guide\n\nBody\n');
+  });
 });
 
 describe('readConfig', () => {

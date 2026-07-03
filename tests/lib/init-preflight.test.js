@@ -13,7 +13,7 @@ const {
   formatPreflightDiagnostics,
   explainInstallFailure,
   MIN_NODE_MAJOR,
-} = await import('../../src/lib/preflight.js');
+} = await import('../../src/lib/init-preflight.js');
 
 describe('checkNodeVersion (#152)', () => {
   it('flags a Node major below the floor as a hard error', () => {

@@ -36,7 +36,7 @@ export {
   renderConsentMessage,
   buildElicitationSchema,
 } from './consent.js';
-export { runMcpServerPreflight, formatMcpServerPreflight } from './preflight.js';
+export { runMcpServerPreflight, formatMcpServerPreflight } from './server-preflight.js';
 
 /** Advertised server identity (name is overridable via `--name`). */
 export const SERVER_NAME = 'kbexplorer';

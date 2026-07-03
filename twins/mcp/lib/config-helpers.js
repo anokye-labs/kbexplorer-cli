@@ -1,7 +1,7 @@
 /**
  * Test helpers for pointing a runtime adapter at the MCP twins hermetically.
  *
- * These write the adapter-specific MCP config files that `mcp-preflight.js`
+ * These write the adapter-specific MCP config files that `mcp-config-preflight.js`
  * reads (`<cwd>/.mcp.json`, `~/.claude.json`, `~/.copilot/mcp-config.json`),
  * declaring the `ado` and `sharepoint-docs` twins so the preflight sees them as
  * configured. Each writer returns the absolute path it wrote, and produces an

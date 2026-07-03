@@ -16,7 +16,7 @@ import { join } from 'node:path';
 
 const {
   runMcpPreflight,
-} = await import('../../src/lib/mcp-preflight.js');
+} = await import('../../src/lib/mcp-config-preflight.js');
 
 const {
   claudeAdapter,
