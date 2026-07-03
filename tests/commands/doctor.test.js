@@ -803,6 +803,21 @@ describe('checkEnvironment — node version', () => {
       assert.ok(nodeCheck.status === 'pass' || nodeCheck.status === 'fail');
     });
   });
+
+  it('uses the CLI package.json engines requirement even when cwd differs', () => {
+    withTempDir((cwd) => {
+      writeJson(join(cwd, 'package.json'), { name: 'fixture-project', engines: { node: '>=999' } });
+      const spawnSync = fakeSpawnRouter({
+        git: fakeSpawnAvailable('git', '2.40.0'),
+        gh: fakeSpawnMissing(),
+      });
+      const checks = checkEnvironment({ cwd, env: {}, spawnSync });
+      const nodeCheck = checks.find((c) => c.id === 'env.node');
+      assert.ok(nodeCheck);
+      assert.strictEqual(nodeCheck.status, 'pass');
+      assert.match(nodeCheck.message, /requires >=22/);
+    });
+  });
 });
 
 describe('checkEnvironment — git and gh', () => {

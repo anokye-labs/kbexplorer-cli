@@ -1,9 +1,12 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { getAppRoot } from '../detect-repo.js';
 import { manifestOutPath } from '../../commands/dev.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function pass(id, message) { return { id, status: 'pass', message }; }
 function warn(id, message) { return { id, status: 'warn', message }; }
@@ -49,7 +52,7 @@ export function checkEnvironment({ cwd, env, spawnSync: spawnSyncImpl = spawnSyn
   const checks = [];
   const nodeVersion = process.version;
   try {
-    const pkgPath = resolve(process.cwd(), 'package.json');
+    const pkgPath = resolve(__dirname, '..', '..', '..', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     const enginesNode = pkg?.engines?.node;
     if (enginesNode) {
