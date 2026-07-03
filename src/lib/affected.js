@@ -7,35 +7,10 @@
  * refresh after a code change.
  */
 
-import { resolve, extname } from 'node:path';
-import { existsSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { readContentFile } from './markdown.js';
 import { extractCitedFiles } from './citations.js';
-
-function listMarkdownFiles(dir) {
-  const out = [];
-  if (!existsSync(dir)) return out;
-  const stack = [dir];
-  while (stack.length) {
-    const current = stack.pop();
-    let entries;
-    try {
-      entries = readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      const full = resolve(current, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(full);
-      } else if (entry.isFile() && extname(entry.name) === '.md') {
-        out.push(full);
-      }
-    }
-  }
-  return out;
-}
+import { listMarkdownFiles } from './fs-utils.js';
 
 export function gitChangedFiles(ref, cwd) {
   const raw = execFileSync('git', ['diff', '--name-only', ref], {
