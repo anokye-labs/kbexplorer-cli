@@ -21,7 +21,7 @@
  */
 
 import { main as runServer, SERVER_NAME } from '../mcp/index.js';
-import { runMcpServerPreflight, formatMcpServerPreflight } from '../mcp/preflight.js';
+import { runMcpServerPreflight, formatMcpServerPreflight } from '../mcp/server-preflight.js';
 
 const HELP = `
   kbx mcp — knowledge-graph affordances as an MCP server (optional, non-canvas hosts)
