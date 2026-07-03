@@ -33,13 +33,8 @@
  * @module src/mcp/tools
  */
 
-import {
-  describeAffordances,
-  executeAffordance,
-  createAffordanceContext,
-  ACTION_CLASSES,
-} from '../affordances/index.js';
-import { descriptorToJsonSchema } from '../extension/json-schema.js';
+import { describeAffordances } from '../affordances/index.js';
+import { buildToolDefinition } from '../affordances/tool-bridge.js';
 import { successResult, errorResult } from './tool-result.js';
 
 /**
@@ -59,54 +54,30 @@ export function toolNameFor(affordanceName) {
   return `${TOOL_PREFIX}${affordanceName}`;
 }
 
-/** Human-readable, advisory consent hint per action class. */
-const ACTION_CLASS_HINT = Object.freeze({
-  [ACTION_CLASSES.READ]: 'read-only: observes the graph/repo, no side effects',
-  [ACTION_CLASSES.WRITE]: 'write: produces or mutates committed artifacts on disk',
-  [ACTION_CLASSES.SAMPLE]: 'sample: assembles context to feed a model (no model call here)',
-});
-
 /**
- * Build one MCP tool descriptor from a described affordance.
- *
- * @param {ReturnType<typeof describeAffordances>[number]} described
- *        A serialisable affordance contract (name, title, summary, actionClass,
- *        input, output) — i.e. an entry from {@link describeAffordances}.
- * @param {object} [opts]
- * @param {(name: string, input: object, context?: object) => Promise<*>|*} [opts.execute]
- *        Registry executor seam (defaults to {@link executeAffordance}).
- * @param {() => object} [opts.contextFactory]
- *        Builds the affordance execution context per call (defaults to a fresh
- *        {@link createAffordanceContext} over `process.cwd()`). The MCP wiring
- *        passes a factory that threads MCP elicitation-based consent seams in.
- * @returns {{ name: string, description: string, inputSchema: object, actionClass: string, handler: (args: object) => Promise<object> }}
- */
+* Build one MCP tool descriptor from a described affordance.
+*
+* @param {ReturnType<typeof describeAffordances>[number]} described
+*        A serialisable affordance contract (name, title, summary, actionClass,
+*        input, output) — i.e. an entry from {@link describeAffordances}.
+* @param {object} [opts]
+* @param {(name: string, input: object, context?: object) => Promise<*>|*} [opts.execute]
+*        Registry executor seam (defaults to {@link executeAffordance}).
+* @param {() => object} [opts.contextFactory]
+*        Builds the affordance execution context per call (defaults to a fresh
+*        {@link createAffordanceContext} over `process.cwd()`). The MCP wiring
+*        passes a factory that threads MCP elicitation-based consent seams in.
+* @returns {{ name: string, description: string, inputSchema: object, actionClass: string, handler: (args: object) => Promise<object> }}
+*/
 export function affordanceToMcpTool(described, opts = {}) {
-  const { execute = executeAffordance, contextFactory = createAffordanceContext } = opts;
-  const { name, title, summary, actionClass } = described;
-
-  const hint = ACTION_CLASS_HINT[actionClass] ?? actionClass;
-  const description = `[${actionClass}] ${title} — ${summary} (${hint})`;
-
-  return {
-    name: toolNameFor(name),
-    description,
-    inputSchema: descriptorToJsonSchema(described.input),
-    // Advisory consent metadata — exposed, not enforced here (PE3-F3 enforces
-    // inside executeAffordance for every adapter). No separate `affordance`
-    // field: the extension-tool adapter's Tool has none either (AF-027), and
-    // `toolNameFor`/`name` already round-trips to the affordance name via the
-    // `kbx_` prefix, so a duplicate field would just be dead weight.
-    actionClass,
-    async handler(args) {
-      try {
-        const result = await execute(name, args ?? {}, contextFactory());
-        return successResult(result);
-      } catch (err) {
-        return errorResult(err);
-      }
-    },
-  };
+ const { execute, contextFactory } = opts;
+ return buildToolDefinition(described, {
+   prefix: TOOL_PREFIX,
+   execute,
+   contextFactory,
+   wrapSuccess: successResult,
+   wrapError: errorResult,
+ });
 }
 
 /**

@@ -28,13 +28,8 @@
  * @module src/extension/tools
  */
 
-import {
-  describeAffordances,
-  executeAffordance,
-  createAffordanceContext,
-  ACTION_CLASSES,
-} from '../affordances/index.js';
-import { descriptorToJsonSchema } from './json-schema.js';
+import { describeAffordances } from '../affordances/index.js';
+import { buildToolDefinition } from '../affordances/tool-bridge.js';
 import { successResult, errorResult } from './tool-result.js';
 
 /** Prefix that namespaces affordance tools within the host's global tool table. */
@@ -50,49 +45,36 @@ export function toolNameFor(affordanceName) {
   return `${TOOL_PREFIX}${affordanceName}`;
 }
 
-/** Human-readable, advisory consent hint per action class. */
-const ACTION_CLASS_HINT = Object.freeze({
-  [ACTION_CLASSES.READ]: 'read-only: observes the graph/repo, no side effects',
-  [ACTION_CLASSES.WRITE]: 'write: produces or mutates committed artifacts on disk',
-  [ACTION_CLASSES.SAMPLE]: 'sample: assembles context to feed a model (no model call here)',
-});
-
 /**
- * Build one Copilot CLI `Tool` from a described affordance.
- *
- * @param {ReturnType<typeof describeAffordances>[number]} described
- *        A serialisable affordance contract (name, title, summary, actionClass,
- *        input, output) — i.e. an entry from {@link describeAffordances}.
- * @param {object} [opts]
- * @param {(name: string, input: object, context?: object) => Promise<*>|*} [opts.execute]
- *        Registry executor seam (defaults to {@link executeAffordance}).
- * @param {() => object} [opts.contextFactory]
- *        Builds the affordance execution context per call (defaults to a fresh
- *        {@link createAffordanceContext} over `process.cwd()`).
- * @returns {object} A `Tool` definition (`{ name, description, parameters, handler, actionClass }`).
- */
+* Build one Copilot CLI `Tool` from a described affordance.
+*
+* @param {ReturnType<typeof describeAffordances>[number]} described
+*        A serialisable affordance contract (name, title, summary, actionClass,
+*        input, output) — i.e. an entry from {@link describeAffordances}.
+* @param {object} [opts]
+* @param {(name: string, input: object, context?: object) => Promise<*>|*} [opts.execute]
+*        Registry executor seam (defaults to {@link executeAffordance}).
+* @param {() => object} [opts.contextFactory]
+*        Builds the affordance execution context per call (defaults to a fresh
+*        {@link createAffordanceContext} over `process.cwd()`).
+* @returns {object} A `Tool` definition (`{ name, description, parameters, handler, actionClass }`).
+*/
 export function affordanceToTool(described, opts = {}) {
-  const { execute = executeAffordance, contextFactory = createAffordanceContext } = opts;
-  const { name, title, summary, actionClass } = described;
+ const { execute, contextFactory } = opts;
+ const tool = buildToolDefinition(described, {
+   prefix: TOOL_PREFIX,
+   execute,
+   contextFactory,
+   wrapSuccess: successResult,
+   wrapError: errorResult,
+ });
+ const { inputSchema, ...rest } = tool;
 
-  const hint = ACTION_CLASS_HINT[actionClass] ?? actionClass;
-  const description = `[${actionClass}] ${title} — ${summary} (${hint})`;
-
-  return {
-    name: toolNameFor(name),
-    description,
-    parameters: descriptorToJsonSchema(described.input),
-    // Advisory consent metadata — exposed, not enforced (PE3-F3 enforces later).
-    actionClass,
-    async handler(args) {
-      try {
-        const result = await execute(name, args ?? {}, contextFactory());
-        return successResult(result);
-      } catch (err) {
-        return errorResult(err);
-      }
-    },
-  };
+ return {
+   ...rest,
+   // The extension tool surface wants `parameters` for host-transport schema.
+   parameters: inputSchema,
+ };
 }
 
 /**
