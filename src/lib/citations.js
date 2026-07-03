@@ -1,7 +1,7 @@
 /**
  * Citation extraction — pulls file-path citations out of a content body.
  *
- * Split out of the former `src/lib/frontmatter.js` grab-bag (removed in
+ * Split out of the former legacy frontmatter grab-bag (removed in
  * kbexplorer-cli#227): this is citation-format extraction for the
  * `affected` command, not frontmatter/YAML parsing, so it doesn't belong in
  * `src/lib/markdown.js` (the module that replaced the frontmatter parser).

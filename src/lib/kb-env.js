@@ -1,7 +1,7 @@
 /**
  * kbx environment / content-path resolution helpers.
  *
- * Split out of the former `src/lib/frontmatter.js` grab-bag (removed in
+ * Split out of the former legacy frontmatter grab-bag (removed in
  * kbexplorer-cli#227): `.env.kbx` loading and content-directory resolution
  * are CLI/environment concerns, not frontmatter or Markdown parsing, so they
  * don't belong in the same module as the parser that replaced it

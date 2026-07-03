@@ -143,9 +143,9 @@ export function normalizeAccessLabel(raw) {
  * NOTE(#179): the CLI's content-file parser (`src/lib/markdown.js`, backed by
  * `@anokye-labs/kbexplorer-provider-rich-markdown`) now preserves nested
  * objects, so the object branch below is exercised for real — it previously
- * described `src/lib/frontmatter.js`, a flat parser that rejected a nested
- * `access:` block outright (the page would be skipped entirely). #179 still
- * tracks adding an end-to-end nested-`access:` fixture test.
+ * described the legacy flat parser that rejected a nested `access:` block
+ * outright (the page would be skipped entirely). #179 still tracks adding an
+ * end-to-end nested-`access:` fixture test.
  *
  * @param {unknown} raw  The frontmatter `access` value (string | object | absent).
  * @returns {import('@anokye-labs/kbexplorer-core').KBAccessLabel | undefined}

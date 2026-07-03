@@ -3,7 +3,7 @@
  * `@anokye-labs/kbexplorer-provider-rich-markdown` YAML-subset engine.
  *
  * This used to be a hand-rolled, zero-dependency parser
- * (`src/lib/frontmatter.js`, removed in kbexplorer-cli#227) that only
+ * (the legacy flat frontmatter parser, removed in kbexplorer-cli#227) that only
  * understood a flat scalar subset (id/title/cluster/parent/emoji/image/sprite
  * plus a `connections:` list) and threw on anything richer — nested `access:`
  * blocks included (see the historical note on issue #179). That duplicated
