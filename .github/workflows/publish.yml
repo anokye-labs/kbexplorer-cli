@@ -32,6 +32,8 @@ jobs:
 
       - run: npm ci
 
+      - run: npm install -g npm@latest
+
       # OIDC trusted publishing (npmjs.com) is the auth path for this workflow.
       # NODE_AUTH_TOKEN is explicitly set to '' rather than omitted: setup-node
       # unconditionally writes `_authToken=${NODE_AUTH_TOKEN}` into .npmrc, and
