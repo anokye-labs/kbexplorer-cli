@@ -314,6 +314,20 @@ function cmp(a, b) {
 }
 
 /**
+ * Qualify bare provider node ids/edge endpoints to the CLI's historical
+ * `kg://...` graph identity shape. Newer provider releases surface plain ids
+ * (e.g. `doc-a`) for rich-markdown fragments, but the rest of this CLI's graph
+ * layer and its tests still assume a `kg://` URN-style identity. Keep that
+ * contract intact here rather than silently changing downstream graph semantics.
+ */
+function qualifyGraphRef(ref) {
+  if (typeof ref !== 'string') return ref;
+  if (ref.startsWith('kg://')) return ref;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(ref)) return ref;
+  return `kg://${ref}`;
+}
+
+/**
  * Merge per-source provider results into one deterministic, source-qualified
  * KBGraph. No dedupe / no minting — all nodes & edges are kept and tagged with
  * provenance (`node.provider` falls back to the originating sourceId).
@@ -331,14 +345,24 @@ export function mergeSourceQualified(fragments) {
       // A node keeps its OWN access label; only an unlabeled node inherits the
       // composite source's label (never broadens).
       const access = inheritAccess(node.access, frag.access);
-      const qualified = { ...node, sourceId: frag.sourceId, provider: node.provider ?? frag.sourceId };
+      const qualified = {
+        ...node,
+        id: qualifyGraphRef(node.id),
+        sourceId: frag.sourceId,
+        provider: node.provider ?? frag.sourceId,
+      };
       if (access) qualified.access = access;
       else delete qualified.access;
       nodes.push(qualified);
     }
     for (const edge of frag.edges ?? []) {
       const access = inheritAccess(edge.access, frag.access);
-      const qualified = { ...edge, sourceId: frag.sourceId };
+      const qualified = {
+        ...edge,
+        from: qualifyGraphRef(edge.from),
+        to: qualifyGraphRef(edge.to),
+        sourceId: frag.sourceId,
+      };
       if (access) qualified.access = access;
       else delete qualified.access;
       edges.push(qualified);

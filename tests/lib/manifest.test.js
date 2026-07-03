@@ -69,6 +69,18 @@ describe('readAuthoredContent', () => {
     assert.ok(content['content/overview.md']?.includes('# Overview'));
   });
 
+  it('normalizes CRLF to LF in authored markdown content', () => {
+    const crlfPath = join(FIXTURES, 'content', 'crlf.md');
+    writeFileSync(crlfPath, 'line one\r\nline two\r\n', 'utf8');
+    try {
+      const content = readAuthoredContent(join(FIXTURES, 'content'), 'content');
+      assert.equal(content['content/crlf.md'], 'line one\nline two\n');
+      assert.ok(!content['content/crlf.md']?.includes('\r'));
+    } finally {
+      rmSync(crlfPath, { force: true });
+    }
+  });
+
   it('returns empty for non-existent dir', () => {
     const content = readAuthoredContent(join(FIXTURES, 'missing'), 'missing');
     assert.deepStrictEqual(content, {});
