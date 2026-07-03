@@ -41,6 +41,47 @@ function makeFixture() {
     )
   );
 
+  writeFileSync(
+    join(dir, 'nested.md'),
+    [
+      '---',
+      'id: "nested"',
+      'title: "Nested Access Node"',
+      'cluster: core',
+      'access:',
+      '  classification: restricted',
+      '  labels:',
+      '    - pii',
+      '---',
+      '',
+      'Body text.',
+      '',
+    ].join('\n')
+  );
+
+  return dir;
+}
+
+function makeNestedAccessFixture() {
+  const dir = mkdtempSync(join(tmpdir(), 'kb-graph-nested-'));
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, 'nested.md'),
+    [
+      '---',
+      'id: "nested"',
+      'title: "Nested Access Node"',
+      'cluster: core',
+      'access:',
+      '  classification: restricted',
+      '  labels:',
+      '    - pii',
+      '---',
+      '',
+      'Body text.',
+      '',
+    ].join('\n')
+  );
   return dir;
 }
 
@@ -78,5 +119,17 @@ describe('loadGraph — identity/access carry-through (AF-004 / AF-008)', () => 
     assert.equal(typeof node.access, 'object');
     assert.deepEqual(normalizeAccessLabel(node.access), node.access);
     assert.equal(node.access.classification, 'internal-only');
+  });
+
+  it('preserves nested access blocks from frontmatter', () => {
+    const nestedDir = makeNestedAccessFixture();
+    try {
+      const graph = loadGraph({ roots: [nestedDir] });
+      const node = graph.nodes.get('nested');
+      assert.ok(node, 'nested node should load');
+      assert.deepEqual(node.access, { classification: 'restricted', labels: ['pii'] });
+    } finally {
+      rmSync(nestedDir, { recursive: true, force: true });
+    }
   });
 });
