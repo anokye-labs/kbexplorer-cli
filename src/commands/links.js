@@ -17,6 +17,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { getAppRoot } from '../lib/detect-repo.js';
 import { generateManifest } from '../lib/manifest.js';
 import { parseFrontmatter as parseFrontmatterRich } from '../lib/markdown.js';
+import { parseLinksArgs } from '../lib/args.js';
 
 // ── Frontmatter Parsing ────────────────────────────────────
 
@@ -388,6 +389,7 @@ function printReport(report) {
 // ── Command ────────────────────────────────────────────────
 
 export default async function links(args) {
+  const opts = parseLinksArgs(args);
   const cwd = process.cwd();
 
   // Generate or find manifest
@@ -408,7 +410,7 @@ export default async function links(args) {
   printReport(report);
 
   // JSON output
-  if (args.includes('--json')) {
+  if (opts.json) {
     console.log(JSON.stringify(report, null, 2));
   }
 }

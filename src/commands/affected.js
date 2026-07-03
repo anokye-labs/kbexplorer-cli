@@ -34,24 +34,7 @@ import { affected } from '../lib/affected.js';
 import { affectedFromGraphs } from '../lib/affected-graph.js';
 import { normalizeGraph, readGraphFile } from '../lib/graph-file.js';
 import { resolveContentDir } from '../lib/kb-env.js';
-
-function parseArgs(args) {
-  const out = { json: false, ref: 'HEAD', content: null, graph: null, since: 'HEAD' };
-  const positional = [];
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--json') out.json = true;
-    else if (a === '--content') out.content = args[++i];
-    else if (a.startsWith('--content=')) out.content = a.slice('--content='.length);
-    else if (a === '--graph') out.graph = args[++i];
-    else if (a.startsWith('--graph=')) out.graph = a.slice('--graph='.length);
-    else if (a === '--since') out.since = args[++i];
-    else if (a.startsWith('--since=')) out.since = a.slice('--since='.length);
-    else if (!a.startsWith('--')) positional.push(a);
-  }
-  if (positional[0]) out.ref = positional[0];
-  return out;
-}
+import { parseAffectedArgs } from '../lib/args.js';
 
 // -- Legacy git-citation report ----------------------------------------------
 
@@ -165,7 +148,7 @@ function printCompositeReport(result, ctx) {
 // -- Entry point --------------------------------------------------------------
 
 export default async function affectedCommand(args) {
-  const opts = parseArgs(args);
+  const opts = parseAffectedArgs(args);
   const cwd = process.cwd();
 
   // Composite content-hash dispatch when a graph file is supplied.

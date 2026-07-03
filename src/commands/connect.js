@@ -14,6 +14,7 @@
 import { resolve, relative } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { buildGraph } from '../lib/graph-builder.js';
+import { parseConnectArgs } from '../lib/args.js';
 import {
   CONNECT_DIR,
   OVERRIDES_FILE,
@@ -91,14 +92,14 @@ export function runConnectCommand(options = {}) {
 }
 
 export default async function connect(args = []) {
-  const check = args.includes('--check');
-  if (args.includes('-h') || args.includes('--help')) {
+  const opts = parseConnectArgs(args);
+  const check = opts.check;
+  if (opts.help) {
     printHelp();
     return;
   }
-  const unknown = args.filter((a) => a.startsWith('-') && a !== '--check' && a !== '-h' && a !== '--help');
-  if (unknown.length > 0) {
-    console.error(`Unknown option(s): ${unknown.join(', ')}`);
+  if (opts.unknown.length > 0) {
+    console.error(`Unknown option(s): ${opts.unknown.join(', ')}`);
     console.error('Run "kbx connect --help" for usage.');
     process.exit(1);
   }

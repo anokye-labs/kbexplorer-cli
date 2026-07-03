@@ -18,6 +18,7 @@ import { watch as fsWatch, existsSync, writeFileSync, mkdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path';
 import { getAppRoot, isTemplateRepo } from '../lib/detect-repo.js';
 import { generateManifest } from '../lib/manifest.js';
+import { parseDevArgs } from '../lib/args.js';
 
 const DEBOUNCE_MS = 200;
 
@@ -65,8 +66,9 @@ export function watchPaths(cwd, contentDir = 'content') {
 export default async function dev(args) {
   const cwd = process.cwd();
   const appRoot = getAppRoot(cwd);
-  const noWatch = args.includes('--no-watch');
-  const viteArgs = args.filter((a) => a !== '--no-watch');
+  const opts = parseDevArgs(args);
+  const noWatch = opts.noWatch;
+  const viteArgs = opts.viteArgs;
 
   if (!appRoot) {
     const { hasLegacyDir } = await import('../lib/detect-repo.js');
