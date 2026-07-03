@@ -4,10 +4,12 @@
   "description": "CLI tool for the kbexplorer interactive knowledge base — turn any repo into a navigable knowledge graph",
   "type": "module",
   "bin": {
-    "kbx": "bin/cli.js"
+    "kbx": "bin/kbx.js"
   },
   "scripts": {
-    "test": "node scripts/run-tests.js",
+    "build": "tsup src/cli.ts --format esm --platform node --target node22 --out-dir dist --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types scripts/run-tests.js",
     "kb:dev": "kbx dev",
     "kb:build": "kbx build",
     "kb:generate": "kbx generate"
@@ -34,6 +36,7 @@
   },
   "files": [
     "bin/",
+    "dist/",
     "src/",
     "examples/",
     "LICENSE",
@@ -44,5 +47,10 @@
     "@anokye-labs/kbexplorer-provider-rich-markdown": "^0.1.2",
     "@anokye-labs/kbexplorer-search": "github:anokye-labs/kbexplorer-search#v0.1.0",
     "@modelcontextprotocol/sdk": "1.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
   }
 }

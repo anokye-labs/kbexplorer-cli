@@ -2,8 +2,7 @@
  * kbx update — Check for template updates, ask before upgrading.
  */
 
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { copyFileSync, mkdirSync, readdirSync, rmSync, renameSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -11,9 +10,9 @@ import { hasSubmodule, isTemplateRepo, isSubmoduleInstall, getSubmoduleUrl } fro
 import { getCurrentTag, getLatestTag, resolveHeadSha, checkoutRef, TEMPLATE_REPO } from '../lib/version.js';
 import { parseUpdateArgs } from '../lib/args.js';
 import { readSourceRecord, writeSourceRecord, classifyRef } from '../lib/source.js';
+import { resolvePackageAssetsDir } from '../lib/assets.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ASSETS_DIR = resolve(__dirname, '..', 'assets');
+const ASSETS_DIR = resolvePackageAssetsDir(import.meta.url);
 
 function ask(question) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });

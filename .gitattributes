@@ -15,6 +15,12 @@
 # command-surface drift gate.
 src/assets/commands/*.md text eol=lf
 
+# Authored content pages are embedded byte-for-byte into the content-manifest
+# golden (tests/golden/content-golden.test.js, T0c.1). A Windows checkout with
+# autocrlf can bake \r\n into those embedded strings even though the file
+# itself is stored as LF, causing a false golden mismatch. Pin them to LF.
+content/*.md text eol=lf
+
 # Derive-baseline sample sources are hashed byte-for-byte by `kbx derive` to
 # produce the sha256 embedded in their committed *.jsonld artifact (see above).
 # Pin them to LF too, otherwise autocrlf rewrites them to CRLF on Windows

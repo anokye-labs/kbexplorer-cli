@@ -28,6 +28,15 @@ Issue types are set via the GitHub Issue Type field, not labels or title prefixe
 4. Open a PR and ensure CI passes
 5. Address any review feedback
 
+## TypeScript Migration Increment
+
+This repository is migrating to TypeScript incrementally. The first increment uses a gradual `allowJs: true` + `checkJs: false` project so existing JavaScript modules can be adopted without a mass rename.
+
+- The CLI entrypoint is now a thin Node wrapper around the built output from `src/cli.ts`.
+- The representative argument-parser module lives in `src/lib/args.ts`; existing consumers continue to import the `src/lib/args.js` shim until the rest of the tree is migrated.
+- New TypeScript work should keep the same convention: add the implementation in a `.ts` module, keep a `.js` shim only when a runtime path still needs to be imported from plain JavaScript, and verify with `npm run typecheck` plus the relevant tests.
+- The next conversion targets should be small, reusable helpers that are imported by multiple commands (for example other parser helpers or shared runtime utilities).
+
 ## Local development and dogfooding
 
 This repo is the CLI package for the kbexplorer explorer template. The explorer itself is installed into `.kbx/` during setup, so `kbx dev` only works once `.kbx/` exists.
