@@ -22,7 +22,7 @@
 
 import { resolve, basename, extname } from 'node:path';
 import { existsSync, readdirSync, statSync } from 'node:fs';
-import { parseFrontmatter, readContentFile } from './frontmatter.js';
+import { readContentFile } from './markdown.js';
 import { readConfig } from './manifest.js';
 
 const SEVERITY = { ERROR: 'error', WARNING: 'warning' };

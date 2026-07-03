@@ -12,7 +12,8 @@
 
 import { resolve, relative, extname } from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
-import { readContentFile, resolveContentDir } from './frontmatter.js';
+import { readContentFile } from './markdown.js';
+import { resolveContentDir } from './kb-env.js';
 import { readConfig } from './manifest.js';
 import { coerceAccessLabel } from './access-label.js';
 
@@ -137,9 +138,11 @@ export function buildGraph(cwd, options = {}) {
       // restricted`) is what search / core / the template gate silently drop as
       // "unlabeled" — so search-index's access exclusion never fired for
       // cli-authored content (the exact no-op AF-009 claimed to fix). The
-      // frontmatter parser is flat and rejects a nested `access:` block today,
-      // so only the scalar shorthand can be authored yet — full nested-object
-      // support is tracked in #179 (see coerceAccessLabel).
+      // parser (src/lib/markdown.js, backed by the rich-markdown provider)
+      // preserves nested objects, so a full `access: { classification, ... }`
+      // block can be authored too — both forms route through
+      // coerceAccessLabel (#179 tracked the prior flat parser's inability to
+      // author a nested block at all).
       access: coerceAccessLabel(fm.access),
     };
 

@@ -20,7 +20,7 @@
 
 import { resolve } from 'node:path';
 import { loadGraph } from '../lib/graph.js';
-import { resolveContentDir } from '../lib/frontmatter.js';
+import { resolveContentDir } from '../lib/kb-env.js';
 
 /**
  * @typedef {object} AffordanceContextSeams

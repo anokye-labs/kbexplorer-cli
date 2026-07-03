@@ -14,7 +14,7 @@
 import { resolve } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { inferIcon } from '../lib/transform.js';
-import { resolveContentDir } from '../lib/frontmatter.js';
+import { resolveContentDir } from '../lib/kb-env.js';
 
 function parseArgs(args) {
   const out = {

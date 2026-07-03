@@ -26,7 +26,7 @@ import { isAdapterAvailable, resolveBinary } from '../lib/copilot-runtime.js';
 import { getSubmoduleUrl, getAppRoot } from '../lib/detect-repo.js';
 import { manifestOutPath } from './dev.js';
 import { parseDoctorArgs } from '../lib/args.js';
-import { loadKbEnv } from '../lib/frontmatter.js';
+import { loadKbEnv } from '../lib/kb-env.js';
 import {
   loadPluginManifest,
   loadExtensionDescriptor,

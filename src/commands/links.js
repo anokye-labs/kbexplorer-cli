@@ -16,40 +16,20 @@ import { resolve } from 'node:path';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { getAppRoot } from '../lib/detect-repo.js';
 import { generateManifest } from '../lib/manifest.js';
+import { parseFrontmatter as parseFrontmatterRich } from '../lib/markdown.js';
 
 // ── Frontmatter Parsing ────────────────────────────────────
 
+/**
+ * Parse a node's raw content into a flat `{ ...frontmatter, connections }`
+ * shape. `links` only reads a handful of scalar fields (id/title/cluster)
+ * plus `connections`, so this stays a thin adapter over the shared
+ * `src/lib/markdown.js` parser rather than a fourth hand-rolled parser.
+ */
 function parseFrontmatter(raw) {
-  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!match) return {};
-  const lines = match[1].split('\n');
-  const result = { connections: [] };
-  let inConnections = false;
-  let currentConn = null;
-
-  for (const line of lines) {
-    if (line.match(/^connections:/)) { inConnections = true; continue; }
-    if (inConnections) {
-      const toMatch = line.match(/^\s+-\s+to:\s*"?([^"\n]+)"?/);
-      const descMatch = line.match(/^\s+description:\s*"?([^"\n]+)"?/);
-      if (toMatch) {
-        if (currentConn) result.connections.push(currentConn);
-        currentConn = { to: toMatch[1].trim(), description: '' };
-      } else if (descMatch && currentConn) {
-        currentConn.description = descMatch[1].trim();
-      } else if (!line.match(/^\s/) && line.trim()) {
-        if (currentConn) result.connections.push(currentConn);
-        currentConn = null;
-        inConnections = false;
-      }
-    }
-    if (!inConnections) {
-      const kv = line.match(/^(\w+):\s*"?([^"\n]+)"?/);
-      if (kv) result[kv[1].trim()] = kv[2].trim();
-    }
-  }
-  if (currentConn) result.connections.push(currentConn);
-  return result;
+  const parsed = parseFrontmatterRich(raw);
+  if (!parsed.ok) return {};
+  return { connections: [], ...parsed.frontmatter };
 }
 
 // ── Analysis ───────────────────────────────────────────────

@@ -14,7 +14,7 @@
 
 import { resolve } from 'node:path';
 import { audit } from '../lib/audit.js';
-import { resolveContentDir } from '../lib/frontmatter.js';
+import { resolveContentDir } from '../lib/kb-env.js';
 
 function parseArgs(args) {
   const out = { json: false, content: null };

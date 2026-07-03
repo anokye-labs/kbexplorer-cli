@@ -7,7 +7,7 @@ import { resolve, join } from 'node:path';
 const { buildCitationIndex, findAffected, affected } = await import(
   '../../src/lib/affected.js'
 );
-const { extractCitedFiles } = await import('../../src/lib/frontmatter.js');
+const { extractCitedFiles } = await import('../../src/lib/citations.js');
 
 function makeFixture() {
   const dir = mkdtempSync(join(tmpdir(), 'kb-affected-'));
