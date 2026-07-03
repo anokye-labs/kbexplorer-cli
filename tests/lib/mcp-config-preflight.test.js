@@ -8,7 +8,7 @@ const {
   detectConfiguredMcpServers,
   runMcpPreflight,
   formatMcpPreflightErrors,
-} = await import('../../src/lib/mcp-preflight.js');
+} = await import('../../src/lib/mcp-config-preflight.js');
 
 const {
   copilotAdapter,

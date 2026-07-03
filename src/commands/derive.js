@@ -49,7 +49,7 @@ import {
 import {
   runMcpPreflight,
   formatMcpPreflightErrors,
-} from '../lib/mcp-preflight.js';
+} from '../lib/mcp-config-preflight.js';
 
 const DEFAULT_OUT_DIR = 'content/derived';
 

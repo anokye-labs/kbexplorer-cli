@@ -21,7 +21,7 @@ import { getLatestTag, checkoutTag, checkoutRef, resolveHeadSha, TEMPLATE_REPO }
 import { parseInitArgs } from '../lib/args.js';
 import { writeSourceRecord, readSourceRecord, classifyRef, SOURCE_FILE } from '../lib/source.js';
 import { validateRuntimeBlock, RuntimeConfigError } from '../lib/runtime-config.js';
-import { runInitPreflight, formatPreflightDiagnostics, explainInstallFailure } from '../lib/preflight.js';
+import { runInitPreflight, formatPreflightDiagnostics, explainInstallFailure } from '../lib/init-preflight.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = resolve(__dirname, '..', 'assets');

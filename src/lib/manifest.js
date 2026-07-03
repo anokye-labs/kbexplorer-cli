@@ -64,7 +64,7 @@ import { resolveRepositoryRef } from './forge-adapter.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function normalizeLineEndings(text) {
-  return String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return String(text ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
 // Detect host root for submodule scenarios

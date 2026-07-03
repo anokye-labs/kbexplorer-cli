@@ -17,7 +17,7 @@
  * Keeping these separate (rather than overloading `runMcpPreflight`) preserves
  * each check's single responsibility; `doctor` surfaces both.
  *
- * @module src/mcp/preflight
+ * @module src/mcp/server-preflight
  */
 
 import { describeAffordances } from '../affordances/index.js';
