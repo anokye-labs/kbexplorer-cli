@@ -2,8 +2,7 @@
  * kbx init — Add submodule, install agents/skills, configure.
  */
 
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import {
   readFileSync,
   writeFileSync,
@@ -22,9 +21,9 @@ import { parseInitArgs } from '../lib/args.js';
 import { writeSourceRecord, readSourceRecord, classifyRef, SOURCE_FILE } from '../lib/source.js';
 import { validateRuntimeBlock, RuntimeConfigError } from '../lib/runtime-config.js';
 import { runInitPreflight, formatPreflightDiagnostics, explainInstallFailure } from '../lib/preflight.js';
+import { resolvePackageAssetsDir } from '../lib/assets.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ASSETS_DIR = resolve(__dirname, '..', 'assets');
+const ASSETS_DIR = resolvePackageAssetsDir(import.meta.url);
 
 /** Error thrown when interactive prompts are attempted without usable stdin. */
 class NonInteractiveError extends Error {

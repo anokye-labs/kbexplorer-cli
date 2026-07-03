@@ -27,10 +27,8 @@
 
 import { existsSync, readFileSync, readdirSync, mkdirSync, copyFileSync, statSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import { resolvePackageAssetsDir } from './assets.js';
 
 /** Canonical plugin name. */
 export const PLUGIN_NAME = 'kbx';
@@ -48,13 +46,13 @@ export const SCOPES = Object.freeze(['project', 'user', 'session']);
 
 /** Absolute path to the authored bundle template shipped with this package. */
 export function authoredBundleRoot(assetsRoot) {
-  const root = assetsRoot ?? resolve(__dirname, '..', 'assets');
+  const root = assetsRoot ?? resolvePackageAssetsDir(import.meta.url);
   return resolve(root, 'plugin', PLUGIN_NAME);
 }
 
 /** Absolute path to the package asset root (src/assets). */
 function defaultAssetsRoot() {
-  return resolve(__dirname, '..', 'assets');
+  return resolvePackageAssetsDir(import.meta.url);
 }
 
 /**
