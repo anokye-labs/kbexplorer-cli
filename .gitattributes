@@ -14,3 +14,15 @@
 # LF so autocrlf can't rewrite line endings on Windows checkouts and trip the
 # command-surface drift gate.
 src/assets/commands/*.md text eol=lf
+
+# Authored content pages are embedded byte-for-byte into the content-manifest
+# golden (tests/golden/content-golden.test.js, T0c.1). A Windows checkout with
+# autocrlf can bake \r\n into those embedded strings even though the file
+# itself is stored as LF, causing a false golden mismatch. Pin them to LF.
+content/*.md text eol=lf
+
+# Same rationale for the derive-baseline sample sources under docs/samples —
+# these are read raw and hashed (src/lib/ingest.js) for the derive --check
+# determinism gate (T0c.2), so a CRLF checkout produces a different hash than
+# the LF bytes actually stored in git and checked out on Linux CI.
+docs/samples/*.md text eol=lf
