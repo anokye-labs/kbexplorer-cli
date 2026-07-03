@@ -13,57 +13,38 @@
  * @module src/extension/tool-result
  */
 
-/** Stable JSON stringify with 2-space indent; tolerant of non-serialisable values. */
-function stringify(value) {
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
+import { buildToolErrorEnvelope, buildToolResultEnvelope } from '../affordances/tool-bridge.js';
 
 /**
- * Wrap a successful affordance result as a `ToolResultObject`.
- *
- * @param {*} value  The affordance's typed result.
- * @returns {{ textResultForLlm: string, resultType: 'success' }}
- */
+* Wrap a successful affordance result as a `ToolResultObject`.
+*
+* @param {*} value  The affordance's typed result.
+* @returns {{ textResultForLlm: string, resultType: 'success' }}
+*/
 export function successResult(value) {
-  return {
-    textResultForLlm: value === undefined ? '' : stringify(value),
-    resultType: 'success',
-  };
+ const envelope = buildToolResultEnvelope(value);
+ return {
+   textResultForLlm: envelope.text,
+   resultType: envelope.resultType,
+ };
 }
 
 /**
- * Wrap a thrown failure as a `ToolResultObject` with `resultType: "failure"`.
- *
- * {@link AffordanceError}s carry a stable `code` and serialisable `details`; we
- * preserve them via the error's own `toJSON()` so the model sees the typed error
- * shape (`{ error, code, message, details? }`). Any other thrown value degrades
- * gracefully to a generic failure payload.
- *
- * @param {unknown} err
- * @returns {{ textResultForLlm: string, resultType: 'failure', error: string }}
- */
+* Wrap a thrown failure as a `ToolResultObject` with `resultType: "failure"`.
+*
+* {@link AffordanceError}s carry a stable `code` and serialisable `details`; we
+* preserve them via the error's own `toJSON()` so the model sees the typed error
+* shape (`{ error, code, message, details? }`). Any other thrown value degrades
+* gracefully to a generic failure payload.
+*
+* @param {unknown} err
+* @returns {{ textResultForLlm: string, resultType: 'failure', error: string }}
+*/
 export function errorResult(err) {
-  let payload;
-  let message;
-
-  if (err && typeof err === 'object' && typeof (/** @type {any} */ (err).toJSON) === 'function') {
-    payload = /** @type {any} */ (err).toJSON();
-    message = /** @type {any} */ (err).message ?? String(err);
-  } else if (err instanceof Error) {
-    payload = { error: true, code: 'EXECUTION_FAILED', message: err.message };
-    message = err.message;
-  } else {
-    message = String(err);
-    payload = { error: true, code: 'EXECUTION_FAILED', message };
-  }
-
-  return {
-    textResultForLlm: stringify(payload),
-    resultType: 'failure',
-    error: message,
-  };
+ const envelope = buildToolErrorEnvelope(err);
+ return {
+   textResultForLlm: envelope.text,
+   resultType: envelope.resultType,
+   error: envelope.error,
+ };
 }
