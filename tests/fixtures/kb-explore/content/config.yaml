@@ -1,0 +1,14 @@
+title: "Fixture KB"
+subtitle: "Small fixture for kbx explore"
+source:
+  owner: example
+  repo: fixture-kb
+  path: content
+  branch: main
+clusters:
+  entry:
+    name: "Overview"
+    color: "#A86FDF"
+  docs:
+    name: "Docs"
+    color: "#39FF14"
