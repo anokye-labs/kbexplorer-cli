@@ -1,7 +1,12 @@
 /**
- * Tests for src/lib/graph.js#loadGraph() — structural round-trip carry-through
- * of `identity` and `access` frontmatter fields onto the in-memory node
- * (AF-004 / AF-008). Carry-through only: no new semantics, no enforcement.
+ * Tests for src/lib/engine-graph.js#loadGraph() — the Map-shaped adapter over
+ * the raw engine graph (the SAME graph the SPA consumes, cli#230). Asserts
+ * engine/SPA semantics for `identity` and `access`:
+ *   - an author-pinned `identity` is preserved verbatim; an unpinned node gets
+ *     a synthesized `urn:content:<id>` identity;
+ *   - `access` shorthand is normalized to a canonical KBAccessLabel object;
+ *   - access-withheld nodes (restricted/confidential/private) are DROPPED by
+ *     the engine before the graph is returned (they never reach the adapter).
  */
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -103,11 +108,13 @@ describe('loadGraph — identity/access carry-through (AF-004 / AF-008)', () => 
     assert.deepEqual(node.access, { classification: 'internal-only' });
   });
 
-  it('leaves identity and access undefined when absent from frontmatter', async () => {
+  it('synthesizes identity and leaves access undefined when absent from frontmatter', async () => {
     const graph = await loadGraph({ roots: [dir] });
     const node = graph.nodes.get('plain');
     assert.ok(node, 'plain node should load');
-    assert.equal(node.identity, undefined);
+    // The engine mints `urn:content:<id>` for an author who did not pin an
+    // identity (same as the SPA graph) — it is NOT undefined.
+    assert.equal(node.identity, 'urn:content:plain');
     assert.equal(node.access, undefined);
   });
 
@@ -121,13 +128,16 @@ describe('loadGraph — identity/access carry-through (AF-004 / AF-008)', () => 
     assert.equal(node.access.classification, 'internal-only');
   });
 
-  it('preserves nested access blocks from frontmatter', async () => {
+  it('drops access-withheld (restricted) nodes from the graph (AF-009)', async () => {
     const nestedDir = makeNestedAccessFixture();
     try {
       const graph = await loadGraph({ roots: [nestedDir] });
-      const node = graph.nodes.get('nested');
-      assert.ok(node, 'nested node should load');
-      assert.deepEqual(node.access, { classification: 'restricted', labels: ['pii'] });
+      // A restricted node is withheld by the engine — it is absent from the
+      // returned graph entirely, so it can never reach any downstream consumer
+      // (search index, affordances, SPA). This is the AF-009 guarantee enforced
+      // at the engine layer rather than carried and filtered later.
+      assert.equal(graph.nodes.get('nested'), undefined, 'restricted node must be dropped');
+      assert.equal(graph.nodes.size, 0);
     } finally {
       rmSync(nestedDir, { recursive: true, force: true });
     }

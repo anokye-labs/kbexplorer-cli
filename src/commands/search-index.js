@@ -35,10 +35,16 @@ function normalizeProjectionSettings(settings = {}) {
   };
 }
 
+// A node produces a SearchUnit iff it has non-empty body content — this mirrors
+// @anokye-labs/kbexplorer-search's extractSearchUnits, which uses
+// `rawContent` (falling back to stripped `content`) as the unit body and SKIPS
+// any node whose body is empty. A title alone does NOT make a unit, so
+// structural provider entities (pull_request, issue, workflow, …) that carry a
+// title but no prose are correctly reported as unit-less here.
 function hasUnitCandidate(node) {
   if (!node) return false;
   const content = typeof node.rawContent === 'string' ? node.rawContent : typeof node.content === 'string' ? node.content : '';
-  return content.trim().length > 0 || typeof node.title === 'string' && node.title.trim().length > 0;
+  return content.trim().length > 0;
 }
 
 export function buildProjectionMetadata(graph) {
