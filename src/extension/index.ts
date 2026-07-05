@@ -19,6 +19,7 @@
 import { buildAffordanceTools } from './tools.ts';
 import { buildCanvasOptions } from './canvas.ts';
 import { createCanvasRegistry } from './canvas-server.ts';
+import type { CanvasRegistry } from './canvas/registry.ts';
 
 export { TOOL_PREFIX, toolNameFor, affordanceToTool, buildAffordanceTools } from './tools.ts';
 export { KBX_CANVAS_ID, buildCanvasOptions } from './canvas.ts';
@@ -36,6 +37,33 @@ export {
 export { descriptorToJsonSchema, fieldToJsonSchema } from './json-schema.ts';
 export { successResult, errorResult } from './tool-result.ts';
 
+type SessionLike = Record<string, unknown> & {
+  send: (prompt: string) => Promise<string>;
+};
+
+type ToolOptions = NonNullable<Parameters<typeof buildAffordanceTools>[0]>;
+type CanvasOptions = ReturnType<typeof buildCanvasOptions>;
+
+interface JoinSessionConfig {
+  tools?: unknown[];
+  canvases?: unknown[];
+  [key: string]: unknown;
+}
+
+type JoinSession = (config: JoinSessionConfig) => Promise<SessionLike>;
+type CreateCanvas = (options: CanvasOptions) => unknown;
+
+interface ExtensionConfigOptions extends ToolOptions {
+  registry?: CanvasRegistry;
+}
+
+interface RegisterKbxExtensionOptions {
+  joinSession: JoinSession;
+  createCanvas: CreateCanvas;
+  toolOptions?: ToolOptions;
+  joinConfig?: JoinSessionConfig;
+}
+
 /**
  * Build a `sendChatMessage` seam for the canvas registry's `/chat-intent`
  * endpoint (A6, #195): a closure that reads a `session` reference lazily, so
@@ -47,9 +75,9 @@ export { successResult, errorResult } from './tool-result.ts';
  * @returns {{ sendChatMessage: (prompt: string) => Promise<string>, bindSession: (session: object) => void }}
  */
 function createSessionSendSeam() {
-  let session;
+  let session: SessionLike | undefined;
   return {
-    sendChatMessage: (prompt) => {
+    sendChatMessage: (prompt: string) => {
       if (!session || typeof session.send !== 'function') {
         throw new Error(
           'createKbxExtensionConfig: SDK session not yet available for /chat-intent (join in progress or joinSession failed)'
@@ -57,7 +85,7 @@ function createSessionSendSeam() {
       }
       return session.send(prompt);
     },
-    bindSession: (s) => {
+    bindSession: (s: SessionLike) => {
       session = s;
     },
   };
@@ -82,7 +110,7 @@ function createSessionSendSeam() {
  *        of creating a fresh one.
  * @returns {{ tools: object[], canvasOptions: object }}
  */
-export function createKbxExtensionConfig(opts = {}) {
+export function createKbxExtensionConfig(opts: ExtensionConfigOptions = {}) {
   const { registry = createCanvasRegistry(), ...toolOpts } = opts;
   return {
     tools: buildAffordanceTools(toolOpts),
@@ -113,7 +141,7 @@ export async function registerKbxExtension({
   createCanvas,
   toolOptions = {},
   joinConfig = {},
-}) {
+}: RegisterKbxExtensionOptions) {
   if (typeof joinSession !== 'function') {
     throw new TypeError('registerKbxExtension: "joinSession" must be a function');
   }
@@ -146,6 +174,10 @@ export async function registerKbxExtension({
  * @returns {Promise<*>}
  */
 export async function main(opts = {}) {
-  const { joinSession, createCanvas } = await import('@github/copilot-sdk/extension');
+  // @ts-expect-error optional runtime dependency is not installed in this repo's typecheck environment
+  const { joinSession, createCanvas } = await import('@github/copilot-sdk/extension') as {
+    joinSession: JoinSession;
+    createCanvas: CreateCanvas;
+  };
   return registerKbxExtension({ joinSession, createCanvas, toolOptions: opts });
 }

@@ -26,7 +26,36 @@
  * @module src/affordances/consent
  */
 
-import { AffordanceError, ERROR_CODES, ACTION_CLASSES } from './contract.ts';
+import {
+  AffordanceError,
+  ERROR_CODES,
+  ACTION_CLASSES,
+  type ActionClass,
+  type Affordance,
+  type ConsentCost,
+  type ConsentDisclosure,
+} from './contract.ts';
+import type { AffordanceContext } from './context.ts';
+
+export interface DisclosureShape {
+  credentials: string[];
+  writes: string[];
+  cost: ConsentCost & { kind: string };
+}
+
+export interface ConsentRequest {
+  affordance: string;
+  title: string;
+  summary: string;
+  actionClass: ActionClass;
+  disclosure: DisclosureShape;
+}
+
+export interface ConsentDecision extends Record<string, unknown> {
+  approved: boolean;
+  reason?: string;
+  credentials?: Record<string, unknown>;
+}
 
 /**
  * Action classes that require user consent before execution. `read` is absent by
@@ -35,12 +64,12 @@ import { AffordanceError, ERROR_CODES, ACTION_CLASSES } from './contract.ts';
  * @type {ReadonlySet<string>}
  */
 export const CONSENT_REQUIRED_CLASSES = Object.freeze(
-  new Set([ACTION_CLASSES.WRITE, ACTION_CLASSES.SAMPLE])
+  new Set<ActionClass>([ACTION_CLASSES.WRITE, ACTION_CLASSES.SAMPLE]),
 );
 
 /** Whether an affordance's action class subjects it to the consent gate. */
-export function requiresConsent(affordance) {
-  return Boolean(affordance) && CONSENT_REQUIRED_CLASSES.has(affordance.actionClass);
+export function requiresConsent(affordance: Affordance | null | undefined): boolean {
+  return affordance !== null && affordance !== undefined && CONSENT_REQUIRED_CLASSES.has(affordance.actionClass);
 }
 
 /**
@@ -55,7 +84,10 @@ export function requiresConsent(affordance) {
  * @param {object} [input]
  * @returns {boolean}
  */
-export function isReadOnlyInvocation(affordance, input = {}) {
+export function isReadOnlyInvocation(
+  affordance: Affordance | null | undefined,
+  input: Record<string, unknown> = {},
+): boolean {
   const pred = affordance?.consent?.readOnlyWhen;
   if (typeof pred !== 'function') return false;
   try {
@@ -65,14 +97,14 @@ export function isReadOnlyInvocation(affordance, input = {}) {
   }
 }
 
-function dedupeStrings(values) {
-  const out = [];
-  const seen = new Set();
-  for (const v of values) {
-    if (typeof v !== 'string' || !v) continue;
-    if (seen.has(v)) continue;
-    seen.add(v);
-    out.push(v);
+function dedupeStrings(values: Iterable<unknown>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== 'string' || !value) continue;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
   }
   return out;
 }
@@ -88,9 +120,13 @@ function dedupeStrings(values) {
  * @param {object} [context]
  * @returns {{credentials: string[], writes: string[], cost: {kind: string}}}
  */
-export function buildDisclosure(affordance, input = {}, context = undefined) {
-  const consent = affordance?.consent ?? {};
-  let dynamic = {};
+export function buildDisclosure(
+  affordance: Affordance,
+  input: Record<string, unknown> = {},
+  context: AffordanceContext | undefined = undefined,
+): DisclosureShape {
+  const consent = affordance.consent ?? {};
+  let dynamic: ConsentDisclosure = {};
   if (typeof consent.disclose === 'function') {
     try {
       dynamic = consent.disclose(input, context) ?? {};
@@ -112,8 +148,12 @@ export function buildDisclosure(affordance, input = {}, context = undefined) {
 
   // Sample actions default to a `sample` cost kind even without a static block,
   // so the disclosure always tells the user a model may be invoked.
-  const defaultKind = affordance?.actionClass === ACTION_CLASSES.SAMPLE ? 'sample' : 'none';
-  const cost = { kind: defaultKind, ...(consent.cost ?? {}), ...(dynamic.cost ?? {}) };
+  const defaultKind = affordance.actionClass === ACTION_CLASSES.SAMPLE ? 'sample' : 'none';
+  const cost: ConsentCost & { kind: string } = {
+    kind: defaultKind,
+    ...(consent.cost ?? {}),
+    ...(dynamic.cost ?? {}),
+  };
   if (typeof cost.kind !== 'string') cost.kind = defaultKind;
 
   return { credentials, writes, cost };
@@ -129,7 +169,11 @@ export function buildDisclosure(affordance, input = {}, context = undefined) {
  * @param {object} [context]
  * @returns {{affordance: string, title: string, summary: string, actionClass: string, disclosure: object}}
  */
-export function buildConsentRequest(affordance, input = {}, context = undefined) {
+export function buildConsentRequest(
+  affordance: Affordance,
+  input: Record<string, unknown> = {},
+  context: AffordanceContext | undefined = undefined,
+): ConsentRequest {
   return {
     affordance: affordance.name,
     title: affordance.title,
@@ -140,11 +184,12 @@ export function buildConsentRequest(affordance, input = {}, context = undefined)
 }
 
 /** Normalise the many shapes an approval callback may return into a decision. */
-function normalizeDecision(raw) {
+function normalizeDecision(raw: unknown): ConsentDecision {
   if (raw === true) return { approved: true };
   if (raw === false || raw == null) return { approved: false };
   if (typeof raw === 'object') {
-    return { approved: Boolean(raw.approved), ...raw };
+    const record = raw as Record<string, unknown>;
+    return { approved: Boolean(record.approved), ...record };
   }
   // Any other truthy scalar counts as approval.
   return { approved: Boolean(raw) };
@@ -171,7 +216,11 @@ function normalizeDecision(raw) {
  * @returns {Promise<{approved: boolean, request: object, decision: object}>}
  * @throws {AffordanceError} CONSENT_REQUIRED / CONSENT_DENIED.
  */
-export async function enforceConsent(affordance, input, context = undefined) {
+export async function enforceConsent(
+  affordance: Affordance,
+  input: Record<string, unknown>,
+  context: AffordanceContext | undefined = undefined,
+): Promise<{ approved: boolean; request: ConsentRequest | null; decision: ConsentDecision }> {
   if (!requiresConsent(affordance)) {
     return { approved: true, request: null, decision: { approved: true, bypassed: 'read' } };
   }
@@ -201,7 +250,7 @@ export async function enforceConsent(affordance, input, context = undefined) {
         'but no approval callback was provided (context.seams.requestConsent). ' +
         'Wire an approval seam, or set context.seams.consentPolicy = "allow" to opt into ' +
         'non-interactive execution.',
-      { affordance: affordance.name, actionClass: affordance.actionClass, request }
+      { affordance: affordance.name, actionClass: affordance.actionClass, request },
     );
   }
 
@@ -215,7 +264,7 @@ export async function enforceConsent(affordance, input, context = undefined) {
         actionClass: affordance.actionClass,
         request,
         ...(decision.reason ? { reason: decision.reason } : {}),
-      }
+      },
     );
   }
 

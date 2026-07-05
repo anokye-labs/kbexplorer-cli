@@ -34,6 +34,70 @@
 
 import { createAffordanceContext } from '../affordances/index.ts';
 
+type AffordanceContext = ReturnType<typeof createAffordanceContext>;
+type AffordanceSeams = AffordanceContext['seams'];
+
+interface ConsentDisclosureCost {
+  kind?: string;
+  model?: string;
+  runtime?: string;
+  estimate?: string;
+}
+
+interface ConsentDisclosure {
+  cost?: ConsentDisclosureCost;
+  credentials?: string[];
+  writes?: string[];
+}
+
+interface ConsentRequest {
+  title?: string;
+  affordance: string;
+  actionClass: string;
+  summary?: string;
+  disclosure?: ConsentDisclosure;
+}
+
+interface ElicitationSchema {
+  type: 'object';
+  properties: Record<
+    string,
+    {
+      type: 'string';
+      title: string;
+      description: string;
+    }
+  >;
+}
+
+interface ConsentResponse {
+  action?: string;
+  content?: Record<string, unknown>;
+}
+
+interface ConsentDecision {
+  approved: boolean;
+  reason?: string;
+  credentials?: Record<string, string>;
+}
+
+type ElicitInput = (params: {
+  message: string;
+  requestedSchema: ElicitationSchema;
+}) => Promise<ConsentResponse>;
+
+interface McpConsentSeamOptions {
+  elicitInput: ElicitInput;
+  getClientCapabilities?: () => Record<string, unknown> | undefined;
+}
+
+interface McpContextFactoryOptions {
+  cwd?: string;
+  allow?: boolean;
+  elicitInput?: ElicitInput;
+  getClientCapabilities?: () => Record<string, unknown> | undefined;
+}
+
 /**
  * Render a {@link ConsentRequest} into a deterministic, human-readable message
  * for an MCP elicitation prompt. Timestamp-free and stable — safe to compute
@@ -42,7 +106,7 @@ import { createAffordanceContext } from '../affordances/index.ts';
  * @param {{ title?: string, affordance: string, actionClass: string, summary?: string, disclosure?: object }} request
  * @returns {string}
  */
-export function renderConsentMessage(request) {
+export function renderConsentMessage(request: ConsentRequest) {
   const { title, affordance, actionClass, summary, disclosure = {} } = request ?? {};
   const lines = [
     `kbexplorer wants to run "${title ?? affordance}" (${actionClass}-class action).`,
@@ -76,12 +140,13 @@ export function renderConsentMessage(request) {
  * @param {{ disclosure?: { credentials?: string[] } }} request
  * @returns {{ type: 'object', properties: Record<string, object> }}
  */
-export function buildElicitationSchema(request) {
+export function buildElicitationSchema(
+  request?: Pick<ConsentRequest, 'disclosure'>
+): ElicitationSchema {
   const credentials = Array.isArray(request?.disclosure?.credentials)
     ? request.disclosure.credentials
     : [];
-  /** @type {Record<string, object>} */
-  const properties = {};
+  const properties: ElicitationSchema['properties'] = {};
   for (const name of credentials) {
     if (typeof name !== 'string' || !name) continue;
     properties[name] = {
@@ -104,12 +169,15 @@ export function buildElicitationSchema(request) {
  *        call time, since capabilities are only known after the handshake).
  * @returns {(request: object) => Promise<{ approved: boolean, reason?: string, credentials?: object }>}
  */
-export function createMcpConsentSeam({ elicitInput, getClientCapabilities } = {}) {
+export function createMcpConsentSeam({
+  elicitInput,
+  getClientCapabilities,
+}: Partial<McpConsentSeamOptions> = {}) {
   if (typeof elicitInput !== 'function') {
     throw new TypeError('createMcpConsentSeam: "elicitInput" must be a function');
   }
 
-  return async function requestConsent(request) {
+  return async function requestConsent(request: ConsentRequest): Promise<ConsentDecision> {
     const caps = (typeof getClientCapabilities === 'function' && getClientCapabilities()) || {};
     if (!caps.elicitation) {
       return {
@@ -132,10 +200,10 @@ export function createMcpConsentSeam({ elicitInput, getClientCapabilities } = {}
 
     // Thread back only non-empty collected credential *values*; the registry
     // merges these into the affordance input (values, never names, cross a wire).
-    const decision = { approved: true };
+    const decision: ConsentDecision = { approved: true };
     const content = response?.content;
     if (content && typeof content === 'object') {
-      const credentials = {};
+      const credentials: Record<string, string> = {};
       for (const [key, value] of Object.entries(content)) {
         if (typeof value === 'string' && value.length > 0) credentials[key] = value;
       }
@@ -169,13 +237,16 @@ export function createMcpContextFactory({
   allow = false,
   elicitInput,
   getClientCapabilities,
-} = {}) {
-  /** @type {object} */
-  let seams;
+}: McpContextFactoryOptions = {}) {
+  let seams: AffordanceSeams;
   if (allow) {
     seams = { consentPolicy: 'allow' };
   } else if (typeof elicitInput === 'function') {
-    seams = { requestConsent: createMcpConsentSeam({ elicitInput, getClientCapabilities }) };
+    seams = {
+      requestConsent: createMcpConsentSeam({ elicitInput, getClientCapabilities }) as (
+        request: unknown
+      ) => unknown,
+    };
   } else {
     seams = {};
   }

@@ -28,7 +28,23 @@
 export const TaskKind = Object.freeze({
   DETERMINISTIC: 'deterministic',
   FUZZY: 'fuzzy',
-});
+} as const);
+
+type TaskKindValue = (typeof TaskKind)[keyof typeof TaskKind];
+
+export interface RoutedTask {
+  name?: string;
+  kind?: TaskKindValue;
+  prompt?: string;
+  run?: () => unknown;
+  [key: string]: unknown;
+}
+
+interface RouteTaskDeps {
+  runDeterministic?: (task: RoutedTask) => unknown | Promise<unknown>;
+  runFuzzy?: (task: RoutedTask) => unknown | Promise<unknown>;
+  logger?: { log: (message: string) => void };
+}
 
 /**
  * Decide which path a task takes.
@@ -42,7 +58,7 @@ export const TaskKind = Object.freeze({
  * @param {object} task
  * @returns {('deterministic'|'fuzzy')}
  */
-export function classifyTask(task = {}) {
+export function classifyTask(task: RoutedTask = {}): TaskKindValue {
   if (task.kind === TaskKind.FUZZY || task.kind === TaskKind.DETERMINISTIC) {
     return task.kind;
   }
@@ -71,7 +87,7 @@ function defaultLogger() {
  * @param {{ log: Function }} [deps.logger]                Logger (defaults to console).
  * @returns {Promise<{ kind: string, name: string, result: any }>}
  */
-export async function routeTask(task, deps = {}) {
+export async function routeTask(task: RoutedTask, deps: RouteTaskDeps = {}) {
   const {
     runDeterministic = (t) => {
       if (typeof t.run !== 'function') {
@@ -109,8 +125,8 @@ export async function routeTask(task, deps = {}) {
  * @param {object} deps  See {@link routeTask}.
  * @returns {Promise<Array<{ kind: string, name: string, result: any }>>}
  */
-export async function routeTasks(tasks = [], deps = {}) {
-  const out = [];
+export async function routeTasks(tasks: RoutedTask[] = [], deps: RouteTaskDeps = {}) {
+  const out: Array<{ kind: string; name: string; result: unknown }> = [];
   for (const task of tasks) {
     out.push(await routeTask(task, deps));
   }

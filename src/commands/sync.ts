@@ -35,11 +35,29 @@ import { parseSyncArgs as parseSharedSyncArgs } from '../lib/args.ts';
 /** Default committed composite graph, relative to the repo root. */
 export const DEFAULT_GRAPH = `${CONNECT_DIR}/composite-graph.json`;
 
-function toPosix(p) {
+type SyncArgs = ReturnType<typeof parseSharedSyncArgs>;
+type SyncStatus = ReturnType<typeof computeSyncStatus>;
+type SyncGraph = NonNullable<Parameters<typeof computeSyncStatus>[0]>['current'];
+type ConnectSignal = NonNullable<NonNullable<Parameters<typeof computeSyncStatus>[0]>['connect']>;
+type RunConnectCheckResult = Extract<Awaited<ReturnType<typeof runConnectCommand>>, { check: true }>;
+type RunConnectWriteResult = Extract<Awaited<ReturnType<typeof runConnectCommand>>, { check: false }>;
+type ComputeSyncOptions = {
+  cwd?: string;
+  graph?: string;
+  since?: string;
+  against?: string | null;
+  currentGraph?: SyncGraph;
+  baselineGraph?: SyncGraph | null;
+  connect?: ConnectSignal | null;
+  runConnect?: (options: { cwd: string; check: true }) => RunConnectCheckResult;
+};
+type GraphNotFoundError = Error & { code?: string };
+
+function toPosix(p: string): string {
   return String(p).split('\\').join('/');
 }
 
-function parseArgs(args) {
+function parseArgs(args: string[] = []): SyncArgs {
   return parseSharedSyncArgs(args);
 }
 
@@ -77,13 +95,13 @@ function printHelp() {
  *
  * @returns {{ ok: boolean, drift: Array<object> }|null}
  */
-export function evaluateConnect(cwd, opts = {}) {
+export function evaluateConnect(cwd: string, opts: Pick<ComputeSyncOptions, 'runConnect'> = {}): ConnectSignal | null {
   const dir = resolve(cwd, CONNECT_DIR);
   const hasArtifacts = ARTIFACT_FILES.some((f) => existsSync(resolve(dir, f)));
   if (!hasArtifacts) return null;
   const run = opts.runConnect ?? ((o) => runConnectCommand(o));
   try {
-    const res = run({ cwd, check: true });
+    const res = run({ cwd, check: true }) as unknown as RunConnectCheckResult;
     return { ok: res.ok === true, drift: Array.isArray(res.drift) ? res.drift : [] };
   } catch (err) {
     if (err instanceof ConnectError) return { ok: false, drift: [{ file: '(connect)', reason: err.message }] };
@@ -105,30 +123,34 @@ export function evaluateConnect(cwd, opts = {}) {
  * @param {object}  [options.connect]        Inject the connect parity result (tests).
  * @returns {{ graphPath: string, baselineDesc: string, status: object }}
  */
-export function computeSync(options = {}) {
+export function computeSync(options: ComputeSyncOptions = {}): {
+  graphPath: string;
+  baselineDesc: string;
+  status: SyncStatus;
+} {
   const cwd = options.cwd ?? process.cwd();
   const graphPath = options.graph ?? DEFAULT_GRAPH;
   const absGraph = resolve(cwd, graphPath);
 
-  let current = options.currentGraph;
+  let current: SyncGraph | null = options.currentGraph ?? null;
   if (!current) {
     if (!existsSync(absGraph)) {
-      const err = new Error(`Graph file not found: ${graphPath}`);
+      const err = new Error(`Graph file not found: ${graphPath}`) as GraphNotFoundError;
       err.code = 'GRAPH_NOT_FOUND';
       throw err;
     }
-    current = readGraphFile(absGraph);
+    current = readGraphFile(absGraph) as SyncGraph;
   }
 
-  let baseline = options.baselineGraph ?? null;
-  let baselineDesc;
+  let baseline: SyncGraph | null = options.baselineGraph ?? null;
+  let baselineDesc: string;
   if (!options.baselineGraph) {
     if (options.against) {
       const absAgainst = resolve(cwd, options.against);
-      baseline = existsSync(absAgainst) ? readGraphFile(absAgainst) : null;
+      baseline = existsSync(absAgainst) ? (readGraphFile(absAgainst) as SyncGraph) : null;
       baselineDesc = options.against;
     } else {
-      baseline = loadBaselineGraph({ cwd, graphPath, since: options.since ?? 'HEAD' });
+      baseline = loadBaselineGraph({ cwd, graphPath, since: options.since ?? 'HEAD' }) ?? null;
       baselineDesc = options.since ?? 'HEAD';
     }
   } else {
@@ -140,7 +162,11 @@ export function computeSync(options = {}) {
   return { graphPath, baselineDesc, status };
 }
 
-function printReport({ graphPath, baselineDesc, status }) {
+function printReport({ graphPath, baselineDesc, status }: {
+  graphPath: string;
+  baselineDesc: string;
+  status: SyncStatus;
+}): void {
   const s = status;
   console.log('');
   console.log('+------------------------------------------+');
@@ -191,7 +217,7 @@ function printReport({ graphPath, baselineDesc, status }) {
   }
 }
 
-export default async function syncCommand(args = []) {
+export default async function syncCommand(args: string[] = []): Promise<void> {
   const opts = parseArgs(args);
   if (opts.help) {
     printHelp();
@@ -204,12 +230,13 @@ export default async function syncCommand(args = []) {
   }
 
   const cwd = process.cwd();
-  let computed;
+  let computed: ReturnType<typeof computeSync>;
   try {
     computed = computeSync({ cwd, graph: opts.graph, since: opts.since, against: opts.against });
   } catch (err) {
-    if (err && err.code === 'GRAPH_NOT_FOUND') {
-      console.error(`x ${err.message}`);
+    const graphError = err as GraphNotFoundError;
+    if (graphError && graphError.code === 'GRAPH_NOT_FOUND') {
+      console.error(`x ${graphError.message}`);
       console.error('  Run `kbx generate` / your composite ingest to produce it first.');
       process.exit(1);
     }
@@ -219,7 +246,7 @@ export default async function syncCommand(args = []) {
   // ── Drift gate: report + exit code, never write. ──
   if (opts.check) {
     if (opts.json) {
-      console.log(JSON.stringify({ mode: 'check', graph: computed.graphPath, baseline: computed.baselineDesc, ...computed.status }, null, 2));
+      console.log(JSON.stringify(Object.assign({ mode: 'check', graph: computed.graphPath, baseline: computed.baselineDesc }, computed.status), null, 2));
     } else {
       printReport(computed);
     }
@@ -234,12 +261,12 @@ export default async function syncCommand(args = []) {
   }
 
   // ── Reconcile: regenerate the deterministic connection artifacts. ──
-  let reconcile = null;
+  let reconcile: RunConnectWriteResult | null = null;
   const dir = resolve(cwd, CONNECT_DIR);
   const hasConnectDir = existsSync(dir);
   if (hasConnectDir) {
     try {
-      reconcile = runConnectCommand({ cwd, check: false });
+      reconcile = runConnectCommand({ cwd, check: false }) as unknown as RunConnectWriteResult;
     } catch (err) {
       if (err instanceof ConnectError) {
         console.error(`x ${err.message}`);

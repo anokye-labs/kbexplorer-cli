@@ -16,10 +16,10 @@ import { resolve } from 'node:path';
  * Minimal parser: `KEY=value` lines, ignores blanks and `#`-comments.
  * Does NOT mutate `process.env`. Returns `{}` if the file is missing.
  */
-export function loadKbEnv(cwd) {
+export function loadKbEnv(cwd: string): Record<string, string> {
   const envPath = resolve(cwd, '.env.kbx');
   if (!existsSync(envPath)) return {};
-  const out = {};
+  const out: Record<string, string> = {};
   const raw = readFileSync(envPath, 'utf-8');
   for (const line of raw.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -42,7 +42,7 @@ export function loadKbEnv(cwd) {
  * Priority: explicit override → process.env.VITE_KB_PATH → .env.kbx → 'content'.
  * Returns `{ contentDir: absolute, contentPath: relative }`.
  */
-export function resolveContentDir(cwd, override) {
+export function resolveContentDir(cwd: string, override?: string) {
   const envFile = loadKbEnv(cwd);
   const contentPath = override
     || process.env.VITE_KB_PATH

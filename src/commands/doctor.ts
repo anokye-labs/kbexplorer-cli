@@ -18,21 +18,38 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PASS = '✅';
 const WARN = '⚠️ ';
 const FAIL = '❌';
-const STATUS = { pass: PASS, warn: WARN, fail: FAIL };
+type DoctorStatus = 'pass' | 'warn' | 'fail';
+type DoctorCheck = { id: string; status: DoctorStatus; message: string };
+type DoctorSection = { name: string; checks: DoctorCheck[] };
+type DoctorSourceRecord = NonNullable<ReturnType<typeof readSourceRecord>> & {
+  sources?: Array<{ sourceId?: string; id?: string; module?: string }>;
+  kbx?: {
+    sources?: Array<{ sourceId?: string; id?: string; module?: string }>;
+  };
+};
+type DoctorDeps = {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  spawnSync?: typeof spawnSync;
+  getLatestTag?: ((repoUrl?: string) => string | null) | null;
+  offline?: boolean;
+};
+const STATUS: Record<DoctorStatus, string> = { pass: PASS, warn: WARN, fail: FAIL };
 
-function pass(id, message) { return { id, status: 'pass', message }; }
-function warn(id, message) { return { id, status: 'warn', message }; }
-function fail(id, message) { return { id, status: 'fail', message }; }
+function pass(id: string, message: string): DoctorCheck { return { id, status: 'pass', message }; }
+function warn(id: string, message: string): DoctorCheck { return { id, status: 'warn', message }; }
+function fail(id: string, message: string): DoctorCheck { return { id, status: 'fail', message }; }
 
-function checkPlugin({ assetsRoot, cwd } = {}) {
-  const checks = [];
+function checkPlugin({ assetsRoot, cwd }: { assetsRoot?: string; cwd?: string } = {}): DoctorCheck[] {
+  const checks: DoctorCheck[] = [];
   const { manifest, error: mErr } = loadPluginManifest(assetsRoot);
   if (mErr) {
     checks.push(fail('plugin.manifest', `Plugin manifest unreadable: ${mErr}`));
   } else {
     const v = validatePluginManifest(manifest);
     if (v.valid) {
-      checks.push(pass('plugin.manifest', `Manifest valid (${manifest.name}@${manifest.version})`));
+      const manifestRecord = manifest as { name?: string; version?: string };
+      checks.push(pass('plugin.manifest', `Manifest valid (${manifestRecord.name}@${manifestRecord.version})`));
     } else {
       checks.push(fail('plugin.manifest', `Manifest invalid: ${v.errors.join('; ')}`));
     }
@@ -66,13 +83,14 @@ function checkPlugin({ assetsRoot, cwd } = {}) {
     const project = resolveScopeRoot('project', { cwd: cwd ?? process.cwd() });
     checks.push(pass('plugin.scope', `Install scopes resolve (project → ${project})`));
   } catch (err) {
-    checks.push(fail('plugin.scope', `Scope resolution failed: ${err.message}`));
+    const message = err instanceof Error ? err.message : String(err);
+    checks.push(fail('plugin.scope', `Scope resolution failed: ${message}`));
   }
 
   return checks;
 }
 
-function looksLikeInstalledPackageSpecifier(spec) {
+function looksLikeInstalledPackageSpecifier(spec: unknown): boolean {
   if (typeof spec !== 'string' || !spec.trim()) return true;
   const s = spec.trim();
   if (s.startsWith('.') || s.startsWith('/') || s.startsWith('~')) return false;
@@ -81,9 +99,9 @@ function looksLikeInstalledPackageSpecifier(spec) {
   return true;
 }
 
-function checkSources({ cwd }) {
-  const checks = [];
-  const record = readSourceRecord(cwd);
+function checkSources({ cwd }: { cwd: string }): DoctorCheck[] {
+  const checks: DoctorCheck[] = [];
+  const record = readSourceRecord(cwd) as DoctorSourceRecord | null;
   const sources = record?.sources ?? record?.kbx?.sources;
 
   if (!Array.isArray(sources) || sources.length === 0) {
@@ -108,12 +126,12 @@ function checkSources({ cwd }) {
   return checks;
 }
 
-function formatCheckLine(check) {
+function formatCheckLine(check: DoctorCheck): string {
   const icon = STATUS[check.status] ?? '  ';
   return `  ${icon} ${check.message}`;
 }
 
-function formatHumanReport(sections) {
+function formatHumanReport(sections: DoctorSection[]): string {
   const lines = [];
   for (const section of sections) {
     lines.push(`\n${section.name}`);
@@ -125,7 +143,7 @@ function formatHumanReport(sections) {
   return lines.join('\n');
 }
 
-function buildJsonReport(sections) {
+function buildJsonReport(sections: DoctorSection[]): { sections: DoctorSection[]; ok: boolean } {
   const hasFailure = sections.some((s) => s.checks.some((c) => c.status === 'fail'));
   return {
     sections: sections.map((s) => ({ name: s.name, checks: s.checks })),
@@ -133,13 +151,13 @@ function buildJsonReport(sections) {
   };
 }
 
-export default async function doctor(args, {
+export default async function doctor(args: string[] = [], {
   cwd: cwdOverride,
   env: envOverride,
   spawnSync: spawnSyncImpl = spawnSync,
   getLatestTag: getLatestTagImpl = null,
   offline: offlineOverride = undefined,
-} = {}) {
+}: DoctorDeps = {}): Promise<void> {
   const opts = parseDoctorArgs(args);
 
   if (opts.help) {
@@ -168,14 +186,14 @@ export default async function doctor(args, {
   const runtimeFlag = opts.runtime;
 
   let runtimeConfig = null;
-  let configError = null;
+  let configError: unknown = null;
   try {
     runtimeConfig = loadRuntimeConfig(cwd);
   } catch (err) {
     configError = err;
   }
 
-  let latestTagFn = getLatestTagImpl;
+  let latestTagFn: DoctorDeps['getLatestTag'] = getLatestTagImpl;
   if (!latestTagFn && !offline) {
     const { getLatestTag } = await import('../lib/version.ts');
     latestTagFn = getLatestTag;
@@ -189,7 +207,8 @@ export default async function doctor(args, {
   });
 
   if (configError) {
-    runtimeChecks.unshift(fail('runtime.config', `Failed to load runtime config: ${configError.message}`));
+    const message = configError instanceof Error ? configError.message : String(configError);
+    runtimeChecks.unshift(fail('runtime.config', `Failed to load runtime config: ${message}`));
   }
 
   const mcpChecks = checkMcp({ adapter, config: runtimeConfig, cwd, env });
@@ -199,7 +218,7 @@ export default async function doctor(args, {
   const sourcesChecks = checkSources({ cwd });
   const envChecks = checkEnvironment({ cwd, env, spawnSync: spawnSyncImpl });
 
-  const sections = [
+  const sections: DoctorSection[] = [
     { name: 'Runtime', checks: runtimeChecks },
     { name: 'MCP', checks: mcpChecks },
     { name: 'Template', checks: templateChecks },

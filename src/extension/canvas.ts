@@ -37,6 +37,7 @@
  */
 
 import { createCanvasRegistry, SSE_EVENTS } from './canvas-server.ts';
+import type { CanvasRegistry } from './canvas/registry.ts';
 import {
   executeAffordance as defaultExecute,
   createAffordanceContext,
@@ -44,6 +45,64 @@ import {
 
 /** Stable, provider-local id for the kbexplorer canvas. */
 export const KBX_CANVAS_ID = 'kbexplorer';
+
+type ExecuteAffordance = (name: string, input: object, context?: object) => Promise<unknown>;
+type ActionInput = Record<string, unknown>;
+
+interface CanvasInvocationContext {
+  instanceId?: string;
+  instance?: { id?: string };
+  id?: string;
+  nodeId?: string;
+  input?: ActionInput;
+}
+
+interface CanvasActionDefinition {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: string;
+    properties: Record<string, unknown>;
+    required?: string[];
+    additionalProperties: boolean;
+  };
+  handler: (ctx?: CanvasInvocationContext) => Promise<unknown>;
+}
+
+interface CanvasOptions {
+  id: string;
+  displayName: string;
+  description: string;
+  inputSchema: {
+    type: string;
+    properties: Record<string, unknown>;
+    additionalProperties: boolean;
+  };
+  actions: CanvasActionDefinition[];
+  open: (ctx?: CanvasInvocationContext) => Promise<{ url: string; title: string }>;
+  onClose: (ctx?: CanvasInvocationContext) => Promise<void>;
+}
+
+interface CanvasActionBuildOptions {
+  execute?: ExecuteAffordance;
+  contextFactory?: () => object;
+}
+
+interface BuildCanvasOptionsDeps extends CanvasActionBuildOptions {
+  registry?: CanvasRegistry;
+}
+
+type QueryNodeResult = { title: string };
+type GraphNeighborsResult = Record<string, unknown> & {
+  neighbors: Array<{ id: string }>;
+};
+type TraceResult = Record<string, unknown> & {
+  path: string[];
+  connected: boolean;
+};
+type FilterResult = {
+  results: Array<{ nodeId?: string; id?: string }>;
+};
 
 /**
  * Pull a canvas `instanceId` out of the SDK's open/close/action context. The
@@ -54,7 +113,7 @@ export const KBX_CANVAS_ID = 'kbexplorer';
  * @param {object} [ctx]
  * @returns {string}
  */
-function instanceIdOf(ctx = {}) {
+function instanceIdOf(ctx: CanvasInvocationContext = {}) {
   return ctx.instanceId || ctx.instance?.id || ctx.id || KBX_CANVAS_ID;
 }
 
@@ -67,7 +126,7 @@ function instanceIdOf(ctx = {}) {
  * @param {string} actionName
  * @returns {string}
  */
-function requireString(value, field, actionName) {
+function requireString(value: unknown, field: string, actionName: string) {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new TypeError(`${actionName}: "${field}" is required`);
   }
@@ -91,10 +150,12 @@ function requireString(value, field, actionName) {
  * @param {() => object} [opts.contextFactory]
  *        Builds the affordance execution context per call (defaults to a fresh
  *        {@link createAffordanceContext} over `process.cwd()`).
- * @returns {import('@github/copilot-sdk/extension').CanvasAction[]}
+ * @returns {CanvasActionDefinition[]}
  */
-export function buildCanvasActions(registry, opts = {}) {
-  const { execute = defaultExecute, contextFactory = createAffordanceContext } = opts;
+export function buildCanvasActions(registry: CanvasRegistry, opts: CanvasActionBuildOptions = {}) {
+  const executeFn: ExecuteAffordance = opts.execute ?? (defaultExecute as ExecuteAffordance);
+  const contextFactoryFn: () => object =
+    opts.contextFactory ?? (() => createAffordanceContext() as object);
   return [
     {
       name: 'anchor',
@@ -108,11 +169,11 @@ export function buildCanvasActions(registry, opts = {}) {
         required: ['nodeId'],
         additionalProperties: false,
       },
-      async handler(ctx = {}) {
+      async handler(ctx: CanvasInvocationContext = {}) {
         const instanceId = instanceIdOf(ctx);
         const input = ctx.input ?? {};
         const nodeId = requireString(input.nodeId, 'nodeId', 'anchor');
-        const node = await execute('query_node', { id: nodeId }, contextFactory());
+        const node = await executeFn('query_node', { id: nodeId }, contextFactoryFn()) as QueryNodeResult;
         const delivered = registry.emit(instanceId, SSE_EVENTS.ANCHOR, { nodeId });
         return { ok: true, nodeId, title: node.title, delivered };
       },
@@ -130,15 +191,15 @@ export function buildCanvasActions(registry, opts = {}) {
         required: ['nodeId'],
         additionalProperties: false,
       },
-      async handler(ctx = {}) {
+      async handler(ctx: CanvasInvocationContext = {}) {
         const instanceId = instanceIdOf(ctx);
         const input = ctx.input ?? {};
         const nodeId = requireString(input.nodeId, 'nodeId', 'expand');
-        const result = await execute(
+        const result = await executeFn(
           'graph_neighbors',
           { id: nodeId, depth: input.depth },
-          contextFactory()
-        );
+          contextFactoryFn()
+        ) as GraphNeighborsResult;
         const nodes = [nodeId, ...result.neighbors.map((n) => n.id)];
         const delivered = registry.emit(instanceId, SSE_EVENTS.GRAPH_UPDATED, {
           nodes,
@@ -161,12 +222,12 @@ export function buildCanvasActions(registry, opts = {}) {
         },
         additionalProperties: false,
       },
-      async handler(ctx = {}) {
+      async handler(ctx: CanvasInvocationContext = {}) {
         const instanceId = instanceIdOf(ctx);
         const input = ctx.input ?? {};
         const fromId = input.fromId || input.nodeId;
         requireString(fromId, 'fromId (or nodeId)', 'trace');
-        const result = await execute('trace', { fromId, toId: input.toId }, contextFactory());
+        const result = await executeFn('trace', { fromId, toId: input.toId }, contextFactoryFn()) as TraceResult;
         const delivered = registry.emit(instanceId, SSE_EVENTS.GRAPH_UPDATED, {
           nodes: result.path,
           reason: 'trace',
@@ -192,12 +253,12 @@ export function buildCanvasActions(registry, opts = {}) {
         },
         additionalProperties: false,
       },
-      async handler(ctx = {}) {
+      async handler(ctx: CanvasInvocationContext = {}) {
         const instanceId = instanceIdOf(ctx);
         const input = ctx.input ?? {};
         const query = typeof input.query === 'string' ? input.query.trim() : '';
-        const cluster = input.cluster ?? null;
-        const nodeType = input.nodeType ?? null;
+        const cluster = (input.cluster ?? null) as string | null;
+        const nodeType = (input.nodeType ?? null) as string | null;
 
         let nodes = null;
         if (query) {
@@ -211,7 +272,7 @@ export function buildCanvasActions(registry, opts = {}) {
             query,
             cluster: cluster ?? undefined,
             entityType: nodeType ?? undefined,
-          });
+          }) as FilterResult;
           nodes = result.results.map((r) => r.nodeId ?? r.id);
         }
 
@@ -244,7 +305,7 @@ export function buildCanvasOptions({
   registry = createCanvasRegistry(),
   execute,
   contextFactory,
-} = {}) {
+}: BuildCanvasOptionsDeps = {}): CanvasOptions {
   return {
     id: KBX_CANVAS_ID,
     displayName: 'kbexplorer Knowledge Graph',
@@ -263,15 +324,15 @@ export function buildCanvasOptions({
      * origin as the canvas `url`.
      * @param {object} [ctx]  SDK open context ({ instanceId, input }).
      */
-    async open(ctx = {}) {
-      const anchorNodeId = ctx.input?.nodeId ?? ctx.nodeId;
+    async open(ctx: CanvasInvocationContext = {}) {
+      const anchorNodeId = (ctx.input?.nodeId ?? ctx.nodeId) as string | undefined;
       return registry.open(instanceIdOf(ctx), { anchorNodeId });
     },
     /**
      * Tear down this panel's loopback server.
      * @param {object} [ctx]  SDK close context ({ instanceId }).
      */
-    async onClose(ctx = {}) {
+    async onClose(ctx: CanvasInvocationContext = {}) {
       await registry.close(instanceIdOf(ctx));
     },
   };

@@ -17,7 +17,18 @@ import { audit } from '../lib/audit.ts';
 import { resolveContentDir } from '../lib/kb-env.ts';
 import { parseAuditArgs } from '../lib/args.ts';
 
-function printHumanReport({ findings, summary }) {
+type AuditResult = ReturnType<typeof audit>;
+type AuditFinding = {
+  severity: 'error' | 'warning';
+  rule: string;
+  file?: string;
+  files?: string[];
+  id?: string;
+  message: string;
+};
+
+function printHumanReport({ findings, summary }: AuditResult): void {
+  const typedFindings = findings as AuditFinding[];
   console.log('');
   console.log('╔══════════════════════════════════════════╗');
   console.log('║       Content Audit Report               ║');
@@ -29,16 +40,16 @@ function printHumanReport({ findings, summary }) {
   console.log(`  Warnings:       ${summary.warnings}`);
   console.log('');
 
-  if (findings.length === 0) {
+  if (typedFindings.length === 0) {
     console.log('✅ No structural issues found.');
     console.log('');
     return;
   }
 
-  const grouped = new Map();
-  for (const f of findings) {
+  const grouped = new Map<string, AuditFinding[]>();
+  for (const f of typedFindings) {
     if (!grouped.has(f.rule)) grouped.set(f.rule, []);
-    grouped.get(f.rule).push(f);
+    grouped.get(f.rule)?.push(f);
   }
 
   for (const [rule, items] of grouped) {
@@ -60,10 +71,10 @@ function printHumanReport({ findings, summary }) {
   }
 }
 
-export default async function auditCommand(args) {
+export default async function auditCommand(args: string[] = []): Promise<void> {
   const opts = parseAuditArgs(args);
   const cwd = process.cwd();
-  const { contentDir, contentPath } = resolveContentDir(cwd, opts.content);
+  const { contentDir, contentPath } = resolveContentDir(cwd, opts.content ?? undefined);
 
   const result = audit({
     contentDir,
@@ -81,5 +92,3 @@ export default async function auditCommand(args) {
     process.exit(1);
   }
 }
-
-

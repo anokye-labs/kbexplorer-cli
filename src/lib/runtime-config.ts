@@ -29,10 +29,40 @@ export const RUNTIME_ENV = 'KBX_RUNTIME';
 const LEGACY_RUNTIME_ENV = 'KBEXPLORER_RUNTIME';
 
 /** The known named agents. */
-export const KNOWN_AGENTS = Object.freeze(['copilot', 'claude', 'custom']);
+export const KNOWN_AGENTS = Object.freeze(['copilot', 'claude', 'custom'] as const);
+
+type KnownAgent = (typeof KNOWN_AGENTS)[number];
+
+interface RuntimeMcpConfig {
+  required?: string[];
+  optional?: string[];
+}
+
+export interface ValidatedRuntimeConfig {
+  agent: KnownAgent;
+  command?: string;
+  argsTemplate?: string[];
+  outputFormat?: 'text' | 'jsonl';
+  timeoutMs?: number;
+  binaryEnv?: string;
+  mcp?: RuntimeMcpConfig;
+}
+
+type RuntimeAdapterInstance = typeof copilotAdapter | typeof claudeAdapter | ReturnType<typeof createCustomAdapter>;
+
+interface ResolveRuntimeOptions {
+  flag?: string | null;
+  config?: ValidatedRuntimeConfig | null;
+  env?: NodeJS.ProcessEnv;
+}
+
+type RuntimeOptionsWithTimeout = {
+  timeoutMs?: number;
+  [key: string]: unknown;
+};
 
 export class RuntimeConfigError extends Error {
-  constructor(message) {
+  constructor(message: string) {
     super(message);
     this.name = 'RuntimeConfigError';
   }
@@ -61,14 +91,15 @@ export class RuntimeConfigError extends Error {
  * @returns {{ agent: string, command?: string, argsTemplate?: string[], outputFormat?: string, timeoutMs?: number, binaryEnv?: string, mcp?: { required?: string[], optional?: string[] } }}
  * @throws {RuntimeConfigError} on invalid shape.
  */
-export function validateRuntimeBlock(runtime) {
+export function validateRuntimeBlock(runtime: unknown): ValidatedRuntimeConfig {
   if (runtime == null || typeof runtime !== 'object' || Array.isArray(runtime)) {
     throw new RuntimeConfigError(
       'runtime block in .kbx.json must be a JSON object.',
     );
   }
 
-  const { agent, command, argsTemplate, outputFormat, timeoutMs, binaryEnv, mcp } = runtime;
+  const runtimeRecord = runtime as Record<string, unknown>;
+  const { agent, command, argsTemplate, outputFormat, timeoutMs, binaryEnv, mcp } = runtimeRecord;
 
   // ── agent field ──────────────────────────────────────────────────────────────
   if (agent == null) {
@@ -81,7 +112,7 @@ export function validateRuntimeBlock(runtime) {
       `runtime.agent must be a string. Got: ${JSON.stringify(agent)}.`,
     );
   }
-  const agentLower = agent.toLowerCase();
+  const agentLower = agent.toLowerCase() as KnownAgent;
   if (!KNOWN_AGENTS.includes(agentLower)) {
     throw new RuntimeConfigError(
       `runtime.agent "${agent}" is not a known adapter. Valid values: "copilot", "claude", "custom".`,
@@ -175,14 +206,14 @@ export function validateRuntimeBlock(runtime) {
   }
 
   // ── mcp block ───────────────────────────────────────────────────────────────
-  let validatedMcp;
+  let validatedMcp: RuntimeMcpConfig | undefined;
   if (mcp != null) {
     if (typeof mcp !== 'object' || Array.isArray(mcp)) {
       throw new RuntimeConfigError(
         'runtime.mcp must be a JSON object with optional "required" and "optional" arrays.',
       );
     }
-    const { required: mcpRequired, optional: mcpOptional } = mcp;
+    const { required: mcpRequired, optional: mcpOptional } = mcp as RuntimeMcpConfig;
 
     validatedMcp = {};
 
@@ -233,8 +264,10 @@ export function validateRuntimeBlock(runtime) {
     }
 
     // Check for overlap between required and optional
-    if (validatedMcp.required && validatedMcp.optional) {
-      const overlap = validatedMcp.required.filter((s) => validatedMcp.optional.includes(s));
+    if (validatedMcp?.required && validatedMcp?.optional) {
+      const required = validatedMcp.required;
+      const optional = validatedMcp.optional;
+      const overlap = required.filter((s: string) => optional.includes(s));
       if (overlap.length > 0) {
         throw new RuntimeConfigError(
           `runtime.mcp server names must not appear in both "required" and "optional". Duplicates: ${overlap.map((s) => JSON.stringify(s)).join(', ')}.`,
@@ -243,15 +276,14 @@ export function validateRuntimeBlock(runtime) {
     }
   }
 
-  return {
-    agent: agentLower,
-    ...(command != null ? { command } : {}),
-    ...(argsTemplate != null ? { argsTemplate } : {}),
-    ...(outputFormat != null ? { outputFormat } : {}),
-    ...(timeoutMs != null ? { timeoutMs } : {}),
-    ...(binaryEnv != null ? { binaryEnv } : {}),
-    ...(validatedMcp != null ? { mcp: validatedMcp } : {}),
-  };
+  const validated: ValidatedRuntimeConfig = { agent: agentLower };
+  if (typeof command === 'string') validated.command = command;
+  if (Array.isArray(argsTemplate)) validated.argsTemplate = argsTemplate as string[];
+  if (outputFormat === 'text' || outputFormat === 'jsonl') validated.outputFormat = outputFormat;
+  if (typeof timeoutMs === 'number') validated.timeoutMs = timeoutMs;
+  if (typeof binaryEnv === 'string') validated.binaryEnv = binaryEnv;
+  if (validatedMcp) validated.mcp = validatedMcp;
+  return validated;
 }
 
 /**
@@ -274,7 +306,7 @@ export function loadRuntimeConfig(cwd = process.cwd()) {
  * @param {{ agent: string, command?: string, argsTemplate?: string[], outputFormat?: string, timeoutMs?: number, binaryEnv?: string }} config
  * @returns {object} An adapter instance.
  */
-export function adapterFromConfig(config) {
+export function adapterFromConfig(config: ValidatedRuntimeConfig): RuntimeAdapterInstance {
   switch (config.agent) {
     case 'copilot':
       return createCopilotAdapter();
@@ -312,7 +344,7 @@ export function adapterFromConfig(config) {
  * @returns {object} Resolved adapter instance.
  * @throws {RuntimeConfigError} if the flag or env var specifies an unknown adapter name.
  */
-export function resolveRuntime({ flag, config, env } = {}) {
+export function resolveRuntime({ flag, config, env }: ResolveRuntimeOptions = {}): RuntimeAdapterInstance {
   const envMap = env ?? process.env;
 
   // 1. Explicit --runtime flag. `--runtime custom` is a valid way to select
@@ -357,8 +389,11 @@ export function resolveRuntime({ flag, config, env } = {}) {
  * @param {object|null} config     Validated runtime block (or null).
  * @returns {object} runtimeOptions with config-supplied defaults applied.
  */
-export function applyRuntimeConfigDefaults(runtimeOptions = {}, config = null) {
-  if (config?.timeoutMs != null && runtimeOptions.timeoutMs == null) {
+export function applyRuntimeConfigDefaults(
+  runtimeOptions: RuntimeOptionsWithTimeout = {},
+  config: ValidatedRuntimeConfig | null = null,
+): RuntimeOptionsWithTimeout {
+  if (config && config.timeoutMs != null && runtimeOptions.timeoutMs == null) {
     return { ...runtimeOptions, timeoutMs: config.timeoutMs };
   }
   return runtimeOptions;
@@ -373,7 +408,7 @@ export function applyRuntimeConfigDefaults(runtimeOptions = {}, config = null) {
  * @returns {object}
  * @throws {RuntimeConfigError}
  */
-function adapterFromName(name, source) {
+function adapterFromName(name: string, source: string): RuntimeAdapterInstance {
   switch (String(name).toLowerCase()) {
     case 'copilot':
       return copilotAdapter;
@@ -389,4 +424,3 @@ function adapterFromName(name, source) {
       );
   }
 }
-

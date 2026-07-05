@@ -4,17 +4,30 @@ export const SSE_EVENTS = Object.freeze({
   ANCHOR: 'anchor',
 });
 
-export function defaultSubscribe(_instanceId, _onEvent) {
+export interface CanvasEvent {
+  event: string;
+  data?: unknown;
+}
+
+export type CanvasEventListener = (event: CanvasEvent) => void;
+export type CanvasSubscribe = (instanceId: string, onEvent: CanvasEventListener) => () => void;
+
+export interface CanvasEventBus {
+  subscribe: CanvasSubscribe;
+  emit: (instanceId: string, event: string, data?: unknown) => boolean;
+}
+
+export function defaultSubscribe(_instanceId: string, _onEvent: CanvasEventListener) {
   return () => {};
 }
 
-export function createEventBus() {
-  const listeners = new Map();
+export function createEventBus(): CanvasEventBus {
+  const listeners = new Map<string, Set<CanvasEventListener>>();
 
-  function subscribe(instanceId, onEvent) {
+  function subscribe(instanceId: string, onEvent: CanvasEventListener) {
     let set = listeners.get(instanceId);
     if (!set) {
-      set = new Set();
+      set = new Set<CanvasEventListener>();
       listeners.set(instanceId, set);
     }
     set.add(onEvent);
@@ -24,7 +37,7 @@ export function createEventBus() {
     };
   }
 
-  function emit(instanceId, event, data) {
+  function emit(instanceId: string, event: string, data?: unknown) {
     const set = listeners.get(instanceId);
     if (!set || set.size === 0) return false;
     let delivered = false;

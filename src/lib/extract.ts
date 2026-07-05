@@ -36,11 +36,35 @@ export const ExtractionErrorCode = Object.freeze({
   EMPTY_RESPONSE: 'EXTRACT_EMPTY_RESPONSE',
   INVALID_JSON: 'EXTRACT_INVALID_JSON',
   INVALID_SHAPE: 'EXTRACT_INVALID_SHAPE',
-});
+} as const);
+
+type ExtractionErrorCodeValue = (typeof ExtractionErrorCode)[keyof typeof ExtractionErrorCode];
+type ExtractionObject = Record<string, unknown>;
+type ExtractionIntermediate = { entities: ExtractionObject[]; relationships: ExtractionObject[] };
+type ExtractableDocument = { text?: string; title?: string; format?: string };
+type ExtractionRuntime = typeof runRuntimeTask;
+
+interface ExtractionErrorOptions {
+  code?: ExtractionErrorCodeValue;
+  cause?: unknown;
+}
+
+interface BuildExtractionPromptOptions {
+  maxChars?: number;
+}
+
+interface ExtractEntitiesOptions {
+  document?: ExtractableDocument;
+  run?: ExtractionRuntime;
+  runtimeOptions?: Record<string, unknown> & { adapter?: unknown };
+  maxChars?: number;
+}
 
 /** Error thrown when the model output cannot be turned into a valid intermediate. */
 export class ExtractionError extends Error {
-  constructor(message, { code = ExtractionErrorCode.INVALID_SHAPE, cause } = {}) {
+  code: ExtractionErrorCodeValue;
+
+  constructor(message: string, { code = ExtractionErrorCode.INVALID_SHAPE, cause }: ExtractionErrorOptions = {}) {
     super(message, cause ? { cause } : undefined);
     this.name = 'ExtractionError';
     this.code = code;
@@ -56,7 +80,7 @@ export class ExtractionError extends Error {
  * @param {{ maxChars?: number }} [options]
  * @returns {string}
  */
-export function buildExtractionPrompt(document, options = {}) {
+export function buildExtractionPrompt(document: ExtractableDocument, options: BuildExtractionPromptOptions = {}): string {
   const maxChars = options.maxChars ?? 24_000;
   const text = String(document?.text ?? '');
   const body = text.length > maxChars ? `${text.slice(0, maxChars)}\n…[truncated]` : text;
@@ -103,7 +127,7 @@ export function buildExtractionPrompt(document, options = {}) {
  * @returns {{ entities: object[], relationships: object[] }}
  * @throws {ExtractionError} EMPTY_RESPONSE | INVALID_JSON | INVALID_SHAPE
  */
-export function parseExtraction(text) {
+export function parseExtraction(text: string): ExtractionIntermediate {
   const raw = String(text ?? '').trim();
   if (!raw) {
     throw new ExtractionError('Extraction produced an empty response.', {
@@ -119,11 +143,12 @@ export function parseExtraction(text) {
     );
   }
 
-  let parsed;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(candidate);
   } catch (err) {
-    throw new ExtractionError(`Extraction response was not valid JSON: ${err.message}`, {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new ExtractionError(`Extraction response was not valid JSON: ${message}`, {
       code: ExtractionErrorCode.INVALID_JSON,
       cause: err,
     });
@@ -135,11 +160,12 @@ export function parseExtraction(text) {
     });
   }
 
-  const entities = Array.isArray(parsed.entities) ? parsed.entities : [];
-  const relationships = Array.isArray(parsed.relationships)
-    ? parsed.relationships
-    : Array.isArray(parsed.edges)
-      ? parsed.edges
+  const parsedRecord = parsed as Record<string, unknown>;
+  const entities = Array.isArray(parsedRecord.entities) ? (parsedRecord.entities as ExtractionObject[]) : [];
+  const relationships = Array.isArray(parsedRecord.relationships)
+    ? (parsedRecord.relationships as ExtractionObject[])
+    : Array.isArray(parsedRecord.edges)
+      ? (parsedRecord.edges as ExtractionObject[])
       : [];
 
   if (entities.length === 0) {
@@ -154,7 +180,7 @@ export function parseExtraction(text) {
 }
 
 /** Strip ```json fences and isolate the first balanced top-level {...} object. */
-function extractJsonObject(text) {
+function extractJsonObject(text: string): string | null {
   let s = text.trim();
   const fence = s.match(/```(?:json|jsonld)?\s*([\s\S]*?)```/i);
   if (fence) s = fence[1].trim();
@@ -195,7 +221,7 @@ function extractJsonObject(text) {
  * @param {number}   [options.maxChars]             Prompt truncation budget.
  * @returns {Promise<{ entities: object[], relationships: object[], raw: string }>}
  */
-export async function extractEntities(options = {}) {
+export async function extractEntities(options: ExtractEntitiesOptions = {}): Promise<ExtractionIntermediate & { raw: string }> {
   const { document, run = runRuntimeTask, runtimeOptions = {}, maxChars } = options;
   if (!document || typeof document.text !== 'string') {
     throw new ExtractionError('extractEntities requires an ingested document with text.', {
@@ -206,7 +232,7 @@ export async function extractEntities(options = {}) {
   const prompt = buildExtractionPrompt(document, { maxChars });
   const { adapter = copilotAdapter, ...runtime } = runtimeOptions;
   const result = await run({
-    adapter,
+    adapter: adapter as typeof copilotAdapter,
     prompt,
     outputFormat: 'json',
     silent: true,
@@ -220,11 +246,12 @@ export async function extractEntities(options = {}) {
 }
 
 /** Pull the assistant text out of a RuntimeResult (or accept a bare string). */
-function pickResponseText(result) {
+function pickResponseText(result: unknown): string {
   if (typeof result === 'string') return result;
   if (result && typeof result === 'object') {
-    if (typeof result.response === 'string' && result.response.trim()) return result.response;
-    if (typeof result.stdout === 'string') return result.stdout;
+    const runtimeResult = result as { response?: unknown; stdout?: unknown };
+    if (typeof runtimeResult.response === 'string' && runtimeResult.response.trim()) return runtimeResult.response;
+    if (typeof runtimeResult.stdout === 'string') return runtimeResult.stdout;
   }
   return '';
 }

@@ -21,7 +21,15 @@ import {
   ERROR_CODES,
   ACTION_CLASSES,
 } from '../contract.ts';
-import { snippet } from '../../lib/engine-graph.ts';
+import { snippet, type LoadedGraph } from '../../lib/engine-graph.ts';
+import type { AffordanceContext } from '../context.ts';
+
+type GraphNode = LoadedGraph['nodes'] extends Map<string, infer Node> ? Node : never;
+
+interface LlmContextInput extends Record<string, unknown> {
+  nodeIds: string[];
+  question?: string;
+}
 
 export default defineAffordance({
   name: 'llm_context',
@@ -46,8 +54,9 @@ export default defineAffordance({
     nodeIds: { type: 'array' },
     roots: { type: 'array' },
   }),
-  async execute(context, input) {
-    const nodeIds = input.nodeIds.map(String).filter(Boolean);
+  async execute(context: AffordanceContext, input: Record<string, unknown>) {
+    const args = input as LlmContextInput;
+    const nodeIds = args.nodeIds.map(String).filter(Boolean);
     if (nodeIds.length === 0) {
       throw new AffordanceError(
         ERROR_CODES.INVALID_INPUT,
@@ -65,7 +74,9 @@ export default defineAffordance({
       );
     }
 
-    const nodes = nodeIds.map((id) => graph.nodes.get(id));
+    const nodes: GraphNode[] = nodeIds
+      .map((id) => graph.nodes.get(id))
+      .filter((node): node is GraphNode => Boolean(node));
     const citations = nodes.map((node) => ({
       id: node.id,
       title: node.title,
@@ -79,7 +90,7 @@ export default defineAffordance({
       .join('\n\n');
 
     return {
-      question: typeof input.question === 'string' ? input.question.trim() : '',
+      question: typeof args.question === 'string' ? args.question.trim() : '',
       citations,
       contextBundle,
       nodeIds,

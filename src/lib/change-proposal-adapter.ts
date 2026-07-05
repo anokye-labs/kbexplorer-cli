@@ -38,7 +38,41 @@ export const ProposalKind = Object.freeze({
   PULL_REQUEST: 'pull-request',
   MERGE_REQUEST: 'merge-request',
   PATCH_BRANCH: 'patch-branch',
-});
+} as const);
+
+type ProposalKindValue = (typeof ProposalKind)[keyof typeof ProposalKind];
+type HostKindValue = (typeof HostKind)[keyof typeof HostKind];
+
+interface ProposalChange {
+  path: string;
+  contents?: string;
+}
+
+interface ProposalRequest {
+  title?: string;
+  body?: string;
+  branch?: string;
+  base?: string;
+  changes?: ProposalChange[];
+  cwd?: string;
+}
+
+interface ProposalResult {
+  url: string;
+  branch: string;
+  kind: ProposalKindValue;
+  patch?: string;
+}
+
+interface ProposalDeps {
+  exec?: (cmd: string, opts?: { cwd?: string; encoding?: BufferEncoding; timeout?: number }) => string | Buffer;
+}
+
+interface ChangeProposalAdapter {
+  kind: HostKindValue;
+  proposalKind: ProposalKindValue;
+  propose: (req?: ProposalRequest, deps?: ProposalDeps) => Promise<ProposalResult>;
+}
 
 /**
  * @typedef {Object} ProposalChange
@@ -84,7 +118,7 @@ export const ProposalKind = Object.freeze({
  * @param {string} value
  * @returns {string}
  */
-function shquote(value) {
+function shquote(value: unknown): string {
   return `'${String(value ?? '').replace(/'/g, `'\\''`)}'`;
 }
 
@@ -99,7 +133,7 @@ function shquote(value) {
 export const githubChangeProposalAdapter = {
   kind: HostKind.GITHUB,
   proposalKind: ProposalKind.PULL_REQUEST,
-  async propose(req = {}, deps = {}) {
+  async propose(req: ProposalRequest = {}, deps: ProposalDeps = {}): Promise<ProposalResult> {
     const exec = deps.exec ?? execSync;
     const args = ['pr', 'create', '--title', shquote(req.title ?? ''), '--body', shquote(req.body ?? '')];
     if (req.branch) args.push('--head', shquote(req.branch));
@@ -124,13 +158,13 @@ export const githubChangeProposalAdapter = {
  * @param {ProposalChange[]} changes
  * @returns {string}
  */
-function assemblePatch(changes) {
-  const blocks = [];
+function assemblePatch(changes: ProposalChange[] | undefined): string {
+  const blocks: string[] = [];
   for (const change of Array.isArray(changes) ? changes : []) {
     const path = change?.path ?? '';
     const contents = typeof change?.contents === 'string' ? change.contents : '';
     const lines = contents === '' ? [] : contents.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n');
-    const body = lines.map((l) => `+${l}`).join('\n');
+    const body = lines.map((l: string) => `+${l}`).join('\n');
     blocks.push(
       `diff --git a/${path} b/${path}\n` +
         `--- /dev/null\n` +
@@ -153,7 +187,7 @@ function assemblePatch(changes) {
 export const bareGitChangeProposalAdapter = {
   kind: HostKind.BARE_GIT,
   proposalKind: ProposalKind.PATCH_BRANCH,
-  async propose(req = {}, _deps = {}) {
+  async propose(req: ProposalRequest = {}, _deps: ProposalDeps = {}): Promise<ProposalResult> {
     return {
       url: '',
       branch: req.branch ?? '',
@@ -172,7 +206,7 @@ export const bareGitChangeProposalAdapter = {
 const ADAPTERS = Object.freeze({
   [HostKind.GITHUB]: githubChangeProposalAdapter,
   [HostKind.BARE_GIT]: bareGitChangeProposalAdapter,
-});
+}) as Readonly<Record<string, ChangeProposalAdapter>>;
 
 /**
  * Resolve a {@link ChangeProposalAdapter} for a host kind. Unknown or absent
@@ -182,6 +216,9 @@ const ADAPTERS = Object.freeze({
  * @param {string|null|undefined} hostKind - One of {@link HostKind}, or null.
  * @returns {ChangeProposalAdapter}
  */
-export function resolveChangeProposalAdapter(hostKind) {
-  return ADAPTERS[hostKind] ?? bareGitChangeProposalAdapter;
+export function resolveChangeProposalAdapter(hostKind: string | null | undefined): ChangeProposalAdapter {
+  if (hostKind && hostKind in ADAPTERS) {
+    return ADAPTERS[hostKind];
+  }
+  return bareGitChangeProposalAdapter;
 }

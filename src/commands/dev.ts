@@ -22,7 +22,15 @@ import { parseDevArgs } from '../lib/args.ts';
 
 const DEBOUNCE_MS = 200;
 
-export function manifestOutPath(appRoot) {
+type WriteHostManifestResult =
+  | { outPath: string; via: 'template-script' }
+  | {
+      outPath: string;
+      via: 'cli-fallback';
+      manifest: Awaited<ReturnType<typeof generateManifest>>;
+    };
+
+export function manifestOutPath(appRoot: string): string {
   return resolve(appRoot, 'src', 'generated', 'repo-manifest.json');
 }
 
@@ -35,7 +43,7 @@ export function manifestOutPath(appRoot) {
  * Falls back to the in-CLI generator if the template script is missing or
  * exits non-zero — better a partial manifest than a blank UI.
  */
-export async function writeHostManifest(cwd, appRoot) {
+export async function writeHostManifest(cwd: string, appRoot: string): Promise<WriteHostManifestResult> {
   const script = resolve(appRoot, 'scripts', 'generate-manifest.js');
   if (existsSync(script)) {
     const r = spawnSync('node', [script], {
@@ -53,17 +61,17 @@ export async function writeHostManifest(cwd, appRoot) {
   return { outPath, via: 'cli-fallback', manifest };
 }
 
-export function watchPaths(cwd, contentDir = 'content') {
+export function watchPaths(cwd: string, contentDir = 'content'): string[] {
   return [
     resolve(cwd, contentDir),
     resolve(cwd, 'README.md'),
     resolve(cwd, 'config.yaml'),
     resolve(cwd, contentDir, 'config.yaml'),
     resolve(cwd, '.kbx.json'),
-  ].filter((p) => existsSync(p));
+  ].filter((p): p is string => existsSync(p));
 }
 
-export default async function dev(args) {
+export default async function dev(args: string[] = []): Promise<void> {
   const cwd = process.cwd();
   const appRoot = getAppRoot(cwd);
   const opts = parseDevArgs(args);
@@ -88,7 +96,8 @@ export default async function dev(args) {
       console.warn('⚠ Used CLI fallback generator — UI may be missing template-derived fields');
     }
   } catch (err) {
-    console.warn(`⚠ Manifest generation failed: ${err.message} — continuing anyway`);
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`⚠ Manifest generation failed: ${message} — continuing anyway`);
   }
 
   // 2. Start Vite. The template plugin will re-run the same patched script.
@@ -107,10 +116,10 @@ export default async function dev(args) {
   });
 
   // 3. Watcher.
-  const watchers = [];
+  const watchers: Array<ReturnType<typeof fsWatch>> = [];
   if (!noWatch) {
-    let debounceTimer = null;
-    const onChange = (label) => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const onChange = (label: string) => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(async () => {
         try {
@@ -118,7 +127,8 @@ export default async function dev(args) {
           const ts = new Date().toLocaleTimeString();
           console.log(`[${ts}] 🔄 manifest regenerated (${label})`);
         } catch (err) {
-          console.warn(`⚠ Manifest regen failed: ${err.message}`);
+          const message = err instanceof Error ? err.message : String(err);
+          console.warn(`⚠ Manifest regen failed: ${message}`);
         }
       }, DEBOUNCE_MS);
     };
@@ -130,13 +140,14 @@ export default async function dev(args) {
         });
         watchers.push(w);
       } catch (err) {
-        console.warn(`⚠ Watch failed for ${p}: ${err.message}`);
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`⚠ Watch failed for ${p}: ${message}`);
       }
     }
     console.log(`👀 Watching ${watchers.length} path(s) for content changes\n`);
   }
 
-  const cleanup = (code) => {
+  const cleanup = (code: number | null): void => {
     for (const w of watchers) {
       try { w.close(); } catch { /* ignore */ }
     }
@@ -147,4 +158,3 @@ export default async function dev(args) {
   process.on('SIGINT', () => cleanup(0));
   process.on('SIGTERM', () => cleanup(0));
 }
-

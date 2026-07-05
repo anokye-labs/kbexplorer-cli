@@ -58,17 +58,77 @@ import {
 } from 'node:fs';
 import { execSync } from 'node:child_process';
 
+import type {
+  GHCommit,
+  GHIssue,
+  GHRelease,
+  GHTreeItem,
+} from '@anokye-labs/kbexplorer-engine';
+import type { RepoPullRequest } from '@anokye-labs/kbexplorer-engine/sources';
 import { resolveGhApiBase, resolveGhToken, createFetcher } from './gh-fetch.ts';
 import { resolveRepositoryRef } from './forge-adapter.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-function normalizeLineEndings(text) {
+type ExecLike = typeof execSync;
+type FetchLike = typeof globalThis.fetch;
+
+interface FetchOverrides {
+  base?: string | null;
+  token?: string;
+  _exec?: ExecLike;
+  _fetch?: FetchLike;
+}
+
+interface ManifestData {
+  configRaw: string | null;
+  authoredContent: Record<string, string>;
+  tree: GHTreeItem[];
+  readme: string | null;
+  issues: GHIssue[];
+  pullRequests: RepoPullRequest[];
+  commits: GHCommit[];
+  releases: GHRelease[];
+  generatedAt: string;
+}
+
+type JsonRecord = Record<string, unknown>;
+
+// gh-fetch's TS migration is not complete yet; this local cast preserves the existing runtime contract.
+const createManifestFetcher = createFetcher as unknown as (options: {
+  base?: string | null;
+  token?: string;
+  execOpts?: { cwd?: string };
+  _exec?: ExecLike;
+  _fetch?: FetchLike;
+}) => (path: string) => Promise<unknown>;
+
+function normalizeLineEndings(text: unknown): string {
   return String(text ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
+function isRecord(value: unknown): value is JsonRecord {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function stringValue(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function numberValue(value: unknown, fallback = 0): number {
+  return typeof value === 'number' ? value : fallback;
+}
+
+function arrayValue(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 // Detect host root for submodule scenarios
-function detectHostRoot(kbRoot) {
+function detectHostRoot(kbRoot: string): string {
   const parentRoot = resolve(kbRoot, '..', '..');
   try {
     const pkg = JSON.parse(readFileSync(resolve(kbRoot, 'package.json'), 'utf-8'));
@@ -99,8 +159,8 @@ const SKIP_FILES = new Set([
  * @param {string} [prefix=''] - Path prefix for entries
  * @returns {Array<{path: string, type: 'blob'|'tree', size?: number}>}
  */
-export function walkFileSystem(root, prefix = '') {
-  const results = [];
+export function walkFileSystem(root: string, prefix = ''): Array<{ path: string; type: 'blob' | 'tree'; size?: number }> {
+  const results: Array<{ path: string; type: 'blob' | 'tree'; size?: number }> = [];
 
   let entries;
   try {
@@ -139,11 +199,11 @@ export function walkFileSystem(root, prefix = '') {
  * @param {string} contentPath - Relative path prefix for keys
  * @returns {Record<string, string>}
  */
-export function readAuthoredContent(contentDir, contentPath) {
-  const content = {};
+export function readAuthoredContent(contentDir: string, contentPath: string): Record<string, string> {
+  const content: Record<string, string> = {};
   if (!existsSync(contentDir)) return content;
 
-  function walk(dir, prefix) {
+  function walk(dir: string, prefix: string): void {
     const entries = readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = resolve(dir, entry.name);
@@ -172,7 +232,7 @@ export function readAuthoredContent(contentDir, contentPath) {
  * @param {string} [contentPath='content'] - Content directory name
  * @returns {string|null}
  */
-export function readConfig(root, contentPath = 'content') {
+export function readConfig(root: string, contentPath = 'content'): string | null {
   const paths = [
     resolve(root, contentPath, 'config.yaml'),
     resolve(root, contentPath, 'config.yml'),
@@ -195,7 +255,7 @@ export function readConfig(root, contentPath = 'content') {
  * @param {string} root
  * @returns {string|null}
  */
-export function readReadme(root) {
+export function readReadme(root: string): string | null {
   const readmePath = resolve(root, 'README.md');
   if (existsSync(readmePath)) {
     try {
@@ -207,7 +267,7 @@ export function readReadme(root) {
 
 // ── GitHub Data ────────────────────────────────────────────
 
-function isGhAvailable(_exec = execSync) {
+function isGhAvailable(_exec: ExecLike = execSync): boolean {
   try {
     _exec('gh --version', { stdio: 'ignore' });
     return true;
@@ -228,7 +288,7 @@ function isGhAvailable(_exec = execSync) {
  * @param {Function} [_exec] - Injected execSync (for testing)
  * @returns {{ owner: string, repo: string }}
  */
-export function resolveOwnerRepo(cwd, _exec = execSync) {
+export function resolveOwnerRepo(cwd?: string, _exec: ExecLike = execSync): { owner: string; repo: string } {
   try {
     const remote = _exec('git remote get-url origin', {
       cwd,
@@ -260,36 +320,104 @@ export function resolveOwnerRepo(cwd, _exec = execSync) {
  * @param {Function}      [_overrides._fetch] - Injected fetch
  * @returns {Array|Promise<Array>}
  */
-export function fetchLocalIssues(cwd, _overrides = {}) {
+function mapIssueLabel(label: unknown): { name: string; color: string } {
+  if (typeof label === 'string') return { name: label, color: '' };
+  if (isRecord(label)) return { name: stringValue(label.name), color: stringValue(label.color) };
+  return { name: '', color: '' };
+}
+
+function mapAssignee(assignee: unknown): { login: string } {
+  if (typeof assignee === 'string') return { login: assignee };
+  if (isRecord(assignee)) return { login: stringValue(assignee.login) };
+  return { login: '' };
+}
+
+function mapHttpIssue(issue: unknown): GHIssue {
+  const value = isRecord(issue) ? issue : {};
+  return {
+    number: numberValue(value.number),
+    title: stringValue(value.title),
+    body: stringValue(value.body),
+    state: stringValue(value.state, 'open').toLowerCase(),
+    labels: arrayValue(value.labels).map(mapIssueLabel),
+    assignees: arrayValue(value.assignees).map(mapAssignee),
+    html_url: stringValue(value.html_url),
+    created_at: stringValue(value.created_at),
+    updated_at: stringValue(value.updated_at),
+  };
+}
+
+function mapCliIssue(issue: unknown): GHIssue {
+  const value = isRecord(issue) ? issue : {};
+  return {
+    number: numberValue(value.number),
+    title: stringValue(value.title),
+    body: stringValue(value.body),
+    state: stringValue(value.state, 'open').toLowerCase(),
+    labels: arrayValue(value.labels).map(mapIssueLabel),
+    assignees: arrayValue(value.assignees).map(mapAssignee),
+    html_url: stringValue(value.url),
+    created_at: stringValue(value.createdAt),
+    updated_at: stringValue(value.updatedAt),
+  };
+}
+
+function mapHttpPullRequest(pr: unknown): RepoPullRequest {
+  const value = isRecord(pr) ? pr : {};
+  return {
+    number: numberValue(value.number),
+    title: stringValue(value.title),
+    body: stringValue(value.body),
+    state: stringValue(value.state, 'open').toLowerCase(),
+    labels: arrayValue(value.labels).map(mapIssueLabel),
+    html_url: stringValue(value.html_url),
+    created_at: stringValue(value.created_at),
+    updated_at: stringValue(value.updated_at),
+  };
+}
+
+function mapCliPullRequest(pr: unknown): RepoPullRequest {
+  const value = isRecord(pr) ? pr : {};
+  return {
+    number: numberValue(value.number),
+    title: stringValue(value.title),
+    body: stringValue(value.body),
+    state: stringValue(value.state, 'open').toLowerCase(),
+    labels: arrayValue(value.labels).map(mapIssueLabel),
+    html_url: stringValue(value.url),
+    created_at: stringValue(value.createdAt),
+    updated_at: stringValue(value.updatedAt),
+  };
+}
+
+function mapRelease(release: unknown): GHRelease {
+  const value = isRecord(release) ? release : {};
+  return {
+    tag_name: stringValue(value.tag_name),
+    name: stringValue(value.name) || stringValue(value.tag_name),
+    body: stringValue(value.body),
+    html_url: stringValue(value.html_url),
+    published_at: stringValue(value.published_at),
+    prerelease: value.prerelease === true,
+  };
+}
+
+function isDraftRelease(release: unknown): boolean {
+  return isRecord(release) && release.draft === true;
+}
+
+export function fetchLocalIssues(cwd?: string, _overrides: FetchOverrides = {}): GHIssue[] | Promise<GHIssue[]> {
   const { base, token, _exec: injectedExec, _fetch } = _overrides;
   const exec = injectedExec ?? execSync;
 
   // ── Direct-HTTP path ──────────────────────────────────────────────────────
   if (base != null) {
     const { owner, repo } = resolveOwnerRepo(cwd, exec);
-    const fetcher = createFetcher({ base, token, execOpts: { cwd }, _exec: injectedExec, _fetch });
+    const fetcher = createManifestFetcher({ base, token, execOpts: { cwd }, _exec: injectedExec, _fetch });
     return fetcher(`/repos/${owner}/${repo}/issues?state=all&per_page=200`)
-      .then((data) => {
-        const issues = Array.isArray(data) ? data : [];
-        return issues.map((i) => ({
-          number: i.number,
-          title: i.title ?? '',
-          body: i.body ?? '',
-          state: (i.state ?? 'open').toLowerCase(),
-          labels: (i.labels ?? []).map((l) => ({
-            name: typeof l === 'string' ? l : (l.name ?? ''),
-            color: typeof l === 'string' ? '' : (l.color ?? ''),
-          })),
-          assignees: (i.assignees ?? []).map((a) => ({
-            login: typeof a === 'string' ? a : (a.login ?? ''),
-          })),
-          html_url: i.html_url ?? '',
-          created_at: i.created_at ?? '',
-          updated_at: i.updated_at ?? '',
-        }));
-      })
+      .then((data) => arrayValue(data).map(mapHttpIssue))
       .catch((err) => {
-        console.warn('[generate-manifest] Failed to fetch issues (HTTP):', err.message);
+        console.warn('[generate-manifest] Failed to fetch issues (HTTP):', getErrorMessage(err));
         return [];
       });
   }
@@ -304,26 +432,10 @@ export function fetchLocalIssues(cwd, _overrides = {}) {
       'gh issue list --json number,title,body,state,labels,assignees,url,createdAt,updatedAt --state all --limit 200',
       { cwd, encoding: 'utf-8', timeout: 30000 },
     );
-    const issues = JSON.parse(json);
-    // Map to GHIssue-compatible shape
-    return issues.map((i) => ({
-      number: i.number,
-      title: i.title,
-      body: i.body ?? '',
-      state: i.state?.toLowerCase() ?? 'open',
-      labels: (i.labels ?? []).map((l) => ({
-        name: typeof l === 'string' ? l : l.name,
-        color: typeof l === 'string' ? '' : (l.color ?? ''),
-      })),
-      assignees: (i.assignees ?? []).map((a) => ({
-        login: typeof a === 'string' ? a : a.login,
-      })),
-      html_url: i.url ?? '',
-      created_at: i.createdAt ?? '',
-      updated_at: i.updatedAt ?? '',
-    }));
+    const issues = JSON.parse(json) as unknown;
+    return arrayValue(issues).map(mapCliIssue);
   } catch (err) {
-    console.warn('[generate-manifest] Failed to fetch issues:', err.message);
+    console.warn('[generate-manifest] Failed to fetch issues:', getErrorMessage(err));
     return [];
   }
 }
@@ -342,33 +454,21 @@ export function fetchLocalIssues(cwd, _overrides = {}) {
  * @param {Function}      [_overrides._fetch] - Injected fetch
  * @returns {Array|Promise<Array>}
  */
-export function fetchLocalPullRequests(cwd, _overrides = {}) {
+export function fetchLocalPullRequests(
+  cwd?: string,
+  _overrides: FetchOverrides = {},
+): RepoPullRequest[] | Promise<RepoPullRequest[]> {
   const { base, token, _exec: injectedExec, _fetch } = _overrides;
   const exec = injectedExec ?? execSync;
 
   // ── Direct-HTTP path ──────────────────────────────────────────────────────
   if (base != null) {
     const { owner, repo } = resolveOwnerRepo(cwd, exec);
-    const fetcher = createFetcher({ base, token, execOpts: { cwd }, _exec: injectedExec, _fetch });
+    const fetcher = createManifestFetcher({ base, token, execOpts: { cwd }, _exec: injectedExec, _fetch });
     return fetcher(`/repos/${owner}/${repo}/pulls?state=all&per_page=200`)
-      .then((data) => {
-        const prs = Array.isArray(data) ? data : [];
-        return prs.map((pr) => ({
-          number: pr.number,
-          title: pr.title ?? '',
-          body: pr.body ?? '',
-          state: (pr.state ?? 'open').toLowerCase(),
-          labels: (pr.labels ?? []).map((l) => ({
-            name: typeof l === 'string' ? l : (l.name ?? ''),
-            color: typeof l === 'string' ? '' : (l.color ?? ''),
-          })),
-          html_url: pr.html_url ?? '',
-          created_at: pr.created_at ?? '',
-          updated_at: pr.updated_at ?? '',
-        }));
-      })
+      .then((data) => arrayValue(data).map(mapHttpPullRequest))
       .catch((err) => {
-        console.warn('[generate-manifest] Failed to fetch PRs (HTTP):', err.message);
+        console.warn('[generate-manifest] Failed to fetch PRs (HTTP):', getErrorMessage(err));
         return [];
       });
   }
@@ -383,22 +483,10 @@ export function fetchLocalPullRequests(cwd, _overrides = {}) {
       'gh pr list --json number,title,body,state,labels,url,createdAt,updatedAt --state all --limit 200',
       { cwd, encoding: 'utf-8', timeout: 30000 },
     );
-    const prs = JSON.parse(json);
-    return prs.map((pr) => ({
-      number: pr.number,
-      title: pr.title,
-      body: pr.body ?? '',
-      state: pr.state?.toLowerCase() ?? 'open',
-      labels: (pr.labels ?? []).map((l) => ({
-        name: typeof l === 'string' ? l : l.name,
-        color: typeof l === 'string' ? '' : (l.color ?? ''),
-      })),
-      html_url: pr.url ?? '',
-      created_at: pr.createdAt ?? '',
-      updated_at: pr.updatedAt ?? '',
-    }));
+    const prs = JSON.parse(json) as unknown;
+    return arrayValue(prs).map(mapCliPullRequest);
   } catch (err) {
-    console.warn('[generate-manifest] Failed to fetch PRs:', err.message);
+    console.warn('[generate-manifest] Failed to fetch PRs:', getErrorMessage(err));
     return [];
   }
 }
@@ -424,35 +512,33 @@ const RELEASES_LIMIT = 30;
  * @param {Function}     [_overrides._fetch] - Injected fetch (override path only)
  * @returns {Array<{tag_name:string,name:string,body:string,html_url:string,published_at:string,prerelease:boolean}>|Promise}
  */
-export function fetchLocalReleases(cwd, _exec = execSync, _overrides = {}) {
+export function fetchLocalReleases(
+  cwd?: string,
+  _exec: ExecLike = execSync,
+  _overrides: FetchOverrides = {},
+): GHRelease[] | Promise<GHRelease[]> {
   const base = _overrides.base ?? null;
   const token = _overrides.token;
   const injectedExec = _overrides._exec ?? _exec;
   const _fetch = _overrides._fetch;
 
-  function shapeReleases(releases) {
+  function shapeReleases(releases: unknown[]): GHRelease[] {
     return releases
-      .filter((r) => !r.draft)
-      .sort((a, b) => new Date(b.published_at ?? 0) - new Date(a.published_at ?? 0))
+      .filter((release) => !isDraftRelease(release))
+      .map(mapRelease)
+      .sort((a, b) => Date.parse(b.published_at || '0') - Date.parse(a.published_at || '0'))
       .slice(0, RELEASES_LIMIT)
-      .map((r) => ({
-        tag_name: r.tag_name ?? '',
-        name: r.name ?? r.tag_name ?? '',
-        body: r.body ?? '',
-        html_url: r.html_url ?? '',
-        published_at: r.published_at ?? '',
-        prerelease: r.prerelease ?? false,
-      }));
+      .map((r) => ({ ...r }));
   }
 
   // ── Direct-HTTP path ──────────────────────────────────────────────────────
   if (base != null) {
     const { owner, repo } = resolveOwnerRepo(cwd, injectedExec);
-    const fetcher = createFetcher({ base, token, execOpts: { cwd }, _exec: injectedExec, _fetch });
+    const fetcher = createManifestFetcher({ base, token, execOpts: { cwd }, _exec: injectedExec, _fetch });
     return fetcher(`/repos/${owner}/${repo}/releases?per_page=${RELEASES_LIMIT}`)
-      .then((data) => shapeReleases(Array.isArray(data) ? data : []))
+      .then((data) => shapeReleases(arrayValue(data)))
       .catch((err) => {
-        console.warn('[generate-manifest] Failed to fetch releases (HTTP):', err.message);
+        console.warn('[generate-manifest] Failed to fetch releases (HTTP):', getErrorMessage(err));
         return [];
       });
   }
@@ -472,9 +558,9 @@ export function fetchLocalReleases(cwd, _exec = execSync, _overrides = {}) {
       `gh api "repos/{owner}/{repo}/releases?per_page=${RELEASES_LIMIT}"`,
       { cwd, encoding: 'utf-8', timeout: 30000 },
     );
-    return shapeReleases(JSON.parse(json));
+    return shapeReleases(arrayValue(JSON.parse(json) as unknown));
   } catch (err) {
-    console.warn('[generate-manifest] Failed to fetch releases:', err.message);
+    console.warn('[generate-manifest] Failed to fetch releases:', getErrorMessage(err));
     return [];
   }
 }
@@ -483,7 +569,7 @@ export function fetchLocalReleases(cwd, _exec = execSync, _overrides = {}) {
  * Fetch recent commits via git log.
  * @returns {Array}
  */
-export function fetchLocalCommits(cwd) {
+export function fetchLocalCommits(cwd?: string): GHCommit[] {
   try {
     const log = execSync(
       'git log --pretty=format:"%H|||%s|||%an|||%aI" -50',
@@ -502,7 +588,7 @@ export function fetchLocalCommits(cwd) {
       };
     });
   } catch (err) {
-    console.warn('[generate-manifest] Failed to fetch commits:', err.message);
+    console.warn('[generate-manifest] Failed to fetch commits:', getErrorMessage(err));
     return [];
   }
 }
@@ -519,7 +605,7 @@ export function fetchLocalCommits(cwd) {
  * @param {string} root - Project root directory
  * @returns {Promise<Object>} Manifest object
  */
-export async function generateManifest(root) {
+export async function generateManifest(root: string): Promise<ManifestData> {
   const hostRoot = detectHostRoot(root);
   const isSubmodule = hostRoot !== root;
 
@@ -568,5 +654,3 @@ export async function generateManifest(root) {
 
   return manifest;
 }
-
-

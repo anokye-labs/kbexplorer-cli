@@ -17,6 +17,11 @@ import {
   ACTION_CLASSES,
 } from '../contract.ts';
 import { audit } from '../../lib/audit.ts';
+import type { AffordanceContext } from '../context.ts';
+
+interface AuditInput extends Record<string, unknown> {
+  content?: string;
+}
 
 export default defineAffordance({
   name: 'audit',
@@ -31,12 +36,16 @@ export default defineAffordance({
     findings: { type: 'array' },
     summary: { type: 'object' },
   }),
-  execute(context, input) {
-    const { contentDir, contentPath } = context.resolveContent({ content: input.content });
+  execute(context: AffordanceContext, input: Record<string, unknown>) {
+    const args = input as AuditInput;
+    const { contentDir, contentPath } = context.resolveContent({ content: args.content });
     try {
       return audit({ contentDir, cwd: context.cwd, contentPath });
-    } catch (err) {
-      throw new AffordanceError(ERROR_CODES.EXECUTION_FAILED, `audit failed: ${err.message}`);
+    } catch (err: unknown) {
+      throw new AffordanceError(
+        ERROR_CODES.EXECUTION_FAILED,
+        `audit failed: ${err instanceof Error ? err.message : String(err)}`
+      );
     }
   },
 });

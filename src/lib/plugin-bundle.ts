@@ -42,10 +42,40 @@ export const PLUGIN_MANIFEST_PATH = `${PLUGIN_MANIFEST_DIR}/${PLUGIN_MANIFEST_FI
 export const EXTENSION_DESCRIPTOR_FILE = 'copilot-extension.json';
 
 /** Install scopes. */
-export const SCOPES = Object.freeze(['project', 'user', 'session']);
+export const SCOPES = Object.freeze(['project', 'user', 'session'] as const);
+
+type Scope = (typeof SCOPES)[number];
+
+interface BundleComponent {
+  id: string;
+  label: string;
+  kind: 'file' | 'dir';
+  from: string;
+  to: string;
+  required: boolean;
+  pending?: string;
+}
+
+interface BundleComponentStatus {
+  id: string;
+  label: string;
+  kind: 'file' | 'dir';
+  required: boolean;
+  pending: string | null;
+  source: string;
+  exists: boolean;
+}
+
+type JsonRecord = Record<string, unknown>;
+
+interface ScopeRootOptions {
+  cwd?: string;
+  home?: string;
+  sessionDir?: string;
+}
 
 /** Absolute path to the authored bundle template shipped with this package. */
-export function authoredBundleRoot(assetsRoot) {
+export function authoredBundleRoot(assetsRoot?: string): string {
   const root = assetsRoot ?? resolvePackageAssetsDir(import.meta.url);
   return resolve(root, 'plugin', PLUGIN_NAME);
 }
@@ -60,7 +90,7 @@ function defaultAssetsRoot() {
  * `to` is the destination path inside the bundle root. Directory components
  * carry `kind: 'dir'`, single files `kind: 'file'`.
  */
-export const BUNDLE_COMPONENTS = Object.freeze([
+export const BUNDLE_COMPONENTS: readonly BundleComponent[] = Object.freeze([
   {
     id: 'manifest',
     label: 'plugin manifest',
@@ -128,7 +158,7 @@ export const BUNDLE_COMPONENTS = Object.freeze([
  *   user    → <home>/.copilot/plugins/kbx
  *   session → <sessionDir>/plugins/kbx
  */
-export function resolveScopeRoot(scope, { cwd, home, sessionDir } = {}) {
+export function resolveScopeRoot(scope: Scope, { cwd, home, sessionDir }: ScopeRootOptions = {}): string {
   if (!SCOPES.includes(scope)) {
     throw new Error(`Unknown plugin scope "${scope}". Expected one of: ${SCOPES.join(', ')}`);
   }
@@ -157,74 +187,78 @@ export function resolveScopeRoot(scope, { cwd, home, sessionDir } = {}) {
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:[-+].+)?$/;
 
 /** Validate a parsed plugin manifest object. Returns { valid, errors }. */
-export function validatePluginManifest(manifest) {
-  const errors = [];
+export function validatePluginManifest(manifest: unknown): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
     return { valid: false, errors: ['manifest is not a JSON object'] };
   }
+  const manifestRecord = manifest as JsonRecord;
   for (const field of ['name', 'description', 'version']) {
-    if (typeof manifest[field] !== 'string' || manifest[field].trim() === '') {
+    const value = manifestRecord[field];
+    if (typeof value !== 'string' || value.trim() === '') {
       errors.push(`missing or empty required field: ${field}`);
     }
   }
-  if (typeof manifest.name === 'string' && manifest.name !== PLUGIN_NAME) {
-    errors.push(`manifest name "${manifest.name}" must be "${PLUGIN_NAME}"`);
+  if (typeof manifestRecord.name === 'string' && manifestRecord.name !== PLUGIN_NAME) {
+    errors.push(`manifest name "${manifestRecord.name}" must be "${PLUGIN_NAME}"`);
   }
-  if (typeof manifest.version === 'string' && !SEMVER_RE.test(manifest.version)) {
-    errors.push(`version "${manifest.version}" is not valid semver`);
+  if (typeof manifestRecord.version === 'string' && !SEMVER_RE.test(manifestRecord.version)) {
+    errors.push(`version "${manifestRecord.version}" is not valid semver`);
   }
   return { valid: errors.length === 0, errors };
 }
 
 /** Validate a parsed gist-share descriptor object. Returns { valid, errors }. */
-export function validateExtensionDescriptor(descriptor) {
-  const errors = [];
+export function validateExtensionDescriptor(descriptor: unknown): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
   if (!descriptor || typeof descriptor !== 'object' || Array.isArray(descriptor)) {
     return { valid: false, errors: ['descriptor is not a JSON object'] };
   }
+  const descriptorRecord = descriptor as JsonRecord;
   for (const field of ['name', 'version', 'type']) {
-    if (typeof descriptor[field] !== 'string' || descriptor[field].trim() === '') {
+    const value = descriptorRecord[field];
+    if (typeof value !== 'string' || value.trim() === '') {
       errors.push(`missing or empty required field: ${field}`);
     }
   }
-  if (typeof descriptor.name === 'string' && descriptor.name !== PLUGIN_NAME) {
-    errors.push(`descriptor name "${descriptor.name}" must be "${PLUGIN_NAME}"`);
+  if (typeof descriptorRecord.name === 'string' && descriptorRecord.name !== PLUGIN_NAME) {
+    errors.push(`descriptor name "${descriptorRecord.name}" must be "${PLUGIN_NAME}"`);
   }
-  if (typeof descriptor.version === 'string' && !SEMVER_RE.test(descriptor.version)) {
-    errors.push(`version "${descriptor.version}" is not valid semver`);
+  if (typeof descriptorRecord.version === 'string' && !SEMVER_RE.test(descriptorRecord.version)) {
+    errors.push(`version "${descriptorRecord.version}" is not valid semver`);
   }
   return { valid: errors.length === 0, errors };
 }
 
-function readJson(filePath) {
+function readJson(filePath: string): unknown {
   return JSON.parse(readFileSync(filePath, 'utf-8'));
 }
 
 /** Read + parse the authored manifest. Returns { path, manifest, error }. */
-export function loadPluginManifest(assetsRoot) {
+export function loadPluginManifest(assetsRoot?: string) {
   const path = resolve(authoredBundleRoot(assetsRoot), PLUGIN_MANIFEST_PATH);
   if (!existsSync(path)) return { path, manifest: null, error: 'not found' };
   try {
     return { path, manifest: readJson(path), error: null };
   } catch (err) {
-    return { path, manifest: null, error: err.message };
+    return { path, manifest: null, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
 /** Read + parse the authored gist-share descriptor. Returns { path, descriptor, error }. */
-export function loadExtensionDescriptor(assetsRoot) {
+export function loadExtensionDescriptor(assetsRoot?: string) {
   const path = resolve(authoredBundleRoot(assetsRoot), EXTENSION_DESCRIPTOR_FILE);
   if (!existsSync(path)) return { path, descriptor: null, error: 'not found' };
   try {
     return { path, descriptor: readJson(path), error: null };
   } catch (err) {
-    return { path, descriptor: null, error: err.message };
+    return { path, descriptor: null, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
 // ── Bundle resolution ───────────────────────────────────────────────────────────
 
-function isNonEmptyDir(p) {
+function isNonEmptyDir(p: string): boolean {
   try {
     return statSync(p).isDirectory() && readdirSync(p).length > 0;
   } catch {
@@ -237,9 +271,9 @@ function isNonEmptyDir(p) {
  * Returns { ok, components: [{ id, label, kind, required, pending, source, exists }] }.
  * `ok` is true when every required component exists.
  */
-export function resolveBundle({ assetsRoot } = {}) {
+export function resolveBundle({ assetsRoot }: { assetsRoot?: string } = {}) {
   const root = assetsRoot ?? defaultAssetsRoot();
-  const components = BUNDLE_COMPONENTS.map((c) => {
+  const components: BundleComponentStatus[] = BUNDLE_COMPONENTS.map((c) => {
     const source = resolve(root, c.from);
     const exists = c.kind === 'dir' ? isNonEmptyDir(source) : existsSync(source);
     return {
@@ -258,7 +292,7 @@ export function resolveBundle({ assetsRoot } = {}) {
 
 // ── Assembly (install) ──────────────────────────────────────────────────────────
 
-function copyDir(src, dest) {
+function copyDir(src: string, dest: string): void {
   mkdirSync(dest, { recursive: true });
   for (const entry of readdirSync(src, { withFileTypes: true })) {
     const from = join(src, entry.name);
@@ -275,10 +309,10 @@ function copyDir(src, dest) {
  *
  * Throws if a required component is missing from the package.
  */
-export function assembleBundle(destRoot, { assetsRoot } = {}) {
+export function assembleBundle(destRoot: string, { assetsRoot }: { assetsRoot?: string } = {}) {
   const root = assetsRoot ?? defaultAssetsRoot();
-  const installed = [];
-  const skipped = [];
+  const installed: string[] = [];
+  const skipped: Array<{ id: string; reason: string }> = [];
   for (const c of BUNDLE_COMPONENTS) {
     const source = resolve(root, c.from);
     const exists = c.kind === 'dir' ? isNonEmptyDir(source) : existsSync(source);
@@ -306,8 +340,8 @@ export function assembleBundle(destRoot, { assetsRoot } = {}) {
  * A gist share requires a valid manifest AND a valid copilot-extension.json.
  * Returns { ok, errors, descriptor, manifest }.
  */
-export function gistShareManifest({ assetsRoot } = {}) {
-  const errors = [];
+export function gistShareManifest({ assetsRoot }: { assetsRoot?: string } = {}) {
+  const errors: string[] = [];
   const { manifest, error: mErr } = loadPluginManifest(assetsRoot);
   if (mErr) errors.push(`manifest: ${mErr}`);
   else {

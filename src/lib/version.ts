@@ -15,7 +15,7 @@ const TEMPLATE_REPO = 'https://github.com/anokye-labs/kbexplorer-template.git';
  * Get the latest release tag (vX.Y.Z) from a template repo.
  * @param {string} repoUrl
  */
-export function getLatestTag(repoUrl = TEMPLATE_REPO) {
+export function getLatestTag(repoUrl = TEMPLATE_REPO): string | null {
   try {
     const tags = execSync(
       `git ls-remote --tags --sort=-v:refname ${repoUrl}`,
@@ -31,7 +31,7 @@ export function getLatestTag(repoUrl = TEMPLATE_REPO) {
 /**
  * Get the tag the submodule is currently pinned to.
  */
-export function getCurrentTag(cwd = process.cwd()) {
+export function getCurrentTag(cwd = process.cwd()): string | null {
   const submodulePath = resolve(cwd, '.kbx');
   try {
     const tag = execSync('git describe --tags --exact-match HEAD', {
@@ -58,14 +58,14 @@ export function getCurrentTag(cwd = process.cwd()) {
  * Get all available release tags from a template repo, newest first.
  * @param {string} repoUrl
  */
-export function getAvailableTags(repoUrl = TEMPLATE_REPO) {
+export function getAvailableTags(repoUrl = TEMPLATE_REPO): string[] {
   try {
     const output = execSync(
       `git ls-remote --tags --sort=-v:refname ${repoUrl}`,
       { encoding: 'utf-8', timeout: 15000 },
     );
     return [...output.matchAll(/refs\/tags\/(v\d+\.\d+\.\d+)/g)]
-      .map(m => m[1]);
+      .map((m) => m[1]);
   } catch {
     return [];
   }
@@ -74,7 +74,7 @@ export function getAvailableTags(repoUrl = TEMPLATE_REPO) {
 /**
  * Checkout a submodule to a specific tag.
  */
-export function checkoutTag(tag, cwd = process.cwd()) {
+export function checkoutTag(tag: string, cwd = process.cwd()): void {
   checkoutRef(tag, cwd);
 }
 
@@ -83,7 +83,7 @@ export function checkoutTag(tag, cwd = process.cwd()) {
  * @param {string} ref
  * @param {string} cwd
  */
-export function checkoutRef(ref, cwd = process.cwd()) {
+export function checkoutRef(ref: string, cwd = process.cwd()): void {
   const submodulePath = resolve(cwd, '.kbx');
   execSync('git fetch --tags', { cwd: submodulePath, stdio: 'pipe' });
   execSync(`git checkout ${ref}`, { cwd: submodulePath, stdio: 'pipe' });
@@ -94,7 +94,7 @@ export function checkoutRef(ref, cwd = process.cwd()) {
  * @param {string} dir
  * @returns {string|null}
  */
-export function resolveHeadSha(dir) {
+export function resolveHeadSha(dir: string): string | null {
   try {
     return execSync('git rev-parse HEAD', {
       cwd: dir,
@@ -112,7 +112,7 @@ export function resolveHeadSha(dir) {
  * @param {string} branch
  * @returns {string|null}
  */
-export function getBranchSha(repoUrl, branch) {
+export function getBranchSha(repoUrl: string, branch: string): string | null {
   try {
     const out = execSync(
       `git ls-remote ${repoUrl} refs/heads/${branch}`,

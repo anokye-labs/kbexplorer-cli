@@ -19,6 +19,36 @@ import { generateManifest } from '../lib/repo-manifest.ts';
 import { parseFrontmatter as parseFrontmatterRich } from '../lib/markdown.ts';
 import { parseLinksArgs } from '../lib/args.ts';
 
+type LinkConnection = { to: string; [key: string]: unknown };
+type ParsedFrontmatter = {
+  id?: string;
+  title?: string;
+  cluster?: string;
+  connections: LinkConnection[];
+  [key: string]: unknown;
+};
+type AuthoredNode = ParsedFrontmatter & { path: string; raw: string };
+type ManifestIssue = { number: number; body?: string | null };
+type ManifestPullRequest = { number: number };
+type ManifestTreeItem = { path: string; type: string };
+type RepoManifest = Awaited<ReturnType<typeof generateManifest>> & {
+  authoredContent?: Record<string, string>;
+  issues?: ManifestIssue[];
+  pullRequests?: ManifestPullRequest[];
+  commits?: unknown[];
+  tree?: ManifestTreeItem[];
+  readme?: unknown;
+};
+type LinksReport = {
+  stats: { authored: number; issues: number; prs: number; commits: number; treeFiles: number; totalEdges: number };
+  orphans: Array<{ id: string; type: string; title: string }>;
+  brokenRefs: Array<{ from: string; to: string; description?: string }>;
+  weakClusters: Array<{ cluster: string; nodeCount: number; nodes: string[] }>;
+  unlinkified: Array<{ from: string; to: string; suggestion: string }>;
+  redundantFrontmatter: Array<{ node: string; to: string; reason: string }>;
+  coverageGaps: Array<{ file: string }>;
+};
+
 // ── Frontmatter Parsing ────────────────────────────────────
 
 /**
@@ -27,16 +57,16 @@ import { parseLinksArgs } from '../lib/args.ts';
  * plus `connections`, so this stays a thin adapter over the shared
  * `src/lib/markdown.js` parser rather than a fourth hand-rolled parser.
  */
-function parseFrontmatter(raw) {
+function parseFrontmatter(raw: string): ParsedFrontmatter {
   const parsed = parseFrontmatterRich(raw);
-  if (!parsed.ok) return {};
-  return { connections: [], ...parsed.frontmatter };
+  if (!parsed.ok) return { connections: [] };
+  return { connections: [], ...(parsed.frontmatter as Record<string, unknown>) } as ParsedFrontmatter;
 }
 
 // ── Analysis ───────────────────────────────────────────────
 
-function analyzeGraph(manifest, cwd) {
-  const report = {
+function analyzeGraph(manifest: RepoManifest, cwd: string): LinksReport {
+  const report: LinksReport = {
     stats: { authored: 0, issues: 0, prs: 0, commits: 0, treeFiles: 0, totalEdges: 0 },
     orphans: [],
     brokenRefs: [],
@@ -47,7 +77,7 @@ function analyzeGraph(manifest, cwd) {
   };
 
   // Parse all authored content nodes
-  const authoredNodes = new Map();
+  const authoredNodes = new Map<string, AuthoredNode>();
   for (const [path, raw] of Object.entries(manifest.authoredContent || {})) {
     const fm = parseFrontmatter(raw);
     if (fm.id) {
@@ -75,7 +105,7 @@ function analyzeGraph(manifest, cwd) {
   report.stats.commits = commits.length;
 
   // Tree items — directories and key files
-  const treeFiles = (manifest.tree || []).filter(t => t.type === 'blob');
+  const treeFiles = (manifest.tree || []).filter((t) => t.type === 'blob');
   report.stats.treeFiles = treeFiles.length;
 
   // Add tree-derived node IDs (directories and key files)
@@ -93,7 +123,7 @@ function analyzeGraph(manifest, cwd) {
   if (manifest.readme) allNodeIds.add('readme');
 
   // Build adjacency and edge tracking
-  const adj = new Map();
+  const adj = new Map<string, Set<string>>();
   for (const id of allNodeIds) adj.set(id, new Set());
 
   let totalEdges = 0;
@@ -223,9 +253,9 @@ function analyzeGraph(manifest, cwd) {
       if (connectedTo.has(otherId) || inlineTo.has(otherId)) continue;
       if (alreadySuggested.has(otherId)) continue;
       const otherTitle = (otherNode.title || '').toLowerCase();
-      const words = otherTitle.split(/\s+/).filter(w => w.length > 3);
+      const words = otherTitle.split(/\s+/).filter((w: string) => w.length > 3);
       if (words.length >= 2) {
-        const matchCount = words.filter(w => bodyLower.includes(w)).length;
+        const matchCount = words.filter((w: string) => bodyLower.includes(w)).length;
         if (matchCount >= Math.ceil(words.length * 0.7)) {
           report.unlinkified.push({
             from: id,
@@ -276,7 +306,7 @@ function analyzeGraph(manifest, cwd) {
     const ext = '.' + item.path.split('.').pop();
     if (!keyExtensions.has(ext)) continue;
     const filename = item.path.split('/').pop();
-    if (skipFiles.has(filename)) continue;
+    if (!filename || skipFiles.has(filename)) continue;
     if (item.path.includes('__tests__')) continue;
     if (item.path.includes('node_modules')) continue;
 
@@ -294,7 +324,7 @@ function analyzeGraph(manifest, cwd) {
 
 // ── Output ─────────────────────────────────────────────────
 
-function printReport(report) {
+function printReport(report: LinksReport): void {
   const { stats } = report;
 
   console.log('');
@@ -388,12 +418,12 @@ function printReport(report) {
 
 // ── Command ────────────────────────────────────────────────
 
-export default async function links(args) {
+export default async function links(args: string[] = []): Promise<void> {
   const opts = parseLinksArgs(args);
   const cwd = process.cwd();
 
   // Generate or find manifest
-  let manifest;
+  let manifest: RepoManifest;
   const appRoot = getAppRoot(cwd);
   const manifestPath = appRoot
     ? resolve(appRoot, 'src', 'generated', 'repo-manifest.json')
@@ -403,7 +433,7 @@ export default async function links(args) {
     manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
   } else {
     console.log('📋 Generating manifest for analysis...');
-    manifest = generateManifest(cwd);
+    manifest = generateManifest(cwd) as unknown as RepoManifest;
   }
 
   const report = analyzeGraph(manifest, cwd);
@@ -414,5 +444,3 @@ export default async function links(args) {
     console.log(JSON.stringify(report, null, 2));
   }
 }
-
-

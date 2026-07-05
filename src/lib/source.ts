@@ -21,6 +21,21 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 export const SOURCE_FILE = '.kbx.json';
 const LEGACY_SOURCE_FILE = '.kbexplorer.json';
 
+export interface SourceRecord {
+  template?: string;
+  ref?: string | null;
+  refType?: 'release' | 'tag' | 'branch';
+  resolvedCommit?: string | null;
+  mode?: string;
+  runtime?: unknown;
+  presentation?: {
+    visual?: string;
+    theme?: string;
+  };
+  ghApiBase?: string;
+  [key: string]: unknown;
+}
+
 /**
  * Classify a ref string into an update policy.
  * - no ref           => "release" (track the latest semver release tag)
@@ -30,7 +45,7 @@ const LEGACY_SOURCE_FILE = '.kbexplorer.json';
  * @param {string|null|undefined} ref
  * @returns {"release"|"tag"|"branch"}
  */
-export function classifyRef(ref) {
+export function classifyRef(ref: string | null | undefined): 'release' | 'tag' | 'branch' {
   if (!ref) return 'release';
   return /^v?\d+\.\d+\.\d+/.test(ref) ? 'tag' : 'branch';
 }
@@ -41,7 +56,7 @@ export function classifyRef(ref) {
  * @param {string} cwd
  * @returns {object|null}
  */
-export function readSourceRecord(cwd = process.cwd()) {
+export function readSourceRecord(cwd = process.cwd()): SourceRecord | null {
   let file = resolve(cwd, SOURCE_FILE);
   if (!existsSync(file)) {
     const legacyFile = resolve(cwd, LEGACY_SOURCE_FILE);
@@ -53,8 +68,8 @@ export function readSourceRecord(cwd = process.cwd()) {
     }
   }
   try {
-    const data = JSON.parse(readFileSync(file, 'utf-8'));
-    return data && typeof data === 'object' ? data : null;
+    const data: unknown = JSON.parse(readFileSync(file, 'utf-8'));
+    return data && typeof data === 'object' && !Array.isArray(data) ? (data as SourceRecord) : null;
   } catch {
     return null;
   }
@@ -66,9 +81,8 @@ export function readSourceRecord(cwd = process.cwd()) {
  * @param {object} record
  * @returns {string} the path written
  */
-export function writeSourceRecord(cwd, record) {
+export function writeSourceRecord(cwd: string, record: SourceRecord): string {
   const file = resolve(cwd, SOURCE_FILE);
   writeFileSync(file, JSON.stringify(record, null, 2) + '\n', 'utf-8');
   return file;
 }
-

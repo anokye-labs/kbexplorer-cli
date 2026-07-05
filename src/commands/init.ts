@@ -24,16 +24,73 @@ import { runInitPreflight, formatPreflightDiagnostics, explainInstallFailure } f
 import { resolvePackageAssetsDir } from '../lib/assets.ts';
 
 const ASSETS_DIR = resolvePackageAssetsDir(import.meta.url);
+type InitArgs = ReturnType<typeof parseInitArgs>;
+type InstallMode = 'submodule' | 'vendor';
+type Presentation = { visual: string; theme: string };
+type PromptApi = {
+  ask(question: string, defaultValue?: string): Promise<string>;
+  choose(question: string, options: string[], defaultIndex?: number): Promise<number>;
+  confirm(question: string, defaultYes?: boolean): Promise<boolean>;
+  close(): void;
+};
+type RuntimeBlockCandidate =
+  | {
+      agent: 'custom';
+      command: string;
+      argsTemplate: string[];
+      outputFormat?: string;
+    }
+  | { agent: 'claude' }
+  | null;
+type InitConfigFile = {
+  owner?: string;
+  repo?: string;
+  branch?: string;
+  title?: string;
+  contentMode?: string;
+  content?: string;
+  visual?: string;
+  theme?: string;
+  runtimeName?: string;
+  runtimeCommand?: string;
+  runtimeOutput?: string;
+  runtime?: {
+    agent?: string;
+    command?: string;
+    argsTemplate?: string[];
+    outputFormat?: string;
+  };
+};
+type HeadlessInitConfig = {
+  owner: string;
+  repo: string;
+  branch: string;
+  title: string;
+  contentPath?: string;
+  visual: string;
+  theme: string;
+  runtimeBlock: RuntimeBlockCandidate;
+};
+const CONTENT_MODES = ['repo', 'authored', 'both'] as const;
+const VISUAL_MODES = ['emoji', 'sprites', 'heroes', 'none'] as const;
+const THEMES = ['dark', 'light', 'sepia'] as const;
+const RUNTIME_NAMES = ['copilot', 'claude', 'custom', 'skip'] as const;
+
+function isInstallMode(value: string): value is InstallMode {
+  return value === 'submodule' || value === 'vendor';
+}
 
 /** Error thrown when interactive prompts are attempted without usable stdin. */
 class NonInteractiveError extends Error {
+  code: string;
+
   constructor() {
     super('NON_INTERACTIVE_STDIN');
     this.code = 'NON_INTERACTIVE_STDIN';
   }
 }
 
-function createPrompt() {
+function createPrompt(): PromptApi {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   // Track EOF on stdin. A non-interactive shell (stdin closed / not a TTY, e.g.
   // `kbx init < /dev/null` or a CI step with no here-doc) reaches 'end'
@@ -43,7 +100,7 @@ function createPrompt() {
   let closed = false;
   rl.on('close', () => { closed = true; });
   return {
-    async ask(question, defaultValue) {
+    async ask(question: string, defaultValue?: string) {
       if (closed) throw new NonInteractiveError();
       return new Promise((res, rej) => {
         const suffix = defaultValue != null ? ` [${defaultValue}]` : '';
@@ -55,9 +112,9 @@ function createPrompt() {
         });
       });
     },
-    async choose(question, options, defaultIndex = 0) {
+    async choose(question: string, options: string[], defaultIndex = 0) {
       console.log(`\n${question}`);
-      options.forEach((opt, i) => {
+      options.forEach((opt: string, i: number) => {
         const marker = i === defaultIndex ? '→' : ' ';
         console.log(`  ${marker} ${i + 1}. ${opt}`);
       });
@@ -65,7 +122,7 @@ function createPrompt() {
       const idx = parseInt(answer, 10) - 1;
       return idx >= 0 && idx < options.length ? idx : defaultIndex;
     },
-    async confirm(question, defaultYes = true) {
+    async confirm(question: string, defaultYes = true) {
       const hint = defaultYes ? 'Y/n' : 'y/N';
       const answer = await this.ask(`${question} (${hint})`);
       if (!answer) return defaultYes;
@@ -75,7 +132,7 @@ function createPrompt() {
   };
 }
 
-function copyAssets(cwd) {
+function copyAssets(cwd: string): void {
   // Copy agents
   const agentsDir = resolve(cwd, '.github', 'agents');
   mkdirSync(agentsDir, { recursive: true });
@@ -97,7 +154,7 @@ function copyAssets(cwd) {
   console.log(`✓ Installed skills to .github/skills/kbx/`);
 }
 
-function safeRemove(p) {
+function safeRemove(p: string): void {
   try {
     rmSync(p, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   } catch { /* best effort */ }
@@ -114,7 +171,7 @@ function safeRemove(p) {
  * @param {{ visual: string, theme: string }} presentation
  * @returns {boolean} true when the file existed and was rewritten
  */
-function applyPresentationToConfig(cwd, presentation) {
+function applyPresentationToConfig(cwd: string, presentation: Presentation): boolean {
   const configPath = resolve(cwd, 'content', 'config.yaml');
   if (!existsSync(configPath)) return false;
   let text;
@@ -123,7 +180,7 @@ function applyPresentationToConfig(cwd, presentation) {
   } catch {
     return false;
   }
-  const setBlockScalar = (src, block, key, value) => {
+  const setBlockScalar = (src: string, block: string, key: string, value: string) => {
     // Match `block:` header then the first `  key: <val>` line within it.
     const re = new RegExp(`(^${block}:[^\\S\\r\\n]*\\r?\\n(?:[^\\S\\r\\n].*\\r?\\n)*?[^\\S\\r\\n]+${key}:[^\\S\\r\\n]*)([^\\r\\n]*)`, 'm');
     if (re.test(src)) {
@@ -147,7 +204,11 @@ function applyPresentationToConfig(cwd, presentation) {
 /**
  * Install the template as a git submodule (default). Returns source-record fields.
  */
-function installSubmodule(cwd, templateUrl, ref) {
+function installSubmodule(cwd: string, templateUrl: string, ref: string | null): {
+  ref: string | null;
+  refType: ReturnType<typeof classifyRef>;
+  resolvedCommit: string | null;
+} {
   const refType = classifyRef(ref);
   let resolvedRef = ref;
   let latestTag = null;
@@ -167,7 +228,8 @@ function installSubmodule(cwd, templateUrl, ref) {
     }
     execSync('git add .kbx .gitmodules', { cwd, stdio: 'pipe' });
   } catch (err) {
-    console.warn(`⚠ Could not pin submodule to ${resolvedRef || ref}: ${err.message}`);
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`⚠ Could not pin submodule to ${resolvedRef || ref}: ${message}`);
   }
   const resolvedCommit = resolveHeadSha(resolve(cwd, '.kbx'));
   console.log(
@@ -183,7 +245,11 @@ function installSubmodule(cwd, templateUrl, ref) {
  * sibling temp dir, strips .git, validates, then renames into place so a failed
  * clone never leaves a half-installed `.kbx`.
  */
-function installVendor(cwd, templateUrl, ref) {
+function installVendor(cwd: string, templateUrl: string, ref: string | null): {
+  ref: string | null;
+  refType: ReturnType<typeof classifyRef>;
+  resolvedCommit: string | null;
+} {
   const refType = classifyRef(ref);
   let resolvedRef = ref;
   if (refType === 'release') {
@@ -196,7 +262,8 @@ function installVendor(cwd, templateUrl, ref) {
     execSync(`git clone --depth 1 ${branchArg}${templateUrl} "${tmp}"`, { cwd, stdio: 'inherit' });
   } catch (err) {
     safeRemove(tmp);
-    throw new Error(`Failed to clone template: ${err.message}`);
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to clone template: ${message}`);
   }
   const resolvedCommit = resolveHeadSha(tmp);
   safeRemove(resolve(tmp, '.git'));
@@ -249,19 +316,15 @@ function printInitHelp() {
 }
 
 /** Load a JSON defaults file for non-interactive init. Exits 1 on read/parse error. */
-function loadInitConfigFile(absPath) {
+function loadInitConfigFile(absPath: string): InitConfigFile {
   try {
-    return JSON.parse(readFileSync(absPath, 'utf-8'));
+    return JSON.parse(readFileSync(absPath, 'utf-8')) as InitConfigFile;
   } catch (err) {
-    console.error(`✗ Could not read --config file "${absPath}": ${err.message}`);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`✗ Could not read --config file "${absPath}": ${message}`);
     process.exit(1);
   }
 }
-
-const CONTENT_MODES = ['repo', 'authored', 'both'];
-const VISUAL_MODES = ['emoji', 'sprites', 'heroes', 'none'];
-const THEMES = ['dark', 'light', 'sepia'];
-const RUNTIME_NAMES = ['copilot', 'claude', 'custom', 'skip'];
 
 /**
  * Resolve the full init configuration non-interactively from flags, an optional
@@ -273,46 +336,46 @@ const RUNTIME_NAMES = ['copilot', 'claude', 'custom', 'skip'];
  *
  * @returns {{ owner, repo, branch, title, contentPath: string|undefined, visual: string, theme: string, runtimeBlock: object|null }}
  */
-function resolveHeadlessConfig(opts, cwd) {
+function resolveHeadlessConfig(opts: InitArgs, cwd: string): HeadlessInitConfig {
   const fileCfg = opts.config ? loadInitConfigFile(resolve(cwd, opts.config)) : {};
   const detected = detectGitRemote(cwd);
   const detectedBranch = detectBranch(cwd);
   const errors = [];
-  const pick = (flagVal, cfgKey, fallback) =>
+  const pick = (flagVal: unknown, cfgKey: keyof InitConfigFile, fallback: unknown): unknown =>
     flagVal != null ? flagVal : fileCfg[cfgKey] != null ? fileCfg[cfgKey] : fallback;
 
-  const owner = pick(opts.owner, 'owner', detected?.owner ?? null);
-  const repo = pick(opts.repo, 'repo', detected?.repo ?? null);
+  const owner = pick(opts.owner, 'owner', detected?.owner ?? null) as string | null;
+  const repo = pick(opts.repo, 'repo', detected?.repo ?? null) as string | null;
   if (!owner) errors.push('owner is required (pass --owner, set it in --config, or run inside a git repo with an origin remote)');
   if (!repo) errors.push('repo is required (pass --repo, set it in --config, or run inside a git repo with an origin remote)');
 
-  const branch = pick(opts.kbBranch, 'branch', detectedBranch || 'main');
-  const title = pick(opts.title, 'title', repo ? `${repo} Knowledge Base` : null);
+  const branch = pick(opts.kbBranch, 'branch', detectedBranch || 'main') as string;
+  const title = pick(opts.title, 'title', repo ? `${repo} Knowledge Base` : null) as string | null;
   if (!title) errors.push('title could not be derived (pass --title or --repo)');
 
   const contentMode = String(pick(opts.contentMode, 'contentMode', 'repo')).toLowerCase();
-  if (!CONTENT_MODES.includes(contentMode)) {
+  if (!(CONTENT_MODES as readonly string[]).includes(contentMode)) {
     errors.push(`--content-mode must be one of ${CONTENT_MODES.join('|')} (got "${contentMode}")`);
   }
   const contentPath = contentMode === 'repo' ? undefined : String(pick(opts.content, 'content', 'content'));
 
   const visual = String(pick(opts.visual, 'visual', 'emoji')).toLowerCase();
-  if (!VISUAL_MODES.includes(visual)) {
+  if (!(VISUAL_MODES as readonly string[]).includes(visual)) {
     errors.push(`--visual must be one of ${VISUAL_MODES.join('|')} (got "${visual}")`);
   }
   const theme = String(pick(opts.theme, 'theme', 'dark')).toLowerCase();
-  if (!THEMES.includes(theme)) {
+  if (!(THEMES as readonly string[]).includes(theme)) {
     errors.push(`--theme must be one of ${THEMES.join('|')} (got "${theme}")`);
   }
 
   // Runtime block — mirror the interactive choices. copilot/skip → no block.
-  let runtimeBlock = null;
+  let runtimeBlock: RuntimeBlockCandidate = null;
   const runtimeFromFile = fileCfg.runtime && typeof fileCfg.runtime === 'object' ? fileCfg.runtime : null;
   const runtimeName = String(pick(opts.runtime, 'runtimeName', runtimeFromFile?.agent ?? 'copilot')).toLowerCase();
-  if (!RUNTIME_NAMES.includes(runtimeName)) {
+  if (!(RUNTIME_NAMES as readonly string[]).includes(runtimeName)) {
     errors.push(`--runtime must be one of ${RUNTIME_NAMES.join('|')} (got "${runtimeName}")`);
   } else if (runtimeName === 'custom') {
-    const command = pick(opts.runtimeCommand, 'runtimeCommand', runtimeFromFile?.command ?? null);
+    const command = pick(opts.runtimeCommand, 'runtimeCommand', runtimeFromFile?.command ?? null) as string | null;
     if (!command) {
       errors.push('--runtime custom requires --runtime-command (or runtime.command in --config)');
     }
@@ -322,7 +385,7 @@ function resolveHeadlessConfig(opts, cwd) {
       : Array.isArray(runtimeFromFile?.argsTemplate)
         ? runtimeFromFile.argsTemplate
         : ['-p', '{prompt}'];
-    const outputFormat = pick(opts.runtimeOutput, 'runtimeOutput', runtimeFromFile?.outputFormat ?? 'text');
+    const outputFormat = pick(opts.runtimeOutput, 'runtimeOutput', runtimeFromFile?.outputFormat ?? 'text') as string;
     runtimeBlock = {
       agent: 'custom',
       command: command ?? 'my-agent',
@@ -340,10 +403,10 @@ function resolveHeadlessConfig(opts, cwd) {
     process.exit(1);
   }
 
-  return { owner, repo, branch, title, contentPath, visual, theme, runtimeBlock };
+  return { owner: owner as string, repo: repo as string, branch, title: title as string, contentPath, visual, theme, runtimeBlock };
 }
 
-export default async function init(args) {
+export default async function init(args: string[] = []): Promise<void> {
   const opts = parseInitArgs(args);
   if (opts.help) {
     printInitHelp();
@@ -352,7 +415,7 @@ export default async function init(args) {
   const cwd = process.cwd();
   const templateUrl = opts.template || TEMPLATE_REPO;
   const mode = opts.mode || (opts.vendor ? 'vendor' : 'submodule');
-  if (mode !== 'submodule' && mode !== 'vendor') {
+  if (!isInstallMode(mode)) {
     console.error(`✗ Invalid --mode "${mode}" (expected submodule|vendor).`);
     process.exit(1);
   }
@@ -401,9 +464,10 @@ export default async function init(args) {
       });
       console.log(`✓ Recorded template source in ${SOURCE_FILE}`);
     } catch (err) {
-      console.error(`✗ ${err.message}`);
-      const { message, recovery } = explainInstallFailure(err, { templateUrl });
-      console.error(`  ${message}`);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`✗ ${message}`);
+      const { message: recoveryMessage, recovery } = explainInstallFailure(err, { templateUrl });
+      console.error(`  ${recoveryMessage}`);
       for (const r of recovery) console.error(`  → ${r}`);
       prompt?.close();
       process.exit(1);
@@ -426,14 +490,14 @@ export default async function init(args) {
   copyAssets(cwd);
 
   // Step 3: Configuration — interactive prompts or headless (--yes) resolution.
-  let owner;
-  let repo;
-  let branch;
-  let title;
-  let contentPath;
+  let owner: string;
+  let repo: string;
+  let branch: string;
+  let title: string;
+  let contentPath: string | undefined;
   let visual = 'emoji';
   let theme = 'dark';
-  let runtimeBlock = null;
+  let runtimeBlock: RuntimeBlockCandidate = null;
 
   if (opts.yes) {
     ({ owner, repo, branch, title, contentPath, visual, theme, runtimeBlock } = resolveHeadlessConfig(opts, cwd));
@@ -442,43 +506,45 @@ export default async function init(args) {
     );
   } else {
    try {
+    const interactivePrompt = prompt;
+    if (!interactivePrompt) throw new NonInteractiveError();
     const detected = detectGitRemote(cwd);
     const detectedBranch = detectBranch(cwd);
 
-    owner = await prompt.ask('Owner', detected?.owner ?? '');
-    repo = await prompt.ask('Repo', detected?.repo ?? '');
-    branch = await prompt.ask('Branch', detectedBranch);
-    title = await prompt.ask('Knowledge base title', `${repo} Knowledge Base`);
+    owner = await interactivePrompt.ask('Owner', detected?.owner ?? '');
+    repo = await interactivePrompt.ask('Repo', detected?.repo ?? '');
+    branch = await interactivePrompt.ask('Branch', detectedBranch ?? '');
+    title = await interactivePrompt.ask('Knowledge base title', `${repo} Knowledge Base`);
 
-    const contentModeIdx = await prompt.choose(
+    const contentModeIdx = await interactivePrompt.choose(
       'Content mode:',
       ['Repo-aware (issues, PRs, README, file tree)', 'Authored (markdown files)', 'Both'],
       0,
     );
     if (contentModeIdx === 1 || contentModeIdx === 2) {
-      contentPath = await prompt.ask('Content directory', 'content');
+      contentPath = await interactivePrompt.ask('Content directory', 'content');
     }
 
     const visualModes = ['emoji', 'sprites', 'heroes', 'none'];
-    const visualIdx = await prompt.choose('Visual mode:', visualModes, 0);
+    const visualIdx = await interactivePrompt.choose('Visual mode:', visualModes, 0);
     visual = visualModes[visualIdx];
 
     const themes = ['dark', 'light', 'sepia'];
-    const themeIdx = await prompt.choose('Default theme:', themes, 0);
+    const themeIdx = await interactivePrompt.choose('Default theme:', themes, 0);
     theme = themes[themeIdx];
 
     // Step 3b: Optional runtime block
-    const runtimeAgentIdx = await prompt.choose(
+    const runtimeAgentIdx = await interactivePrompt.choose(
       'Agent runtime for derive/generate fuzzy steps:',
       ['copilot (default)', 'claude', 'custom (provide command + argsTemplate)', 'skip (use default)'],
       0,
     );
     const runtimeAgentName = ['copilot', 'claude', 'custom', null][runtimeAgentIdx];
     if (runtimeAgentName === 'custom') {
-      const command = await prompt.ask('Custom agent command', 'my-agent');
-      const argsTemplateRaw = await prompt.ask('Args template (space-separated, use {prompt})', '-p {prompt}');
+      const command = await interactivePrompt.ask('Custom agent command', 'my-agent');
+      const argsTemplateRaw = await interactivePrompt.ask('Args template (space-separated, use {prompt})', '-p {prompt}');
       const argsTemplate = argsTemplateRaw.trim().split(/\s+/).filter(Boolean);
-      const outputFormat = await prompt.ask('Output format (text|jsonl)', 'text');
+      const outputFormat = await interactivePrompt.ask('Output format (text|jsonl)', 'text');
       runtimeBlock = {
         agent: 'custom',
         command,
@@ -487,7 +553,7 @@ export default async function init(args) {
       };
     } else if (runtimeAgentName != null && runtimeAgentName !== 'copilot') {
       // Only write the block when it differs from the default to keep .kbx.json minimal
-      runtimeBlock = { agent: runtimeAgentName };
+      runtimeBlock = { agent: 'claude' };
     }
    } catch (err) {
       if (err instanceof NonInteractiveError) {
@@ -616,4 +682,3 @@ export default async function init(args) {
   console.log('    .github/skills/kbx/SKILL.md and references/');
   console.log('───────────────────────────────────────────\n');
 }
-

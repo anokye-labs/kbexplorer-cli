@@ -26,7 +26,7 @@ import { parseBuildArgs } from '../lib/args.ts';
  * @param {string} cwd host repo root (process.cwd())
  * @param {string} [basePath] optional --base value
  */
-export function buildViteEnv(cwd, basePath) {
+export function buildViteEnv(cwd: string, basePath?: string | null): NodeJS.ProcessEnv {
   return {
     ...process.env,
     VITE_KB_LOCAL: 'true',
@@ -36,7 +36,7 @@ export function buildViteEnv(cwd, basePath) {
   };
 }
 
-export default async function build(args) {
+export default async function build(args: string[] = []): Promise<void> {
   const cwd = process.cwd();
   const appRoot = getAppRoot(cwd);
 
@@ -58,7 +58,8 @@ export default async function build(args) {
       console.warn('⚠ Used CLI fallback generator — manifest may be missing template-derived fields');
     }
   } catch (err) {
-    console.warn(`⚠ Manifest generation failed: ${err.message} — continuing anyway`);
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`⚠ Manifest generation failed: ${message} — continuing anyway`);
   }
 
   // Build

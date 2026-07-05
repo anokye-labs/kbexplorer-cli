@@ -19,9 +19,19 @@ import {
   assembleBundle,
   gistShareManifest,
 } from '../lib/plugin-bundle.ts';
-import { parsePluginArgs as parseSharedPluginArgs } from '../lib/args.ts';
+import { parsePluginArgs as parseSharedPluginArgs, type PluginArgs } from '../lib/args.ts';
 
-function parsePluginArgs(args = []) {
+type PluginScope = (typeof SCOPES)[number];
+type ParsedPluginArgs = {
+  sub: string | null;
+  scope: string;
+  sessionDir: string | null;
+  json: boolean;
+  help: boolean;
+  _: string[];
+};
+
+function parsePluginArgs(args: string[] = []): ParsedPluginArgs {
   const out = parseSharedPluginArgs(args);
   return {
     sub: out.sub ?? null,
@@ -54,7 +64,16 @@ const USAGE = `
     session   <session-dir>/plugins/${PLUGIN_NAME}
 `;
 
-export default async function plugin(args, { cwd: cwdOverride, env: envOverride } = {}) {
+export default async function plugin(
+  args: string[] = [],
+  {
+    cwd: cwdOverride,
+    env: envOverride,
+  }: {
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+  } = {},
+): Promise<void> {
   const opts = parsePluginArgs(args);
   const cwd = cwdOverride ?? process.cwd();
   const env = envOverride ?? process.env;
@@ -96,20 +115,21 @@ export default async function plugin(args, { cwd: cwdOverride, env: envOverride 
 
   if (opts.sub === 'install') {
     const scope = opts.scope;
-    if (!SCOPES.includes(scope)) {
+    if (!SCOPES.includes(scope as PluginScope)) {
       console.error(`Unknown scope "${scope}". Expected one of: ${SCOPES.join(', ')}`);
       process.exitCode = 1;
       return;
     }
     let destRoot;
     try {
-      destRoot = resolveScopeRoot(scope, {
+      destRoot = resolveScopeRoot(scope as PluginScope, {
         cwd,
         home: env.HOME || env.USERPROFILE,
         sessionDir: opts.sessionDir || env.COPILOT_SESSION_STATE_DIR,
       });
     } catch (err) {
-      console.error(`✗ ${err.message}`);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`✗ ${message}`);
       process.exitCode = 1;
       return;
     }
@@ -118,7 +138,8 @@ export default async function plugin(args, { cwd: cwdOverride, env: envOverride 
     try {
       result = assembleBundle(destRoot);
     } catch (err) {
-      console.error(`✗ Install failed: ${err.message}`);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`✗ Install failed: ${message}`);
       process.exitCode = 1;
       return;
     }

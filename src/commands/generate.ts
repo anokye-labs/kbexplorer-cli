@@ -56,6 +56,19 @@ export function defaultArchitectPrompt() {
   ].join(' ');
 }
 
+type ArchitectRuntimeOptions = {
+  prompt: string;
+  cwd: string;
+  allowTools: string[];
+  allowAllTools: boolean;
+  model?: string;
+  timeoutMs?: number;
+  silent: boolean;
+  noColor: boolean;
+};
+
+type RuntimeTaskResult = Awaited<ReturnType<typeof runRuntimeTask>>;
+
 function printHelp() {
   console.log(`
   kbx generate — run the content generation pipeline
@@ -87,23 +100,26 @@ function printHelp() {
  * Build the runtime options for the fuzzy architect step from parsed CLI args.
  * Scoped --allow-tool flags take precedence over implicit --allow-all-tools.
  */
-export function buildArchitectRuntimeOptions(opts, cwd) {
+export function buildArchitectRuntimeOptions(
+  opts: ReturnType<typeof parseGenerateArgs>,
+  cwd: string,
+): ArchitectRuntimeOptions {
   const useScoped = opts.allowTools && opts.allowTools.length > 0;
   return {
-    prompt: opts.prompt || defaultArchitectPrompt(),
+    prompt: opts.prompt ?? defaultArchitectPrompt(),
     cwd,
     allowTools: useScoped ? opts.allowTools : [],
     // Default the trusted local-analysis flow to allow-all-tools (non-interactive
     // mode needs auto-approval). An explicit scoped allowlist opts out.
     allowAllTools: useScoped ? false : opts.allowAllTools !== false,
-    model: opts.model || undefined,
-    timeoutMs: opts.timeout || undefined,
+    model: opts.model ?? undefined,
+    timeoutMs: opts.timeout ?? undefined,
     silent: true,
     noColor: true,
   };
 }
 
-export default async function generate(args = []) {
+export default async function generate(args: string[] = []): Promise<void> {
   const opts = parseGenerateArgs(args);
   if (opts.help) {
     printHelp();
@@ -116,8 +132,8 @@ export default async function generate(args = []) {
   const haveCatalogue = existsSync(cataloguePath);
 
   // ── Resolve runtime adapter (precedence: --runtime flag > .kbx.json > env > default) ──
-  let runtimeConfig;
-  let runtimeAdapter;
+  let runtimeConfig: ReturnType<typeof loadRuntimeConfig>;
+  let runtimeAdapter: ReturnType<typeof resolveRuntime>;
   try {
     runtimeConfig = loadRuntimeConfig(cwd);
     runtimeAdapter = resolveRuntime({ flag: opts.runtime, config: runtimeConfig });
@@ -129,7 +145,10 @@ export default async function generate(args = []) {
     throw err;
   }
   // CLI --timeout wins; config timeoutMs fills the gap.
-  const runtimeOptions = applyRuntimeConfigDefaults(buildArchitectRuntimeOptions(opts, cwd), runtimeConfig);
+  const runtimeOptions = applyRuntimeConfigDefaults(
+    buildArchitectRuntimeOptions(opts, cwd),
+    runtimeConfig,
+  ) as ArchitectRuntimeOptions;
 
   // ── Dry run: show exactly what would be invoked, then stop. ──
   if (opts.dryRun) {
@@ -182,11 +201,12 @@ export default async function generate(args = []) {
       console.log(`🤖 Running ${titleCase(runtimeAdapter.name)} programmatic mode (architect)...`);
       try {
         const { result } = await routeTask(
-          { name: 'architect', kind: 'fuzzy', prompt: runtimeOptions.prompt, ...runtimeOptions },
+          { name: 'architect', kind: 'fuzzy', ...runtimeOptions },
           { logger: console, runFuzzy: (task) => runRuntimeTask({ adapter: runtimeAdapter, ...task }) },
         );
-        if (result.response) {
-          console.log(result.response.trim());
+        const runtimeResult = result as RuntimeTaskResult;
+        if (runtimeResult.response) {
+          console.log(runtimeResult.response.trim());
         }
       } catch (err) {
         if (err instanceof RuntimeAdapterError) {
@@ -258,5 +278,3 @@ export default async function generate(args = []) {
 
   console.log('\n✅ Content generated. Run `npx kbx dev` to preview.');
 }
-
-

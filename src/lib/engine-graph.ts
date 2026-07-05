@@ -1,11 +1,54 @@
 import { resolve, relative, sep, isAbsolute } from 'node:path';
 import { buildEngineGraph } from './engine-graph-builder.ts';
 
-function toPosix(value) {
+interface SourceLocation {
+  path?: string;
+  file?: string;
+  uri?: string;
+  sourcePath?: string;
+}
+
+interface GraphConnection {
+  to: string;
+}
+
+interface EngineNode {
+  id: string;
+  title?: string;
+  cluster?: string;
+  parent?: string;
+  emoji?: string;
+  rawContent?: string;
+  content?: string;
+  source?: SourceLocation;
+  connections?: GraphConnection[];
+  access?: unknown;
+  identity?: unknown;
+}
+
+interface NormalizedNode extends EngineNode {
+  title: string;
+  cluster: string;
+  body: string;
+  relPath: string;
+  connections: GraphConnection[];
+}
+
+export interface LoadedGraph {
+  nodes: Map<string, NormalizedNode>;
+  adjacency: Map<string, Set<string>>;
+  roots: string[];
+  scanDirs: string[];
+  skipped: unknown[];
+  clusters: unknown[];
+  edges: unknown[];
+}
+
+function toPosix(value: unknown): string {
   return String(value).split(sep).join('/');
 }
 
-function deriveRelPath(node, cwd) {
+function deriveRelPath(node: EngineNode, cwd: string): string {
   const source = node?.source;
   const candidate = source?.path ?? source?.file ?? source?.uri ?? source?.sourcePath;
   if (typeof candidate !== 'string' || candidate.length === 0) return node?.id ?? '';
@@ -17,8 +60,8 @@ function deriveRelPath(node, cwd) {
   }
 }
 
-function normalizeNode(node, cwd) {
-  const normalized = {
+function normalizeNode(node: EngineNode, cwd: string): NormalizedNode {
+  const normalized: NormalizedNode = {
     ...node,
     title: node.title ?? node.id,
     cluster: node.cluster ?? 'unknown',
@@ -33,28 +76,36 @@ function normalizeNode(node, cwd) {
   return normalized;
 }
 
-export async function loadGraph({ roots, cwd = process.cwd(), content } = {}) {
+export async function loadGraph({
+  roots,
+  cwd = process.cwd(),
+  content,
+}: {
+  roots?: string[];
+  cwd?: string;
+  content?: string;
+} = {}): Promise<LoadedGraph> {
   const absCwd = resolve(cwd);
   const effectiveRoots = (Array.isArray(roots) && roots.length > 0 ? roots : [absCwd]).map((root) => resolve(root));
   const sourceRoot = effectiveRoots[0] ?? absCwd;
   const graph = await buildEngineGraph(absCwd, { contentOverride: content, sourceRoot });
-  const nodeMap = new Map();
-  for (const node of graph.nodes ?? []) {
+  const nodeMap = new Map<string, NormalizedNode>();
+  for (const node of ((graph.nodes ?? []) as EngineNode[])) {
     nodeMap.set(node.id, normalizeNode(node, absCwd));
   }
 
-  const adjacency = new Map();
+  const adjacency = new Map<string, Set<string>>();
   for (const id of nodeMap.keys()) adjacency.set(id, new Set());
   for (const node of nodeMap.values()) {
     for (const conn of node.connections ?? []) {
       if (nodeMap.has(conn.to)) {
-        adjacency.get(node.id).add(conn.to);
-        adjacency.get(conn.to).add(node.id);
+        adjacency.get(node.id)?.add(conn.to);
+        adjacency.get(conn.to)?.add(node.id);
       }
     }
     if (node.parent && nodeMap.has(node.parent)) {
-      adjacency.get(node.id).add(node.parent);
-      adjacency.get(node.parent).add(node.id);
+      adjacency.get(node.id)?.add(node.parent);
+      adjacency.get(node.parent)?.add(node.id);
     }
   }
 
@@ -69,7 +120,7 @@ export async function loadGraph({ roots, cwd = process.cwd(), content } = {}) {
   };
 }
 
-export function neighbors(graph, id, depth = 1) {
+export function neighbors(graph: LoadedGraph, id: string, depth = 1) {
   if (!graph.nodes.has(id)) return [];
   const seen = new Set([id]);
   const out = [];
@@ -81,6 +132,7 @@ export function neighbors(graph, id, depth = 1) {
         if (seen.has(nb)) continue;
         seen.add(nb);
         const node = graph.nodes.get(nb);
+        if (!node) continue;
         out.push({ id: nb, title: node.title, cluster: node.cluster, distance: d });
         next.push(nb);
       }
@@ -91,7 +143,7 @@ export function neighbors(graph, id, depth = 1) {
   return out;
 }
 
-export function shortestPath(graph, fromId, toId) {
+export function shortestPath(graph: LoadedGraph, fromId: string, toId: string): string[] | null {
   if (!graph.nodes.has(fromId) || !graph.nodes.has(toId)) return null;
   if (fromId === toId) return [fromId];
 
@@ -109,7 +161,9 @@ export function shortestPath(graph, fromId, toId) {
           const path = [toId];
           let step = toId;
           while (step !== fromId) {
-            step = parent.get(step);
+            const nextStep = parent.get(step);
+            if (!nextStep) return null;
+            step = nextStep;
             path.push(step);
           }
           return path.reverse();
@@ -122,8 +176,8 @@ export function shortestPath(graph, fromId, toId) {
   return null;
 }
 
-export function graphStats(graph) {
-  const clusterCounts = new Map();
+export function graphStats(graph: LoadedGraph) {
+  const clusterCounts = new Map<string, number>();
   let edgeCount = 0;
   const counted = new Set();
   const orphans = [];
@@ -152,7 +206,7 @@ export function graphStats(graph) {
   };
 }
 
-export function snippet(body, maxChars = 600) {
+export function snippet(body: string, maxChars = 600): string {
   const cleaned = (body || '').replace(/\r/g, '').trim();
   if (cleaned.length <= maxChars) return cleaned;
   return cleaned.slice(0, maxChars).replace(/\s+\S*$/, '') + ' …';

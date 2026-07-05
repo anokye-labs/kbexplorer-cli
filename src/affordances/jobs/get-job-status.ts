@@ -12,6 +12,11 @@
 
 import { defineAffordance, defineSchema, AffordanceError, ERROR_CODES, ACTION_CLASSES } from '../contract.ts';
 import { resolveJobStore } from './store.ts';
+import type { AffordanceContext } from '../context.ts';
+
+interface GetJobStatusInput extends Record<string, unknown> {
+  id: string;
+}
 
 export default defineAffordance({
   name: 'get_job_status',
@@ -29,12 +34,13 @@ export default defineAffordance({
     needs: { type: 'object' },
     error: { type: 'object' },
   }),
-  execute(context, input) {
+  execute(context: AffordanceContext, input: Record<string, unknown>) {
+    const args = input as GetJobStatusInput;
     const store = resolveJobStore(context);
-    const snapshot = store.get(input.id);
+    const snapshot = store.get(args.id);
     if (!snapshot) {
-      throw new AffordanceError(ERROR_CODES.NOT_FOUND, `No job with id "${input.id}"`, {
-        id: input.id,
+      throw new AffordanceError(ERROR_CODES.NOT_FOUND, `No job with id "${args.id}"`, {
+        id: args.id,
       });
     }
     return snapshot;

@@ -22,6 +22,26 @@
 
 import { describeAffordances } from '../affordances/index.ts';
 
+type DescribeAffordances = typeof describeAffordances;
+
+interface McpServerPreflightOptions {
+  nodeVersion?: string;
+  describe?: DescribeAffordances;
+}
+
+interface McpServerPreflightResult {
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+  toolCount: number;
+}
+
+interface FormattableMcpServerPreflightResult {
+  ok: boolean;
+  errors: string[];
+  warnings?: string[];
+}
+
 /** Minimum Node major the CLI (and thus the server) supports. */
 export const MIN_NODE_MAJOR = 22;
 
@@ -37,9 +57,9 @@ export const MIN_NODE_MAJOR = 22;
 export function runMcpServerPreflight({
   nodeVersion = process.versions.node,
   describe = describeAffordances,
-} = {}) {
-  const errors = [];
-  const warnings = [];
+}: McpServerPreflightOptions = {}): McpServerPreflightResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
 
   const major = Number.parseInt(String(nodeVersion), 10);
   if (Number.isFinite(major) && major < MIN_NODE_MAJOR) {
@@ -53,7 +73,8 @@ export function runMcpServerPreflight({
     const catalogue = describe();
     toolCount = Array.isArray(catalogue) ? catalogue.length : 0;
   } catch (err) {
-    errors.push(`affordance registry failed to load: ${err?.message ?? String(err)}`);
+    const message = err instanceof Error ? err.message : String(err);
+    errors.push(`affordance registry failed to load: ${message}`);
   }
   if (toolCount === 0 && errors.length === 0) {
     errors.push('no affordances are registered — nothing to expose over MCP.');
@@ -68,8 +89,8 @@ export function runMcpServerPreflight({
  * @param {{ ok: boolean, errors: string[], warnings?: string[] }} result
  * @returns {string[]}
  */
-export function formatMcpServerPreflight(result) {
-  const lines = [];
+export function formatMcpServerPreflight(result: FormattableMcpServerPreflightResult) {
+  const lines: string[] = [];
   if (!result || result.ok) {
     for (const w of result?.warnings ?? []) lines.push(`  Warning: ${w}`);
     return lines;

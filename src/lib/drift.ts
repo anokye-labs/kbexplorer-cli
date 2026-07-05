@@ -35,17 +35,25 @@
 import { affectedFromGraphs, itemKey } from './affected-graph.ts';
 
 /** Stable string comparator. */
-function cmp(a, b) {
+function cmp(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /** Sorted, de-duplicated copy of an iterable of strings. */
-function sortedUnique(values) {
+function sortedUnique(values: Iterable<string>): string[] {
   return [...new Set(values)].sort(cmp);
 }
 
 /** Sentinel used when a node/edge carries no composite source provenance. */
 export const UNKNOWN_SOURCE = '(unknown)';
+
+type GraphItem = { sourceId?: unknown; provider?: unknown };
+type GraphLike = Parameters<typeof affectedFromGraphs>[0];
+type GraphItemLike = NonNullable<NonNullable<GraphLike>['nodes']>[number] & GraphItem;
+type DriftGraph = GraphLike;
+type AffectedGraphResult = ReturnType<typeof affectedFromGraphs>;
+type SourceStatus = { source: string; status: 'in-sync' | 'stale' | 'drifted'; drifted: string[]; stale: string[]; affected: string[] };
+type ConnectDrift = { ok: boolean; drift: Array<{ file: string; reason: string }> };
 
 /**
  * The composite source a node/edge belongs to. Composite ingestion (#134)
@@ -56,7 +64,7 @@ export const UNKNOWN_SOURCE = '(unknown)';
  * @param {object} item
  * @returns {string}
  */
-export function sourceOf(item) {
+export function sourceOf(item: GraphItem | null | undefined): string {
   if (!item || typeof item !== 'object') return UNKNOWN_SOURCE;
   const id = item.sourceId ?? item.provider;
   return typeof id === 'string' && id ? id : UNKNOWN_SOURCE;
@@ -68,9 +76,9 @@ export function sourceOf(item) {
  * @param {{ nodes?: object[], edges?: object[] }} graph
  * @returns {Map<string,string>}
  */
-export function buildSourceIndex(graph = {}) {
-  const bySource = new Map();
-  for (const item of [...(graph.nodes ?? []), ...(graph.edges ?? [])]) {
+export function buildSourceIndex(graph: DriftGraph = {}): Map<string, string> {
+  const bySource = new Map<string, string>();
+  for (const item of [...(graph.nodes ?? []), ...(graph.edges ?? [])] as GraphItemLike[]) {
     const key = itemKey(item);
     if (typeof key === 'string' && key) bySource.set(key, sourceOf(item));
   }
@@ -88,17 +96,23 @@ export function buildSourceIndex(graph = {}) {
  *                    drifted: string[], stale: string[], affected: string[] }>}
  *          One entry per source that owns at least one node/edge, sorted by source.
  */
-export function rollupSources({ current, affected }) {
+export function rollupSources({
+  current,
+  affected,
+}: {
+  current: DriftGraph;
+  affected: AffectedGraphResult;
+}): SourceStatus[] {
   const bySource = buildSourceIndex(current);
   const seeds = new Set(affected.seeds ?? []);
   const affectedSet = new Set(affected.affected ?? []);
 
   /** @type {Map<string,{drifted:Set<string>,stale:Set<string>,affected:Set<string>}>} */
-  const groups = new Map();
+  const groups = new Map<string, { drifted: Set<string>; stale: Set<string>; affected: Set<string> }>();
   for (const [key, source] of bySource) {
     let g = groups.get(source);
     if (!g) {
-      g = { drifted: new Set(), stale: new Set(), affected: new Set() };
+      g = { drifted: new Set<string>(), stale: new Set<string>(), affected: new Set<string>() };
       groups.set(source, g);
     }
     if (affectedSet.has(key)) {
@@ -110,6 +124,7 @@ export function rollupSources({ current, affected }) {
 
   return [...groups.keys()].sort(cmp).map((source) => {
     const g = groups.get(source);
+    if (!g) return { source, status: 'in-sync', drifted: [], stale: [], affected: [] };
     const status = g.drifted.size ? 'drifted' : g.stale.size ? 'stale' : 'in-sync';
     return {
       source,
@@ -132,7 +147,7 @@ export function rollupSources({ current, affected }) {
  * @param {{ sources?: Array<{ source: string, status: string }> }} status
  * @returns {string[]} drifted source ids, sorted (rollup is already sorted)
  */
-export function sourceContentDrift(status) {
+export function sourceContentDrift(status: { sources?: Array<{ source: string; status: string }> } | null | undefined): string[] {
   return (status?.sources ?? []).filter((s) => s.status === 'drifted').map((s) => s.source);
 }
 
@@ -158,11 +173,19 @@ export function sourceContentDrift(status) {
  *   drift: boolean,
  * }}
  */
-export function computeSyncStatus({ current, baseline = null, connect = null } = {}) {
+export function computeSyncStatus({
+  current,
+  baseline = null,
+  connect = null,
+}: {
+  current?: DriftGraph;
+  baseline?: DriftGraph | null;
+  connect?: ConnectDrift | null;
+} = {}) {
   const graph = affectedFromGraphs(current ?? {}, baseline);
   const sources = rollupSources({ current: current ?? {}, affected: graph });
 
-  const connectResult = connect
+  const connectResult: ConnectDrift | null = connect
     ? { ok: connect.ok === true, drift: Array.isArray(connect.drift) ? connect.drift : [] }
     : null;
 

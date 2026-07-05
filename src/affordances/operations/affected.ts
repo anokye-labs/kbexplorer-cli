@@ -17,6 +17,13 @@ import {
   ACTION_CLASSES,
 } from '../contract.ts';
 import { affected } from '../../lib/affected.ts';
+import type { AffordanceContext } from '../context.ts';
+
+interface AffectedInput extends Record<string, unknown> {
+  ref?: string;
+  content?: string;
+  files?: string[];
+}
 
 export default defineAffordance({
   name: 'affected',
@@ -45,19 +52,24 @@ export default defineAffordance({
     detail: { type: 'array' },
     uncited: { type: 'array' },
   }),
-  execute(context, input) {
-    const { contentDir } = context.resolveContent({ content: input.content });
+  execute(context: AffordanceContext, input: Record<string, unknown>) {
+    const args = input as AffectedInput;
+    const { contentDir } = context.resolveContent({ content: args.content });
     try {
       return affected({
-        ref: input.ref ?? 'HEAD',
+        ref: args.ref ?? 'HEAD',
         contentDir,
         cwd: context.cwd,
-        files: input.files,
+        files: args.files,
       });
-    } catch (err) {
-      throw new AffordanceError(ERROR_CODES.EXECUTION_FAILED, `affected failed: ${err.message}`, {
-        ref: input.ref,
-      });
+    } catch (err: unknown) {
+      throw new AffordanceError(
+        ERROR_CODES.EXECUTION_FAILED,
+        `affected failed: ${err instanceof Error ? err.message : String(err)}`,
+        {
+          ref: args.ref,
+        }
+      );
     }
   },
 });

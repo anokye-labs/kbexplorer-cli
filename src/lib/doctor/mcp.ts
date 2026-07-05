@@ -1,12 +1,37 @@
 import { detectConfiguredMcpServers } from '../mcp-config-preflight.ts';
 import { runMcpServerPreflight } from '../../mcp/server-preflight.ts';
 
-function pass(id, message) { return { id, status: 'pass', message }; }
-function warn(id, message) { return { id, status: 'warn', message }; }
-function fail(id, message) { return { id, status: 'fail', message }; }
+type DoctorStatus = 'pass' | 'warn' | 'fail';
 
-export function checkMcp({ adapter, config, cwd, env }) {
-  const checks = [];
+interface DoctorCheck {
+  id: string;
+  status: DoctorStatus;
+  message: string;
+}
+
+interface RuntimeMcpConfig {
+  mcp?: {
+    required?: string[];
+    optional?: string[];
+  };
+}
+
+function pass(id: string, message: string): DoctorCheck { return { id, status: 'pass', message }; }
+function warn(id: string, message: string): DoctorCheck { return { id, status: 'warn', message }; }
+function fail(id: string, message: string): DoctorCheck { return { id, status: 'fail', message }; }
+
+export function checkMcp({
+  adapter,
+  config,
+  cwd,
+  env,
+}: {
+  adapter?: { name?: string } | null;
+  config?: RuntimeMcpConfig | null;
+  cwd: string;
+  env?: NodeJS.ProcessEnv;
+}): DoctorCheck[] {
+  const checks: DoctorCheck[] = [];
 
   const provider = runMcpServerPreflight({});
   if (provider.ok) {

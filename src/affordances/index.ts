@@ -39,6 +39,8 @@ import {
   ACTION_CLASSES,
   validateInput,
   describeAffordance,
+  type Affordance,
+  type AffordanceDescription,
 } from './contract.ts';
 import { createAffordanceContext } from './context.ts';
 import {
@@ -49,12 +51,7 @@ import {
   buildDisclosure,
   CONSENT_REQUIRED_CLASSES,
 } from './consent.ts';
-import {
-  buildDerivation,
-  stampProvenance,
-  sampledSourceRef,
-  SAMPLE_GENERATOR,
-} from './provenance.ts';
+import { buildDerivation, stampProvenance, sampledSourceRef, SAMPLE_GENERATOR } from './provenance.ts';
 import search from './operations/search.ts';
 import queryNode from './operations/query-node.ts';
 import graphNeighbors from './operations/graph-neighbors.ts';
@@ -69,6 +66,8 @@ import cancelJob from './jobs/cancel-job.ts';
 import previewChanges from './jobs/preview-changes.ts';
 import applyChanges from './jobs/apply-changes.ts';
 import createPr from './jobs/create-pr.ts';
+import type { AffordanceContext } from './context.ts';
+import type { ConsentDecision } from './consent.ts';
 
 /**
  * Canonical ordering of the do-seam operations. The first seven are the stateless
@@ -91,22 +90,22 @@ const AFFORDANCE_LIST = Object.freeze([
   previewChanges,
   applyChanges,
   createPr,
-]);
+] as readonly Affordance[]);
 
-const AFFORDANCES = new Map(AFFORDANCE_LIST.map((a) => [a.name, a]));
+const AFFORDANCES = new Map<string, Affordance>(AFFORDANCE_LIST.map((affordance) => [affordance.name, affordance]));
 
 /** All affordances in canonical order. */
-export function listAffordances() {
+export function listAffordances(): Affordance[] {
   return [...AFFORDANCE_LIST];
 }
 
 /** Look up one affordance by name (undefined when absent). */
-export function getAffordance(name) {
+export function getAffordance(name: string): Affordance | undefined {
   return AFFORDANCES.get(name);
 }
 
 /** Whether an affordance is registered under `name`. */
-export function hasAffordance(name) {
+export function hasAffordance(name: string): boolean {
   return AFFORDANCES.has(name);
 }
 
@@ -116,8 +115,15 @@ export function hasAffordance(name) {
  *
  * @returns {Array<ReturnType<typeof describeAffordance>>}
  */
-export function describeAffordances() {
-  return AFFORDANCE_LIST.map((a) => describeAffordance(a));
+export function describeAffordances(): AffordanceDescription[] {
+  return AFFORDANCE_LIST.map((affordance) => describeAffordance(affordance));
+}
+
+function decisionCredentials(decision: ConsentDecision): Record<string, unknown> | null {
+  if (!decision.credentials || typeof decision.credentials !== 'object' || Array.isArray(decision.credentials)) {
+    return null;
+  }
+  return decision.credentials;
 }
 
 /**
@@ -135,7 +141,11 @@ export function describeAffordances() {
  * @throws {AffordanceError} UNKNOWN_AFFORDANCE / INVALID_INPUT / CONSENT_REQUIRED /
  *         CONSENT_DENIED / or a typed failure raised by the handler.
  */
-export async function executeAffordance(name, input = {}, context = undefined) {
+export async function executeAffordance(
+  name: string,
+  input: Record<string, unknown> = {},
+  context: AffordanceContext | undefined = undefined,
+): Promise<unknown> {
   const affordance = AFFORDANCES.get(name);
   if (!affordance) {
     throw new AffordanceError(ERROR_CODES.UNKNOWN_AFFORDANCE, `Unknown affordance: ${name}`, {
@@ -145,13 +155,9 @@ export async function executeAffordance(name, input = {}, context = undefined) {
 
   const { ok, value, errors } = validateInput(affordance.input, input);
   if (!ok) {
-    throw new AffordanceError(
-      ERROR_CODES.INVALID_INPUT,
-      `Invalid input for "${name}": ${errors.join('; ')}`,
-      {
-        errors,
-      }
-    );
+    throw new AffordanceError(ERROR_CODES.INVALID_INPUT, `Invalid input for "${name}": ${errors.join('; ')}`, {
+      errors,
+    });
   }
 
   const ctx = context ?? createAffordanceContext();
@@ -160,10 +166,20 @@ export async function executeAffordance(name, input = {}, context = undefined) {
   // effect or model call. A host may thread freshly-supplied credentials back
   // through the decision; merge them into the input the handler sees.
   const { decision } = await enforceConsent(affordance, value, ctx);
-  const effectiveInput =
-    decision && decision.credentials && typeof decision.credentials === 'object'
-      ? { ...value, credentials: { ...(value.credentials ?? {}), ...decision.credentials } }
-      : value;
+  const credentials = decisionCredentials(decision);
+  const effectiveInput = credentials
+    ? {
+        ...value,
+        credentials: {
+          ...((value.credentials &&
+          typeof value.credentials === 'object' &&
+          !Array.isArray(value.credentials)
+            ? value.credentials
+            : {}) as Record<string, unknown>),
+          ...credentials,
+        },
+      }
+    : value;
 
   return affordance.execute(ctx, effectiveInput);
 }

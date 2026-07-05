@@ -16,6 +16,15 @@
 
 import { defineAffordance, defineSchema, AffordanceError, ERROR_CODES, ACTION_CLASSES } from '../contract.ts';
 import { resolveJobStore, JOB_STATUS } from './store.ts';
+import type { AffordanceContext } from '../context.ts';
+
+interface CreatePrInput extends Record<string, unknown> {
+  id: string;
+  title: string;
+  body?: string;
+  branch?: string;
+  base?: string;
+}
 
 export default defineAffordance({
   name: 'create_pr',
@@ -26,12 +35,15 @@ export default defineAffordance({
   consent: {
     // Write-class: opening a PR uses the GitHub credential and pushes a branch.
     credentials: ['GITHUB_TOKEN'],
-    disclose: (input) => ({
+    disclose: (input: Record<string, unknown>) => {
+      const args = input as CreatePrInput;
+      return {
       writes: [
-        ...(input?.branch ? [`branch:${input.branch}`] : []),
-        ...(input?.title ? [`pr:${input.title}`] : []),
+        ...(args.branch ? [`branch:${args.branch}`] : []),
+        ...(args.title ? [`pr:${args.title}`] : []),
       ],
-    }),
+      };
+    },
   },
   input: defineSchema({
     id: { type: 'string', required: true, description: 'Job id whose applied changes to publish.' },
@@ -45,7 +57,8 @@ export default defineAffordance({
     url: { type: 'string' },
     branch: { type: 'string' },
   }),
-  async execute(context, input) {
+  async execute(context: AffordanceContext, input: Record<string, unknown>) {
+    const args = input as CreatePrInput;
     const createPullRequest = context.seams?.createPullRequest;
     if (typeof createPullRequest !== 'function') {
       throw new AffordanceError(
@@ -56,47 +69,47 @@ export default defineAffordance({
     }
 
     const store = resolveJobStore(context);
-    const job = store._raw(input.id);
+    const job = store._raw(args.id);
     if (!job) {
-      throw new AffordanceError(ERROR_CODES.NOT_FOUND, `No job with id "${input.id}"`, {
-        id: input.id,
+      throw new AffordanceError(ERROR_CODES.NOT_FOUND, `No job with id "${args.id}"`, {
+        id: args.id,
       });
     }
     if (job.status !== JOB_STATUS.SUCCEEDED) {
       throw new AffordanceError(
         ERROR_CODES.INVALID_INPUT,
-        `Job "${input.id}" is "${job.status}"; cannot open a PR for it`,
-        { id: input.id, status: job.status }
+        `Job "${args.id}" is "${job.status}"; cannot open a PR for it`,
+        { id: args.id, status: job.status }
       );
     }
     if (!job.applied) {
       throw new AffordanceError(
         ERROR_CODES.INVALID_INPUT,
-        `Job "${input.id}" has unapplied changes; run apply_changes before create_pr`,
-        { id: input.id }
+        `Job "${args.id}" has unapplied changes; run apply_changes before create_pr`,
+        { id: args.id }
       );
     }
 
     try {
       const result = await createPullRequest({
-        title: input.title,
-        body: input.body ?? '',
-        branch: input.branch,
-        base: input.base,
+        title: args.title,
+        body: args.body ?? '',
+        branch: args.branch,
+        base: args.base,
         changes: job.changes ?? [],
         cwd: context.cwd,
       });
       return {
         id: job.id,
         url: result?.url ?? '',
-        branch: result?.branch ?? input.branch ?? '',
+        branch: result?.branch ?? args.branch ?? '',
       };
-    } catch (err) {
+    } catch (err: unknown) {
       if (err instanceof AffordanceError) throw err;
       throw new AffordanceError(
         ERROR_CODES.EXECUTION_FAILED,
-        `create_pr failed for "${input.id}": ${err?.message ?? err}`,
-        { id: input.id }
+        `create_pr failed for "${args.id}": ${err instanceof Error ? err.message : String(err)}`,
+        { id: args.id }
       );
     }
   },

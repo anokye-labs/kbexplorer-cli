@@ -28,6 +28,29 @@
 /** Canonical generator id for the job-layer generation runtime (sample-class). */
 export const SAMPLE_GENERATOR = '@anokye-labs/kbx generate';
 
+export interface SourceRef {
+  href: string;
+  contentHash?: Record<string, unknown>;
+}
+
+export interface Derivation {
+  generator: string;
+  actionClass: 'sample';
+  inputs: SourceRef[];
+  inputDigest?: string;
+}
+
+interface SourceRefInput {
+  href?: unknown;
+  contentHash?: unknown;
+}
+
+export interface BuildDerivationSpec {
+  generator?: string;
+  inputs?: Array<string | SourceRefInput>;
+  request?: unknown;
+}
+
 /**
  * Stable, key-sorted JSON used to compare/derive provenance deterministically.
  * Mirrors the canonicaliser the job store uses for ids: no timestamps, sorted
@@ -36,11 +59,12 @@ export const SAMPLE_GENERATOR = '@anokye-labs/kbx generate';
  * @param {*} value
  * @returns {string}
  */
-function canonicalJson(value) {
+function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   if (value && typeof value === 'object') {
-    const keys = Object.keys(value).sort();
-    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(value[k])}`).join(',')}}`;
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(record[k])}`).join(',')}}`;
   }
   return JSON.stringify(value === undefined ? null : value);
 }
@@ -57,7 +81,7 @@ function canonicalJson(value) {
  * @param {string|object} input
  * @returns {{href: string, contentHash?: object}|null}
  */
-export function sampledSourceRef(input) {
+export function sampledSourceRef(input: string | SourceRefInput | null | undefined): SourceRef | null {
   if (typeof input === 'string') {
     const href = input.trim();
     return href ? { href } : null;
@@ -65,9 +89,9 @@ export function sampledSourceRef(input) {
   if (input && typeof input === 'object') {
     const href = typeof input.href === 'string' ? input.href.trim() : '';
     if (!href) return null;
-    const ref = { href };
-    if (input.contentHash && typeof input.contentHash === 'object') {
-      ref.contentHash = input.contentHash;
+    const ref: SourceRef = { href };
+    if (input.contentHash && typeof input.contentHash === 'object' && !Array.isArray(input.contentHash)) {
+      ref.contentHash = input.contentHash as Record<string, unknown>;
     }
     return ref;
   }
@@ -88,10 +112,14 @@ export function sampledSourceRef(input) {
  *        provenance change without leaking the (possibly large) request bytes.
  * @returns {{generator: string, actionClass: 'sample', inputs: Array<{href: string, contentHash?: object}>, inputDigest?: string}}
  */
-export function buildDerivation({ generator = SAMPLE_GENERATOR, inputs = [], request } = {}) {
+export function buildDerivation({
+  generator = SAMPLE_GENERATOR,
+  inputs = [],
+  request,
+}: BuildDerivationSpec = {}): Derivation {
   const refs = (Array.isArray(inputs) ? inputs : [])
     .map(sampledSourceRef)
-    .filter((r) => r !== null);
+    .filter((ref): ref is SourceRef => ref !== null);
 
   // Sort by href, then by canonical hash, so order-insensitive inputs canonicalise.
   refs.sort((a, b) => {
@@ -102,7 +130,7 @@ export function buildDerivation({ generator = SAMPLE_GENERATOR, inputs = [], req
   });
 
   // De-duplicate identical refs (same href + hash) after sorting.
-  const deduped = [];
+  const deduped: SourceRef[] = [];
   let prev = '';
   for (const ref of refs) {
     const key = canonicalJson(ref);
@@ -110,7 +138,7 @@ export function buildDerivation({ generator = SAMPLE_GENERATOR, inputs = [], req
     prev = key;
   }
 
-  const derivation = {
+  const derivation: Derivation = {
     generator,
     actionClass: 'sample',
     inputs: deduped,
@@ -132,8 +160,13 @@ export function buildDerivation({ generator = SAMPLE_GENERATOR, inputs = [], req
  * @param {object} derivation   A {@link buildDerivation} result.
  * @returns {object} A shallow copy of `change` with `derivation` set.
  */
-export function stampProvenance(change, derivation) {
-  if (!change || typeof change !== 'object') return change;
+export function stampProvenance<T extends Record<string, unknown>>(
+  change: T,
+  derivation: Derivation | null | undefined,
+): T & { derivation?: Derivation } {
+  if (!change || typeof change !== 'object') {
+    return change as T & { derivation?: Derivation };
+  }
   if (!derivation || typeof derivation !== 'object') return { ...change };
   return { ...change, derivation };
 }

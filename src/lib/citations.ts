@@ -17,8 +17,8 @@ const CITATION_LOCAL_RE = /\(([\w./-]+?):(\d+)(?:-\d+)?\)/g;
  *
  * Returns an array of unique file paths (no line numbers).
  */
-export function extractCitedFiles(body) {
-  const files = new Set();
+export function extractCitedFiles(body: string): string[] {
+  const files = new Set<string>();
 
   for (const m of body.matchAll(CITATION_LINKED_RE)) {
     files.add(m[1]);

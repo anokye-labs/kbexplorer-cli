@@ -1,12 +1,13 @@
 import { resolve, extname } from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
 
-export function listMarkdownFiles(dir) {
-  const out = [];
+export function listMarkdownFiles(dir: string): string[] {
+  const out: string[] = [];
   if (!existsSync(dir)) return out;
-  const stack = [dir];
+  const stack: string[] = [dir];
   while (stack.length) {
     const current = stack.pop();
+    if (!current) continue;
     let entries;
     try {
       entries = readdirSync(current, { withFileTypes: true });

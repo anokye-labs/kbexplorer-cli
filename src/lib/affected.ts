@@ -12,7 +12,27 @@ import { readContentFile } from './markdown.ts';
 import { extractCitedFiles } from './citations.ts';
 import { listMarkdownFiles } from './fs-utils.ts';
 
-export function gitChangedFiles(ref, cwd) {
+type CitationIndex = Map<string, Set<string>>;
+
+interface CitationNode {
+  id: string;
+  file: string;
+  cited: string[];
+}
+
+interface AffectedDetail {
+  file: string;
+  nodes: string[];
+}
+
+interface AffectedOptions {
+  ref: string;
+  contentDir: string;
+  cwd: string;
+  files?: string[];
+}
+
+export function gitChangedFiles(ref: string, cwd: string): string[] {
   const raw = execFileSync('git', ['diff', '--name-only', ref], {
     cwd,
     encoding: 'utf-8',
@@ -30,20 +50,20 @@ export function gitChangedFiles(ref, cwd) {
  * @param {string} contentDir Absolute path to the content directory.
  * @returns {{ index: Map<string, Set<string>>, nodes: Array }}
  */
-export function buildCitationIndex(contentDir) {
+export function buildCitationIndex(contentDir: string): { index: CitationIndex; nodes: CitationNode[] } {
   const files = listMarkdownFiles(contentDir);
-  const index = new Map();
-  const nodes = [];
+  const index: CitationIndex = new Map();
+  const nodes: CitationNode[] = [];
 
   for (const file of files) {
     const result = readContentFile(file);
-    if (!result.ok || !result.frontmatter?.id) continue;
+    if (!result.ok || !result.frontmatter || typeof result.frontmatter.id !== 'string') continue;
     const id = result.frontmatter.id;
     const cited = extractCitedFiles(result.body || '');
     nodes.push({ id, file, cited });
     for (const cite of cited) {
       if (!index.has(cite)) index.set(cite, new Set());
-      index.get(cite).add(id);
+      index.get(cite)?.add(id);
     }
   }
 
@@ -55,16 +75,17 @@ export function buildCitationIndex(contentDir) {
  * content cites at least one of them, plus the mapping of file → ids for
  * detailed reporting.
  */
-export function findAffected(changedFiles, citationIndex) {
-  const affected = new Set();
-  const detail = [];
+export function findAffected(changedFiles: string[], citationIndex: CitationIndex): { affected: string[]; detail: AffectedDetail[] } {
+  const affected = new Set<string>();
+  const detail: AffectedDetail[] = [];
 
   for (const file of changedFiles) {
-    const matched = new Set();
+    const matched = new Set<string>();
 
     // Direct match
-    if (citationIndex.has(file)) {
-      for (const id of citationIndex.get(file)) {
+    const directMatches = citationIndex.get(file);
+    if (directMatches) {
+      for (const id of directMatches) {
         affected.add(id);
         matched.add(id);
       }
@@ -96,7 +117,7 @@ export function findAffected(changedFiles, citationIndex) {
  * @param {string} options.cwd          - Working directory for git diff.
  * @param {string[]} [options.files]    - Pre-computed file list (bypasses git).
  */
-export function affected({ ref, contentDir, cwd, files }) {
+export function affected({ ref, contentDir, cwd, files }: AffectedOptions) {
   const changedFiles = files ?? gitChangedFiles(ref, cwd);
   const { index, nodes } = buildCitationIndex(contentDir);
   const { affected: ids, detail } = findAffected(changedFiles, index);
@@ -111,4 +132,3 @@ export function affected({ ref, contentDir, cwd, files }) {
     ),
   };
 }
-

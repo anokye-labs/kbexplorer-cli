@@ -22,16 +22,53 @@ import {
   ERROR_CODES,
   ACTION_CLASSES,
 } from '../contract.ts';
+import type { AffordanceContext } from '../context.ts';
 
 const DEFAULT_ARTIFACT_DIR = '.search';
 const DEFAULT_LIMIT = 5;
 const DEFAULT_PROVIDER = 'openai';
 
-async function resolveSearchModule(context) {
+interface SearchArtifact {
+  meta?: {
+    model?: string;
+    dimensions?: number;
+  };
+}
+
+interface SearchEngine {
+  search: (
+    query: string,
+    options: {
+      limit: number;
+      cluster?: string;
+      entityType?: string;
+      minScore?: number;
+    },
+  ) => Promise<unknown[]>;
+}
+
+interface SearchModule {
+  readArtifacts: (artifactDir: string) => SearchArtifact | null;
+  createSearchEngine: (artifact: SearchArtifact, provider: unknown) => SearchEngine;
+  getProvider: (providerName: string, options: { model?: string; dimensions?: number }) => unknown;
+}
+
+interface SearchInput extends Record<string, unknown> {
+  query: string;
+  limit?: number;
+  cluster?: string;
+  entityType?: string;
+  minScore?: number;
+  dir?: string;
+  provider?: string;
+  model?: string;
+}
+
+async function resolveSearchModule(context: AffordanceContext): Promise<SearchModule> {
   if (typeof context.seams?.loadSearchModule === 'function') {
-    return context.seams.loadSearchModule();
+    return (await context.seams.loadSearchModule()) as SearchModule;
   }
-  return import('@anokye-labs/kbexplorer-search');
+  return (await import('@anokye-labs/kbexplorer-search')) as unknown as SearchModule;
 }
 
 export default defineAffordance({
@@ -54,8 +91,9 @@ export default defineAffordance({
     query: { type: 'string' },
     results: { type: 'array' },
   }),
-  async execute(context, input) {
-    let mod;
+  async execute(context: AffordanceContext, input: Record<string, unknown>) {
+    const args = input as SearchInput;
+    let mod: SearchModule;
     try {
       mod = await resolveSearchModule(context);
     } catch {
@@ -66,7 +104,7 @@ export default defineAffordance({
     }
 
     const { readArtifacts, createSearchEngine, getProvider } = mod;
-    const artifactDir = resolve(context.cwd, input.dir || DEFAULT_ARTIFACT_DIR);
+    const artifactDir = resolve(context.cwd, args.dir || DEFAULT_ARTIFACT_DIR);
     const artifact = readArtifacts(artifactDir);
     if (!artifact) {
       throw new AffordanceError(
@@ -76,33 +114,40 @@ export default defineAffordance({
       );
     }
 
-    const providerName = input.provider || DEFAULT_PROVIDER;
-    const modelName = input.model || artifact.meta?.model;
+    const providerName = args.provider || DEFAULT_PROVIDER;
+    const modelName = args.model || artifact.meta?.model;
     let provider;
     try {
       provider = getProvider(providerName, {
         model: modelName,
         dimensions: artifact.meta?.dimensions,
       });
-    } catch (err) {
-      throw new AffordanceError(ERROR_CODES.EXECUTION_FAILED, err.message, {
+    } catch (err: unknown) {
+      throw new AffordanceError(
+        ERROR_CODES.EXECUTION_FAILED,
+        err instanceof Error ? err.message : String(err),
+        {
         provider: providerName,
-      });
+        }
+      );
     }
 
     const engine = createSearchEngine(artifact, provider);
     let results;
     try {
-      results = await engine.search(input.query, {
-        limit: input.limit ?? DEFAULT_LIMIT,
-        cluster: input.cluster,
-        entityType: input.entityType,
-        minScore: input.minScore,
+      results = await engine.search(args.query, {
+        limit: args.limit ?? DEFAULT_LIMIT,
+        cluster: args.cluster,
+        entityType: args.entityType,
+        minScore: args.minScore,
       });
-    } catch (err) {
-      throw new AffordanceError(ERROR_CODES.EXECUTION_FAILED, `search failed: ${err.message}`);
+    } catch (err: unknown) {
+      throw new AffordanceError(
+        ERROR_CODES.EXECUTION_FAILED,
+        `search failed: ${err instanceof Error ? err.message : String(err)}`
+      );
     }
 
-    return { query: input.query, results };
+    return { query: args.query, results };
   },
 });

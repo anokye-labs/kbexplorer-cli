@@ -12,6 +12,36 @@
  * @module src/extension/json-schema
  */
 
+type FieldDescriptor = {
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object';
+  required?: boolean;
+  default?: unknown;
+  description?: string;
+  min?: number;
+  max?: number;
+  minItems?: number;
+  item?: FieldDescriptor;
+  enum?: string[];
+};
+
+type SchemaDescriptor = {
+  fields?: Record<string, FieldDescriptor>;
+};
+
+type JsonSchema = {
+  type: string;
+  description?: string;
+  default?: unknown;
+  minimum?: number;
+  maximum?: number;
+  enum?: string[];
+  items?: JsonSchema | Record<string, never>;
+  minItems?: number;
+  properties?: Record<string, JsonSchema>;
+  required?: string[];
+  additionalProperties?: boolean;
+};
+
 /**
  * Translate a single {@link import('../affordances/contract.ts').FieldDescriptor}
  * into its JSON Schema fragment. Only the descriptor features the contract can
@@ -20,13 +50,12 @@
  * @param {object} desc  A field descriptor from a schema's `fields`.
  * @returns {object} JSON Schema for that property.
  */
-export function fieldToJsonSchema(desc) {
+export function fieldToJsonSchema(desc: FieldDescriptor): JsonSchema {
   if (!desc || typeof desc !== 'object' || typeof desc.type !== 'string') {
     throw new TypeError('fieldToJsonSchema: descriptor must have a string "type"');
   }
 
-  /** @type {Record<string, unknown>} */
-  const schema = { type: desc.type };
+  const schema: JsonSchema = { type: desc.type };
 
   if (typeof desc.description === 'string') schema.description = desc.description;
   if (desc.default !== undefined) schema.default = desc.default;
@@ -57,20 +86,22 @@ export function fieldToJsonSchema(desc) {
  * @param {{ fields?: Record<string, object> }} [descriptor]
  * @returns {{ type: 'object', properties: Record<string, object>, required?: string[], additionalProperties: false }}
  */
-export function descriptorToJsonSchema(descriptor) {
+export function descriptorToJsonSchema(descriptor?: SchemaDescriptor) {
   const fields = descriptor?.fields ?? {};
-  /** @type {Record<string, object>} */
-  const properties = {};
-  /** @type {string[]} */
-  const required = [];
+  const properties: Record<string, JsonSchema> = {};
+  const required: string[] = [];
 
   for (const [name, desc] of Object.entries(fields)) {
     properties[name] = fieldToJsonSchema(desc);
     if (desc.required) required.push(name);
   }
 
-  /** @type {Record<string, unknown>} */
-  const schema = { type: 'object', properties, additionalProperties: false };
+  const schema: JsonSchema = { type: 'object', properties, additionalProperties: false };
   if (required.length > 0) schema.required = required;
-  return /** @type {any} */ (schema);
+  return schema as {
+    type: 'object';
+    properties: Record<string, JsonSchema>;
+    required?: string[];
+    additionalProperties: false;
+  };
 }

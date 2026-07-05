@@ -21,7 +21,7 @@ import { buildToolErrorEnvelope, buildToolResultEnvelope } from '../affordances/
 * @param {*} value  The affordance's typed result.
 * @returns {{ textResultForLlm: string, resultType: 'success' }}
 */
-export function successResult(value) {
+export function successResult(value: unknown) {
  const envelope = buildToolResultEnvelope(value);
  return {
    textResultForLlm: envelope.text,
@@ -40,7 +40,7 @@ export function successResult(value) {
 * @param {unknown} err
 * @returns {{ textResultForLlm: string, resultType: 'failure', error: string }}
 */
-export function errorResult(err) {
+export function errorResult(err: unknown) {
  const envelope = buildToolErrorEnvelope(err);
  return {
    textResultForLlm: envelope.text,

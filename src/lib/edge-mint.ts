@@ -52,20 +52,70 @@ import {
   mapRelation,
   isKnownRelation,
   RELATION_SYNONYMS,
+  type Evidence,
+  type KBEdge,
+  type KnownRelation,
+  type SourceRef,
 } from '@anokye-labs/kbexplorer-core';
 import { canonicalStringify } from './jsonld.ts';
+
+type ResolutionNode = {
+  id: string;
+  identity?: string;
+  sourceId?: string;
+  sourceRefs?: SourceRef[];
+  linkedRefs?: SourceRef[];
+};
+
+type ReferenceGraph = {
+  nodes?: ResolutionNode[];
+  edges?: KBEdge[];
+  [key: string]: unknown;
+};
+
+type ResolutionIndex = {
+  identity: Map<string, Set<string>>;
+  id: Map<string, Set<string>>;
+  sourceRef: Map<string, Set<string>>;
+};
+
+type ResolveLinkedRefResult =
+  | { id: string }
+  | { ambiguous: string[] }
+  | { dangling: true };
+
+type MintStats = {
+  sourceNodes: number;
+  linkedRefs: number;
+  minted: number;
+  deduped: number;
+  skippedDangling: number;
+  skippedAmbiguous: number;
+  skippedSelf: number;
+};
+
+type MintOptions = {
+  generator?: string;
+};
+
+type MintResult<TGraph extends ReferenceGraph> = {
+  graph: TGraph & { edges: KBEdge[]; related: Record<string, string[]> };
+  minted: KBEdge[];
+  stats: MintStats;
+  warnings: string[];
+};
 
 /** Versioned id of the deriving process, recorded on every minted edge. */
 export const EDGE_MINT_GENERATOR = 'edge-mint@1';
 
 /** Structural edge type used for minted cross-artifact references. */
-const MINTED_EDGE_TYPE = 'references';
+const MINTED_EDGE_TYPE = 'references' as const;
 
 /** Canonical fallback relation when a linkedRef carries no usable role. */
-const FALLBACK_RELATION = 'structural';
+const FALLBACK_RELATION: KnownRelation = 'structural';
 
 /** Stable comparator helper. */
-function cmp(a, b) {
+function cmp(a: string | number, b: string | number): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -80,7 +130,7 @@ function cmp(a, b) {
  * @param {unknown} role
  * @returns {{ relation: string, relationRaw?: string }}
  */
-export function resolveRelation(role) {
+export function resolveRelation(role: unknown): { relation: KnownRelation; relationRaw?: string } {
   if (role == null || String(role).trim() === '') {
     return { relation: FALLBACK_RELATION };
   }
@@ -99,14 +149,14 @@ export function resolveRelation(role) {
  * @param {object[]} nodes
  * @returns {{ identity: Map<string,Set<string>>, id: Map<string,Set<string>>, sourceRef: Map<string,Set<string>> }}
  */
-export function buildResolutionIndex(nodes) {
-  const identity = new Map();
-  const id = new Map();
-  const sourceRef = new Map();
-  const add = (map, key, nodeId) => {
+export function buildResolutionIndex(nodes: readonly ResolutionNode[] | null | undefined): ResolutionIndex {
+  const identity = new Map<string, Set<string>>();
+  const id = new Map<string, Set<string>>();
+  const sourceRef = new Map<string, Set<string>>();
+  const add = (map: Map<string, Set<string>>, key: string | null | undefined, nodeId: string): void => {
     if (key == null || key === '') return;
     let set = map.get(key);
-    if (!set) map.set(key, (set = new Set()));
+    if (!set) map.set(key, (set = new Set<string>()));
     set.add(nodeId);
   };
   for (const node of nodes ?? []) {
@@ -133,7 +183,7 @@ export function buildResolutionIndex(nodes) {
  * @param {ReturnType<typeof buildResolutionIndex>} index
  * @returns {{ id: string } | { ambiguous: string[] } | { dangling: true }}
  */
-export function resolveLinkedRef(ref, index) {
+export function resolveLinkedRef(ref: SourceRef | null | undefined, index: ResolutionIndex): ResolveLinkedRefResult {
   const href = ref?.href;
   if (!href) return { dangling: true };
   for (const tier of [index.identity, index.id, index.sourceRef]) {
@@ -146,37 +196,39 @@ export function resolveLinkedRef(ref, index) {
 }
 
 /** Stable, order-independent dedupe of a provenance array (SourceRefs / Evidence). */
-function uniqueSorted(items) {
-  const seen = new Map();
+function uniqueSorted<T>(items: readonly T[]): T[] {
+  const seen = new Map<string, T>();
   for (const item of items) {
     const key = canonicalStringify(item);
     if (!seen.has(key)) seen.set(key, item);
   }
-  return [...seen.entries()].sort((a, b) => cmp(a[0], b[0])).map(([, v]) => v);
+  return [...seen.entries()]
+    .sort((a, b) => cmp(a[0], b[0]))
+    .map(([, value]) => value);
 }
 
 /** Re-derive the `related` projection (nodeId → sorted unique neighbor ids). */
-function deriveRelated(nodes, edges) {
-  const nodeIds = new Set(nodes.map((n) => n.id));
-  const related = {};
+function deriveRelated(nodes: readonly ResolutionNode[], edges: readonly KBEdge[]): Record<string, string[]> {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const related: Record<string, Set<string>> = {};
   for (const edge of edges) {
     if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to) || edge.from === edge.to) continue;
-    (related[edge.from] ??= new Set()).add(edge.to);
-    (related[edge.to] ??= new Set()).add(edge.from);
+    (related[edge.from] ??= new Set<string>()).add(edge.to);
+    (related[edge.to] ??= new Set<string>()).add(edge.from);
   }
-  const out = {};
-  for (const nid of Object.keys(related).sort()) out[nid] = [...related[nid]].sort();
+  const out: Record<string, string[]> = {};
+  for (const nodeId of Object.keys(related).sort()) out[nodeId] = [...related[nodeId]].sort();
   return out;
 }
 
 /** Deterministic key identifying an edge by endpoints + relation. */
-function edgeKey(edge) {
+function edgeKey(edge: Pick<KBEdge, 'from' | 'to'> & Partial<Pick<KBEdge, 'relation' | 'type'>>): string {
   const relation = edge.relation ?? mapRelation(edge.type).relation ?? FALLBACK_RELATION;
   return buildEdgeId(edge.from, relation, edge.to);
 }
 
 /** Final, stable edge comparator (mirrors the composite-ingest union order). */
-function edgeComparator(a, b) {
+function edgeComparator(a: KBEdge, b: KBEdge): number {
   return (
     cmp(a.sourceId ?? '', b.sourceId ?? '') ||
     cmp(a.from, b.from) ||
@@ -201,7 +253,10 @@ function edgeComparator(a, b) {
  *   warnings: string[]
  * }}
  */
-export function mintReferenceEdges(graph, opts = {}) {
+export function mintReferenceEdges<TGraph extends ReferenceGraph>(
+  graph: TGraph,
+  opts: MintOptions = {},
+): MintResult<TGraph> {
   const generator = opts.generator ?? EDGE_MINT_GENERATOR;
   const nodes = graph?.nodes ?? [];
   const existingEdges = graph?.edges ?? [];
@@ -214,10 +269,12 @@ export function mintReferenceEdges(graph, opts = {}) {
   // Source-node iteration is sorted so the chosen provenance on a collapsed edge
   // is independent of input node order.
   const sourceNodes = [...nodes]
-    .filter((n) => n && n.id != null && Array.isArray(n.linkedRefs) && n.linkedRefs.length > 0)
+    .filter((node): node is ResolutionNode & { linkedRefs: SourceRef[] } => {
+      return !!node && node.id != null && Array.isArray(node.linkedRefs) && node.linkedRefs.length > 0;
+    })
     .sort((a, b) => cmp(a.sourceId ?? '', b.sourceId ?? '') || cmp(a.id, b.id));
 
-  const stats = {
+  const stats: MintStats = {
     sourceNodes: sourceNodes.length,
     linkedRefs: 0,
     minted: 0,
@@ -226,9 +283,9 @@ export function mintReferenceEdges(graph, opts = {}) {
     skippedAmbiguous: 0,
     skippedSelf: 0,
   };
-  const warnings = [];
+  const warnings: string[] = [];
   /** @type {Map<string, object>} key → minted edge (accumulates merged provenance) */
-  const mintedByKey = new Map();
+  const mintedByKey = new Map<string, KBEdge>();
 
   for (const node of sourceNodes) {
     for (const ref of node.linkedRefs) {
@@ -241,7 +298,7 @@ export function mintReferenceEdges(graph, opts = {}) {
       if ('ambiguous' in resolved) {
         stats.skippedAmbiguous++;
         warnings.push(
-          `linkedRef href="${ref.href}" on node "${node.id}" is ambiguous (matches ${resolved.ambiguous.join(', ')}); skipped.`
+          `linkedRef href="${ref.href}" on node "${node.id}" is ambiguous (matches ${resolved.ambiguous.join(', ')}); skipped.`,
         );
         continue;
       }
@@ -258,7 +315,7 @@ export function mintReferenceEdges(graph, opts = {}) {
         continue;
       }
 
-      const evidence = {
+      const evidence: Evidence = {
         ref,
         note: `minted from linkedRef href="${ref.href}" on node "${node.id}"`,
       };
@@ -268,9 +325,12 @@ export function mintReferenceEdges(graph, opts = {}) {
         // Collapse: merge provenance deterministically; keep the smallest
         // sourceId so #139 has a single, stable system-of-record to rank.
         stats.deduped++;
-        existing.sourceRefs = uniqueSorted([...existing.sourceRefs, ref]);
-        existing.evidence = uniqueSorted([...existing.evidence, evidence]);
-        existing.derivation.inputs = uniqueSorted([...existing.derivation.inputs, ref]);
+        existing.sourceRefs = uniqueSorted([...(existing.sourceRefs ?? []), ref]);
+        existing.evidence = uniqueSorted([...(existing.evidence ?? []), evidence]);
+        existing.derivation = {
+          ...(existing.derivation ?? { mode: 'derived', generator }),
+          inputs: uniqueSorted([...(existing.derivation?.inputs ?? []), ref]),
+        };
         const candidateSourceId = node.sourceId;
         if (candidateSourceId != null && cmp(candidateSourceId, existing.sourceId ?? '') < 0) {
           existing.sourceId = candidateSourceId;
@@ -278,8 +338,7 @@ export function mintReferenceEdges(graph, opts = {}) {
         continue;
       }
 
-      /** @type {object} */
-      const edge = {
+      const edge: KBEdge = {
         from: node.id,
         to: targetId,
         type: MINTED_EDGE_TYPE,

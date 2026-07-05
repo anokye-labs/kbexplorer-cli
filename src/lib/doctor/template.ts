@@ -4,12 +4,29 @@ import { resolve } from 'node:path';
 import { readSourceRecord, SOURCE_FILE, classifyRef } from '../source.ts';
 import { getSubmoduleUrl } from '../detect-repo.ts';
 
-function pass(id, message) { return { id, status: 'pass', message }; }
-function warn(id, message) { return { id, status: 'warn', message }; }
-function fail(id, message) { return { id, status: 'fail', message }; }
+type DoctorStatus = 'pass' | 'warn' | 'fail';
+type SourceRecord = NonNullable<ReturnType<typeof readSourceRecord>>;
 
-export function checkTemplate({ cwd, offline, getLatestTag: getLatestTagImpl }) {
-  const checks = [];
+interface DoctorCheck {
+  id: string;
+  status: DoctorStatus;
+  message: string;
+}
+
+function pass(id: string, message: string): DoctorCheck { return { id, status: 'pass', message }; }
+function warn(id: string, message: string): DoctorCheck { return { id, status: 'warn', message }; }
+function fail(id: string, message: string): DoctorCheck { return { id, status: 'fail', message }; }
+
+export function checkTemplate({
+  cwd,
+  offline,
+  getLatestTag: getLatestTagImpl,
+}: {
+  cwd: string;
+  offline?: boolean;
+  getLatestTag?: ((repoUrl: string) => string | null) | null;
+}): DoctorCheck[] {
+  const checks: DoctorCheck[] = [];
 
   const sourceFilePath = resolve(cwd, SOURCE_FILE);
   if (!existsSync(sourceFilePath)) {
@@ -17,7 +34,7 @@ export function checkTemplate({ cwd, offline, getLatestTag: getLatestTagImpl }) 
     return checks;
   }
 
-  const record = readSourceRecord(cwd);
+  const record: SourceRecord | null = readSourceRecord(cwd);
   if (!record) {
     checks.push(fail('template.source-record', `${SOURCE_FILE} exists but could not be parsed`));
     return checks;

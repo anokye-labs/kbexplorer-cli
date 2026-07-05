@@ -28,11 +28,32 @@
  *   write           → create/overwrite files
  */
 export const ALLOW = Object.freeze({
-  shell: (scope) => `shell(${scope})`,
+  shell: (scope: string) => `shell(${scope})`,
   view: 'view',
   edit: 'edit',
   write: 'write',
 });
+
+interface CommandOption {
+  flag: string;
+  desc: string;
+}
+
+interface CommandEntry {
+  name: string;
+  summary: string;
+  argumentHint?: string;
+  run: string;
+  needsCopilot: boolean;
+  options?: CommandOption[];
+  allowedTools: string[];
+  notes?: string;
+}
+
+interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+}
 
 /**
  * The eleven CLI verbs exposed as plugin commands, in a stable, documented
@@ -202,7 +223,7 @@ export const COMMAND_SURFACE = Object.freeze([
 ]);
 
 /** Look up a single command entry by name. Returns undefined if not present. */
-export function getCommand(name) {
+export function getCommand(name: string): CommandEntry | undefined {
   return COMMAND_SURFACE.find((c) => c.name === name);
 }
 
@@ -221,36 +242,38 @@ export function commandNames() {
  */
 const ALLOW_TOKEN_RE = /^(?:shell\([^)]+\)|view|edit|write)$/;
 
-export function validateCommand(entry) {
+export function validateCommand(entry: unknown): ValidationResult {
   const errors = [];
   if (!entry || typeof entry !== 'object') {
     return { valid: false, errors: ['entry is not an object'] };
   }
+  const command = entry as Partial<CommandEntry>;
   for (const field of ['name', 'summary', 'run']) {
-    if (typeof entry[field] !== 'string' || entry[field].trim() === '') {
+    const value = command[field as keyof CommandEntry];
+    if (typeof value !== 'string' || value.trim() === '') {
       errors.push(`missing or empty required field: ${field}`);
     }
   }
-  if (typeof entry.run === 'string' && typeof entry.name === 'string') {
-    if (!entry.run.startsWith(`kbx ${entry.name}`)) {
-      errors.push(`run template "${entry.run}" must invoke "kbx ${entry.name}"`);
+  if (typeof command.run === 'string' && typeof command.name === 'string') {
+    if (!command.run.startsWith(`kbx ${command.name}`)) {
+      errors.push(`run template "${command.run}" must invoke "kbx ${command.name}"`);
     }
   }
-  const allow = Array.isArray(entry.allowedTools) ? entry.allowedTools : [];
+  const allow = Array.isArray(command.allowedTools) ? command.allowedTools : [];
   if (allow.length === 0) {
     errors.push('allowedTools must be a non-empty scoped allowlist');
   }
   for (const tok of allow) {
     if (!ALLOW_TOKEN_RE.test(tok)) errors.push(`unrecognized allow token: ${tok}`);
   }
-  if (typeof entry.name === 'string' && !allow.includes(`shell(kbx ${entry.name})`)) {
-    errors.push(`allowlist must anchor on shell(kbx ${entry.name})`);
+  if (typeof command.name === 'string' && !allow.includes(`shell(kbx ${command.name})`)) {
+    errors.push(`allowlist must anchor on shell(kbx ${command.name})`);
   }
   return { valid: errors.length === 0, errors };
 }
 
 /** Validate the whole surface. Returns { valid, errors }. */
-export function validateSurface(surface = COMMAND_SURFACE) {
+export function validateSurface(surface: readonly CommandEntry[] = COMMAND_SURFACE): ValidationResult {
   const errors = [];
   const seen = new Set();
   for (const entry of surface) {
@@ -264,8 +287,8 @@ export function validateSurface(surface = COMMAND_SURFACE) {
 
 // ── Markdown rendering ───────────────────────────────────────────────────────────
 
-function yamlList(items) {
-  return items.map((i) => `  - ${i}`).join('\n');
+function yamlList(items: string[]): string {
+  return items.map((i: string) => `  - ${i}`).join('\n');
 }
 
 /**
@@ -273,7 +296,7 @@ function yamlList(items) {
  * same entry always yields byte-identical output (LF line endings, trailing
  * newline) so it can be diff-checked against the committed asset.
  */
-export function renderCommandMarkdown(entry) {
+export function renderCommandMarkdown(entry: CommandEntry): string {
   const v = validateCommand(entry);
   if (!v.valid) {
     throw new Error(`cannot render invalid command "${entry?.name}": ${v.errors.join('; ')}`);
@@ -290,7 +313,7 @@ export function renderCommandMarkdown(entry) {
   ].join('\n');
 
   const optionRows = (entry.options ?? [])
-    .map((o) => `| \`${o.flag}\` | ${o.desc} |`)
+    .map((o: CommandOption) => `| \`${o.flag}\` | ${o.desc} |`)
     .join('\n');
 
   const body = [
@@ -313,7 +336,7 @@ export function renderCommandMarkdown(entry) {
     '',
     'This command runs under a scoped, least-privilege tool allowlist:',
     '',
-    ...entry.allowedTools.map((t) => `- \`${t}\``),
+    ...entry.allowedTools.map((t: string) => `- \`${t}\``),
   ];
 
   if (entry.notes) {
@@ -326,8 +349,8 @@ export function renderCommandMarkdown(entry) {
 }
 
 /** Render every command. Returns [{ name, file, content }]. */
-export function renderAllCommands(surface = COMMAND_SURFACE) {
-  return surface.map((entry) => ({
+export function renderAllCommands(surface: readonly CommandEntry[] = COMMAND_SURFACE) {
+  return surface.map((entry: CommandEntry) => ({
     name: entry.name,
     file: `${entry.name}.md`,
     content: renderCommandMarkdown(entry),

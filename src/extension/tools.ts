@@ -31,9 +31,22 @@
 import { describeAffordances } from '../affordances/index.ts';
 import { buildToolDefinition } from '../affordances/tool-bridge.ts';
 import { successResult, errorResult } from './tool-result.ts';
+import type { AffordanceContext } from '../affordances/context.ts';
 
 /** Prefix that namespaces affordance tools within the host's global tool table. */
 export const TOOL_PREFIX = 'kbx_';
+
+type DescribedAffordance = ReturnType<typeof describeAffordances>[number];
+type ToolExecutor = (name: string, input: object, context?: AffordanceContext) => Promise<unknown> | unknown;
+
+interface ToolBuildOptions {
+  execute?: ToolExecutor;
+  contextFactory?: () => AffordanceContext;
+}
+
+interface BuildAffordanceToolsOptions extends ToolBuildOptions {
+  describe?: () => DescribedAffordance[];
+}
 
 /**
  * Map an affordance name to its host-unique tool name.
@@ -41,7 +54,7 @@ export const TOOL_PREFIX = 'kbx_';
  * @param {string} affordanceName
  * @returns {string}
  */
-export function toolNameFor(affordanceName) {
+export function toolNameFor(affordanceName: string) {
   return `${TOOL_PREFIX}${affordanceName}`;
 }
 
@@ -59,7 +72,7 @@ export function toolNameFor(affordanceName) {
 *        {@link createAffordanceContext} over `process.cwd()`).
 * @returns {object} A `Tool` definition (`{ name, description, parameters, handler, actionClass }`).
 */
-export function affordanceToTool(described, opts = {}) {
+export function affordanceToTool(described: DescribedAffordance, opts: ToolBuildOptions = {}) {
  const { execute, contextFactory } = opts;
  const tool = buildToolDefinition(described, {
    prefix: TOOL_PREFIX,
@@ -87,7 +100,7 @@ export function affordanceToTool(described, opts = {}) {
  * @param {() => object} [opts.contextFactory]
  * @returns {object[]} One `Tool` per registered affordance, in canonical order.
  */
-export function buildAffordanceTools(opts = {}) {
+export function buildAffordanceTools(opts: BuildAffordanceToolsOptions = {}) {
   const { describe = describeAffordances, ...toolOpts } = opts;
   return describe().map((d) => affordanceToTool(d, toolOpts));
 }

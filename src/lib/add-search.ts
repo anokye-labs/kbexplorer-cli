@@ -45,6 +45,17 @@ export const SEARCH_MODES = Object.freeze({
   SEMANTIC: 'semantic',
 });
 
+type SearchMode = (typeof SEARCH_MODES)[keyof typeof SEARCH_MODES];
+type ActionableSearchMode = Exclude<SearchMode, typeof SEARCH_MODES.NONE>;
+
+interface SearchModeProfile {
+  kind: string;
+  provider: string;
+  model: string | null;
+  requiresCredential: boolean;
+  credentialEnv: string | null;
+}
+
 /**
  * How each actionable mode maps onto a search index kind + embedding provider.
  * `local` is the zero-credential lexical index; `semantic` is the BYO-key vector
@@ -69,6 +80,8 @@ export const SEARCH_MODE_PROFILES = Object.freeze({
     credentialEnv: 'OPENAI_API_KEY',
   }),
 });
+
+type SearchModeProfiles = Readonly<Record<ActionableSearchMode, Readonly<SearchModeProfile>>>;
 
 /** The search package the chain installs and builds against. */
 export const SEARCH_PACKAGE = '@anokye-labs/kbexplorer-search';
@@ -115,7 +128,107 @@ export const ADD_SEARCH_ERRORS = Object.freeze({
   STEP_FAILED: 'STEP_FAILED',
 });
 
-function artifactPaths(dir) {
+type AddSearchStatus = (typeof ADD_SEARCH_STATUS)[keyof typeof ADD_SEARCH_STATUS];
+type AddSearchErrorCode = (typeof ADD_SEARCH_ERRORS)[keyof typeof ADD_SEARCH_ERRORS];
+type AddSearchStepId = (typeof ADD_SEARCH_STEPS)[number];
+
+interface InstallDependencyStep {
+  id: 'install-dependency';
+  pkg: string;
+}
+
+interface BuildIndexStep {
+  id: 'build-index';
+  provider: string;
+  model: string | null;
+  artifactDir: string;
+  kind: string;
+}
+
+interface StageArtifactsStep {
+  id: 'stage-artifacts';
+  paths: string[];
+}
+
+interface ConfigureCiGateStep {
+  id: 'configure-ci-gate';
+  command: string;
+}
+
+type AddSearchStep =
+  | InstallDependencyStep
+  | BuildIndexStep
+  | StageArtifactsStep
+  | ConfigureCiGateStep;
+
+interface PlanAddSearchOptions {
+  artifactDir?: string;
+  provider?: string;
+  model?: string | null;
+  hasCredential?: boolean;
+}
+
+interface AddSearchPlan {
+  mode: SearchMode;
+  needsAction: boolean;
+  kind: string | null;
+  provider: string | null;
+  model: string | null;
+  requiresCredential: boolean;
+  needsCredential: boolean;
+  credentialEnv: string | null;
+  artifactDir: string;
+  artifacts: readonly string[];
+  steps: readonly AddSearchStep[];
+}
+
+interface AddSearchError {
+  code: AddSearchErrorCode;
+  message: string;
+  step?: AddSearchStepId;
+}
+
+interface AddSearchNeed {
+  kind: string;
+  provider: string | null;
+  env: string | null;
+  message: string;
+}
+
+interface AddSearchResult {
+  status: AddSearchStatus;
+  mode?: SearchMode;
+  provider?: string | null;
+  model?: string | null;
+  artifactDir?: string;
+  artifacts?: readonly string[];
+  stepsRun?: readonly AddSearchStepId[];
+  note?: string;
+  needs?: AddSearchNeed;
+  error?: AddSearchError;
+}
+
+interface AddSearchSeams {
+  providerAvailable?: (plan: AddSearchPlan) => boolean | Promise<boolean>;
+  hasCredential?: (plan: AddSearchPlan) => boolean | Promise<boolean>;
+  installDependency?: (step: InstallDependencyStep) => unknown | Promise<unknown>;
+  buildIndex?: (step: BuildIndexStep) => unknown | Promise<unknown>;
+  stageArtifacts?: (step: StageArtifactsStep) => unknown | Promise<unknown>;
+  configureCiGate?: (step: ConfigureCiGateStep) => unknown | Promise<unknown>;
+  persist?: (patch: {
+    onboarding: {
+      search: {
+        mode: SearchMode;
+        kind: string | null;
+        provider: string | null;
+        artifactDir: string;
+        status: AddSearchStatus;
+      };
+    };
+  }) => unknown | Promise<unknown>;
+}
+
+function artifactPaths(dir: string): string[] {
   return SEARCH_ARTIFACT_FILES.map((f) => `${dir}/${f}`);
 }
 
@@ -138,7 +251,7 @@ function artifactPaths(dir) {
  * @returns {Readonly<object>} `{ mode, needsAction, kind, provider, model,
  *          requiresCredential, needsCredential, artifactDir, artifacts, steps }`.
  */
-export function planAddSearch(mode, opts = {}) {
+export function planAddSearch(mode: SearchMode, opts: PlanAddSearchOptions = {}): Readonly<AddSearchPlan> {
   const {
     artifactDir = DEFAULT_ARTIFACT_DIR,
     provider: providerOverride,
@@ -155,13 +268,14 @@ export function planAddSearch(mode, opts = {}) {
       model: null,
       requiresCredential: false,
       needsCredential: false,
+      credentialEnv: null,
       artifactDir,
       artifacts: Object.freeze([]),
       steps: Object.freeze([]),
     });
   }
 
-  const profile = SEARCH_MODE_PROFILES[mode];
+  const profile = (SEARCH_MODE_PROFILES as SearchModeProfiles)[mode as ActionableSearchMode];
   if (!profile) {
     throw new Error(
       `planAddSearch: unknown search mode "${mode}" (expected ${Object.values(SEARCH_MODES).join('|')})`,
@@ -173,12 +287,21 @@ export function planAddSearch(mode, opts = {}) {
   const needsCredential = profile.requiresCredential && !hasCredential;
   const artifacts = artifactPaths(artifactDir);
 
-  const steps = [
-    { id: 'install-dependency', pkg: SEARCH_PACKAGE },
-    { id: 'build-index', provider, model, artifactDir, kind: profile.kind },
-    { id: 'stage-artifacts', paths: artifacts },
-    { id: 'configure-ci-gate', command: `kbx search-index --check --dir ${artifactDir}` },
-  ].map((s) => Object.freeze({ ...s }));
+  const steps = Object.freeze<AddSearchStep[]>([
+    Object.freeze<InstallDependencyStep>({ id: 'install-dependency', pkg: SEARCH_PACKAGE }),
+    Object.freeze<BuildIndexStep>({
+      id: 'build-index',
+      provider,
+      model,
+      artifactDir,
+      kind: profile.kind,
+    }),
+    Object.freeze<StageArtifactsStep>({ id: 'stage-artifacts', paths: artifacts }),
+    Object.freeze<ConfigureCiGateStep>({
+      id: 'configure-ci-gate',
+      command: `kbx search-index --check --dir ${artifactDir}`,
+    }),
+  ]);
 
   return Object.freeze({
     mode,
@@ -195,8 +318,16 @@ export function planAddSearch(mode, opts = {}) {
   });
 }
 
-function makeError(code, message, details = {}) {
+function makeError(
+  code: AddSearchErrorCode,
+  message: string,
+  details: Omit<AddSearchError, 'code' | 'message'> = {},
+): AddSearchError {
   return { code, message, ...details };
+}
+
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 /**
@@ -233,7 +364,10 @@ function makeError(code, message, details = {}) {
  * @returns {Promise<Readonly<object>>} `{ status, mode, provider, model,
  *          artifactDir, artifacts, stepsRun, needs?, error? }`.
  */
-export async function applyAddSearch(plan, seams = {}) {
+export async function applyAddSearch(
+  plan: AddSearchPlan | null | undefined,
+  seams: AddSearchSeams = {},
+): Promise<Readonly<AddSearchResult>> {
   if (!plan || typeof plan !== 'object') {
     return Object.freeze({
       status: ADD_SEARCH_STATUS.FAILED,
@@ -295,18 +429,23 @@ export async function applyAddSearch(plan, seams = {}) {
     });
   }
 
-  const seamForStep = {
-    'install-dependency': seams.installDependency,
-    'build-index': seams.buildIndex,
-    'stage-artifacts': seams.stageArtifacts,
-    'configure-ci-gate': seams.configureCiGate,
-  };
-
-  const stepsRun = [];
+  const stepsRun: AddSearchStepId[] = [];
   for (const step of plan.steps) {
-    const seam = seamForStep[step.id];
     try {
-      if (typeof seam === 'function') await seam(step);
+      switch (step.id) {
+        case 'install-dependency':
+          if (typeof seams.installDependency === 'function') await seams.installDependency(step);
+          break;
+        case 'build-index':
+          if (typeof seams.buildIndex === 'function') await seams.buildIndex(step);
+          break;
+        case 'stage-artifacts':
+          if (typeof seams.stageArtifacts === 'function') await seams.stageArtifacts(step);
+          break;
+        case 'configure-ci-gate':
+          if (typeof seams.configureCiGate === 'function') await seams.configureCiGate(step);
+          break;
+      }
       stepsRun.push(step.id);
     } catch (err) {
       return Object.freeze({
@@ -315,7 +454,7 @@ export async function applyAddSearch(plan, seams = {}) {
         status: ADD_SEARCH_STATUS.FAILED,
         error: makeError(
           ADD_SEARCH_ERRORS.STEP_FAILED,
-          `add-search step "${step.id}" failed: ${err?.message ?? String(err)}`,
+          `add-search step "${step.id}" failed: ${getErrorMessage(err)}`,
           { step: step.id },
         ),
       });

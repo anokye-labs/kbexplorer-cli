@@ -19,6 +19,11 @@
 import { resolve, relative } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import type {
+  AccessExclusionConfig,
+  KBGraph,
+  KBNode,
+} from '@anokye-labs/kbexplorer-search';
 import { parseSearchIndexArgs } from '../lib/args.ts';
 import { buildEngineGraph } from '../lib/engine-graph-builder.ts';
 import { DEFAULT_ACCESS_EXCLUSION, isExcludedByDefault } from '../lib/access-label.ts';
@@ -27,7 +32,30 @@ const DEFAULT_ARTIFACT_DIR = '.search';
 const DEFAULT_PROVIDER = 'openai';
 const DEFAULT_MODEL = 'text-embedding-3-small';
 
-function normalizeProjectionSettings(settings = {}) {
+type SearchModule = typeof import('@anokye-labs/kbexplorer-search');
+type SearchArtifact = NonNullable<ReturnType<SearchModule['readArtifacts']>>;
+type SearchArtifactMeta = SearchArtifact['meta'];
+type ProjectionSettings = {
+  mode: string;
+  excludedClassifications: string[];
+  excludedVisibilities: string[];
+};
+type ProjectionMetadata = {
+  projectedNodeIds: string[];
+  engineNodeIdSetHash: string;
+  projection: {
+    accessExclusion: ProjectionSettings;
+    unitLessNodeKinds: string[];
+  };
+};
+type ProjectionAwareMeta = Partial<SearchArtifactMeta> & {
+  engineNodeIdSetHash?: string;
+  projection?: ProjectionMetadata['projection'];
+};
+
+function normalizeProjectionSettings(
+  settings: Partial<AccessExclusionConfig> = {},
+): ProjectionSettings {
   return {
     mode: settings.mode ?? DEFAULT_ACCESS_EXCLUSION?.mode ?? 'exclude',
     excludedClassifications: [...(settings.excludedClassifications ?? DEFAULT_ACCESS_EXCLUSION?.excludedClassifications ?? [])].sort(),
@@ -41,19 +69,26 @@ function normalizeProjectionSettings(settings = {}) {
 // any node whose body is empty. A title alone does NOT make a unit, so
 // structural provider entities (pull_request, issue, workflow, …) that carry a
 // title but no prose are correctly reported as unit-less here.
-function hasUnitCandidate(node) {
+function hasUnitCandidate(node: KBNode | null | undefined): boolean {
   if (!node) return false;
   const content = typeof node.rawContent === 'string' ? node.rawContent : typeof node.content === 'string' ? node.content : '';
   return content.trim().length > 0;
 }
 
-export function buildProjectionMetadata(graph) {
+export function buildProjectionMetadata(graph: KBGraph): {
+  projectedNodeIds: string[];
+  engineNodeIdSetHash: string;
+  projection: {
+    accessExclusion: ProjectionMetadata['projection']['accessExclusion'];
+    unitLessNodeKinds: string[];
+  };
+} {
   const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
   const projectedNodeIds = nodes
     .filter((node) => !isExcludedByDefault(node?.access, DEFAULT_ACCESS_EXCLUSION))
     .map((node) => node.id)
     .sort();
-  const unitLessNodeKinds = [...new Set(nodes.filter((node) => !hasUnitCandidate(node)).map((node) => node.nodeType ?? node.kind ?? 'unknown'))].sort();
+  const unitLessNodeKinds = [...new Set(nodes.filter((node) => !hasUnitCandidate(node)).map((node) => node.nodeType ?? (node as KBNode & { kind?: string }).kind ?? 'unknown'))].sort();
   return {
     projectedNodeIds,
     engineNodeIdSetHash: createHash('sha256').update(projectedNodeIds.join('\n')).digest('hex'),
@@ -64,7 +99,7 @@ export function buildProjectionMetadata(graph) {
   };
 }
 
-function readExistingArtifactMeta(artifactDir) {
+function readExistingArtifactMeta(artifactDir: string): ProjectionAwareMeta | null {
   const metaPath = resolve(artifactDir, 'index-meta.json');
   if (!metaPath) return null;
   try {
@@ -74,7 +109,10 @@ function readExistingArtifactMeta(artifactDir) {
   }
 }
 
-function persistProjectionMetadata(artifactDir, meta) {
+function persistProjectionMetadata(
+  artifactDir: string,
+  meta: Pick<ProjectionAwareMeta, 'projection' | 'engineNodeIdSetHash'> & Partial<SearchArtifactMeta>,
+): void {
   const indexMetaPath = resolve(artifactDir, 'index-meta.json');
   const existing = readExistingArtifactMeta(artifactDir) ?? {};
   const nextMeta = {
@@ -110,7 +148,7 @@ function printHelp() {
 `);
 }
 
-export default async function searchIndex(args = []) {
+export default async function searchIndex(args: string[] = []): Promise<void> {
   const opts = parseSearchIndexArgs(args);
   if (opts.help) {
     printHelp();
@@ -124,14 +162,14 @@ export default async function searchIndex(args = []) {
 
   // Build the graph via the engine-backed pipeline so search-index uses the
   // same KBGraph shape as the SPA and the affordance layer.
-  const graph = await buildEngineGraph(cwd, { contentOverride: opts.content });
+  const graph = (await buildEngineGraph(cwd, { contentOverride: opts.content ?? undefined })) as KBGraph;
   if (!Array.isArray(graph.nodes) || graph.nodes.length === 0) {
     console.error('✗ No content nodes found. Is there a content/ directory with .md files?');
     process.exit(1);
   }
 
   // Lazy-import kbx-search to avoid a hard dependency at CLI load time.
-  let search;
+  let search: SearchModule;
   try {
     search = await import('@anokye-labs/kbexplorer-search');
   } catch {
@@ -162,7 +200,7 @@ export default async function searchIndex(args = []) {
   // ── Check mode ──
   if (opts.check) {
     const result = checkDrift(artifactDir, graph);
-    const previousMeta = readArtifacts(artifactDir)?.meta ?? {};
+    const previousMeta: ProjectionAwareMeta = readArtifacts(artifactDir)?.meta ?? {};
     const nodeHashMatch = previousMeta.engineNodeIdSetHash === projectionMeta.engineNodeIdSetHash;
     const projectionMatch = JSON.stringify(previousMeta.projection ?? null) === JSON.stringify(projectionMeta.projection);
     const fresh = Boolean(result.fresh && nodeHashMatch && projectionMatch);
@@ -225,7 +263,8 @@ export default async function searchIndex(args = []) {
   try {
     provider = getProvider(providerName, { model: modelName });
   } catch (err) {
-    console.error(`✗ ${err.message}`);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`✗ ${message}`);
     process.exit(1);
   }
 
@@ -253,5 +292,3 @@ export default async function searchIndex(args = []) {
   console.log(`✅ Search artifacts written to ${relDir}/`);
   console.log(`   index-meta.json  units.json  vectors.json`);
 }
-
-

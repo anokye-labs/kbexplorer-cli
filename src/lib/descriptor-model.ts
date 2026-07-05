@@ -28,7 +28,43 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve, basename, extname, relative, sep } from 'node:path';
 import { KNOWN_RELATIONS } from './jsonld.ts';
 
-const SEVERITY = { ERROR: 'error', WARNING: 'warning' };
+const SEVERITY = { ERROR: 'error', WARNING: 'warning' } as const;
+type Severity = (typeof SEVERITY)[keyof typeof SEVERITY];
+type DescriptorData = Record<string, unknown>;
+type DescriptorKind = (typeof KNOWN_KINDS)[number];
+
+interface DescriptorFinding {
+  severity: Severity;
+  rule: string;
+  file?: string;
+  message: string;
+  kind?: DescriptorKind;
+  field?: string;
+  ref?: string;
+  target?: DescriptorKind;
+  relation?: string;
+  id?: string;
+  cycle?: string[];
+  files?: string[];
+}
+
+interface DescriptorRecord {
+  file: string;
+  kind: DescriptorKind;
+  data: DescriptorData;
+}
+
+interface ReportsToPerson {
+  id: string;
+  manager: string | null;
+  file: string;
+}
+
+interface ReportsToCycle {
+  id: string;
+  file: string;
+  cycle: string[];
+}
 
 /**
  * Directory (immediately under the content-model root) → entity kind.
@@ -41,7 +77,7 @@ export const KIND_DIRS = Object.freeze({
   workstreams: 'workstream',
   priorities: 'priority',
   'systems-of-record': 'system-of-record',
-});
+} as const);
 
 export const KNOWN_KINDS = Object.freeze(Object.values(KIND_DIRS));
 
@@ -82,7 +118,7 @@ export const KIND_CONTRACTS = Object.freeze({
     required: ['@type', 'id', 'name'],
     fks: [],
   },
-});
+} as const);
 
 // ──────────────────────────────────────────────────────────────────────────
 // Minimal descriptor YAML parser
@@ -95,13 +131,12 @@ export const KIND_CONTRACTS = Object.freeze({
 // skipped for FK resolution.
 // ──────────────────────────────────────────────────────────────────────────
 
-function leadingSpaces(line) {
+function leadingSpaces(line: string): number {
   const m = line.match(/^( *)/);
   return m ? m[1].length : 0;
 }
 
-function stripQuotes(value) {
-  if (typeof value !== 'string') return value;
+function stripQuotes(value: string): string {
   const t = value.trim();
   if (
     (t.startsWith('"') && t.endsWith('"') && t.length >= 2) ||
@@ -113,7 +148,7 @@ function stripQuotes(value) {
 }
 
 /** Strip a trailing ` # comment` from a bare (unquoted) scalar or list item. */
-function stripInlineComment(value) {
+function stripInlineComment(value: string): string {
   const s = value.trimStart();
   if (s.startsWith('"') || s.startsWith("'")) {
     const quote = s[0];
@@ -127,9 +162,9 @@ function stripInlineComment(value) {
 }
 
 /** Coerce a bare scalar: integers → Number, everything else → trimmed string. */
-function coerceScalar(value) {
+function coerceScalar(value: string): string | number {
   const unquoted = stripQuotes(value);
-  if (typeof unquoted === 'string' && /^-?\d+$/.test(unquoted.trim())) {
+  if (/^-?\d+$/.test(unquoted.trim())) {
     return Number(unquoted.trim());
   }
   return unquoted;
@@ -139,12 +174,12 @@ function coerceScalar(value) {
  * Parse a single descriptor file's YAML text.
  * @returns {{ ok: true, data: object } | { ok: false, error: string }}
  */
-export function parseDescriptor(raw) {
+export function parseDescriptor(raw: unknown): { ok: true; data: DescriptorData } | { ok: false; error: string } {
   const lines = String(raw).split(/\r?\n/);
-  const data = {};
+  const data: DescriptorData = {};
   let i = 0;
 
-  const isSkippable = (line) => {
+  const isSkippable = (line: string): boolean => {
     const t = line.trim();
     return t === '' || t.startsWith('#');
   };
@@ -178,7 +213,7 @@ export function parseDescriptor(raw) {
     // Folded (`>`) or literal (`|`) block scalar.
     if (rest === '>' || rest === '|' || rest === '>-' || rest === '|-') {
       const literal = rest.startsWith('|');
-      const collected = [];
+      const collected: string[] = [];
       while (i < lines.length) {
         if (lines[i].trim() === '') {
           collected.push('');
@@ -198,7 +233,7 @@ export function parseDescriptor(raw) {
 
     // Block list (`key:` with empty value, followed by indented `- ` items).
     if (rest === '') {
-      const items = [];
+      const items: Array<string | number> = [];
       let sawItem = false;
       while (i < lines.length) {
         if (isSkippable(lines[i])) {
@@ -239,15 +274,16 @@ export function parseDescriptor(raw) {
 // Validation
 // ──────────────────────────────────────────────────────────────────────────
 
-function listDescriptorFiles(dir) {
-  const out = [];
+function listDescriptorFiles(dir: string): string[] {
+  const out: string[] = [];
   if (!existsSync(dir)) return out;
   const stack = [dir];
   while (stack.length) {
     const current = stack.pop();
+    if (!current) continue;
     let entries;
     try {
-      entries = readdirSync(current, { withFileTypes: true });
+      entries = readdirSync(current, { withFileTypes: true, encoding: 'utf8' });
     } catch {
       continue;
     }
@@ -264,24 +300,30 @@ function listDescriptorFiles(dir) {
 }
 
 /** Derive the kind for a descriptor from its directory (preferred) or @type. */
-function kindForFile(file, rootDir, data) {
+function kindForFile(
+  file: string,
+  rootDir: string,
+  data: DescriptorData | null | undefined,
+): { kind: DescriptorKind | null; source: 'dir' | 'type' | null; dir: string | null; declared?: string | null } {
   const rel = relative(rootDir, file);
   const parts = rel.split(sep);
   const topDir = parts.length > 1 ? parts[0] : null;
-  if (topDir && KIND_DIRS[topDir]) return { kind: KIND_DIRS[topDir], source: 'dir', dir: topDir };
+  if (topDir && topDir in KIND_DIRS) return { kind: KIND_DIRS[topDir as keyof typeof KIND_DIRS], source: 'dir', dir: topDir };
   const declared = data && typeof data['@type'] === 'string' ? data['@type'] : null;
-  if (declared && KNOWN_KINDS.includes(declared)) return { kind: declared, source: 'type', dir: topDir };
+  if (declared && (KNOWN_KINDS as readonly string[]).includes(declared)) {
+    return { kind: declared as DescriptorKind, source: 'type', dir: topDir };
+  }
   return { kind: null, source: null, dir: topDir, declared };
 }
 
-function isEmpty(value) {
+function isEmpty(value: unknown): boolean {
   if (value == null) return true;
   if (typeof value === 'string') return value.trim() === '';
   if (Array.isArray(value)) return value.length === 0;
   return false;
 }
 
-function asRefList(value) {
+function asRefList(value: unknown): string[] {
   if (value == null) return [];
   const arr = Array.isArray(value) ? value : [value];
   return arr
@@ -290,10 +332,10 @@ function asRefList(value) {
     .filter((v) => v !== '' && !v.startsWith('{') && !v.startsWith('['));
 }
 
-function detectReportsToCycles(people) {
+function detectReportsToCycles(people: readonly ReportsToPerson[]): ReportsToCycle[] {
   // people: array of { id, manager, file }
   const byId = new Map(people.map((p) => [p.id, p]));
-  const cycles = [];
+  const cycles: ReportsToCycle[] = [];
   const seenCycleKeys = new Set();
   for (const start of people) {
     const seen = new Set([start.id]);
@@ -325,20 +367,39 @@ function detectReportsToCycles(people) {
  * @param {string} options.rootDir   Absolute path to the content-model directory.
  * @returns {{ findings: Array, summary: object, exists: boolean }}
  */
-export function validateContentModel({ rootDir }) {
-  const findings = [];
-  const push = (f) => findings.push(f);
+export function validateContentModel({
+  rootDir,
+}: {
+  rootDir: string;
+}): {
+  findings: DescriptorFinding[];
+  summary: {
+    exists: boolean;
+    files: number;
+    descriptors: number;
+    byKind: Record<string, number>;
+    errors: number;
+    warnings: number;
+    byRule: Record<string, number>;
+  };
+  exists: boolean;
+} {
+  const findings: DescriptorFinding[] = [];
+  const push = (f: DescriptorFinding): void => {
+    findings.push(f);
+  };
   const exists = existsSync(rootDir);
   const files = listDescriptorFiles(rootDir);
 
   // ── Parse every descriptor, assign a kind ──────────────────────────────
-  const descriptors = []; // { file, kind, data }
+  const descriptors: DescriptorRecord[] = []; // { file, kind, data }
   for (const file of files) {
-    let raw;
+    let raw: string;
     try {
       raw = readFileSync(file, 'utf-8');
     } catch (err) {
-      push({ severity: SEVERITY.ERROR, rule: 'read-error', file, message: `cannot read file: ${err.message}` });
+      const message = err instanceof Error ? err.message : String(err);
+      push({ severity: SEVERITY.ERROR, rule: 'read-error', file, message: `cannot read file: ${message}` });
       continue;
     }
     const parsed = parseDescriptor(raw);
@@ -388,17 +449,21 @@ export function validateContentModel({ rootDir }) {
   }
 
   // ── Index ids per kind (+ person aliases for alias-FK resolution) ───────
-  const idsByKind = new Map(KNOWN_KINDS.map((k) => [k, new Set()]));
-  const seenByKind = new Map(KNOWN_KINDS.map((k) => [k, new Map()])); // id -> [files]
+  const idsByKind = new Map<DescriptorKind, Set<string>>(KNOWN_KINDS.map((k) => [k, new Set<string>()]));
+  const seenByKind = new Map<DescriptorKind, Map<string, string[]>>(
+    KNOWN_KINDS.map((k) => [k, new Map<string, string[]>()]),
+  ); // id -> [files]
   const personAliases = new Set();
-  const people = [];
+  const people: ReportsToPerson[] = [];
   for (const d of descriptors) {
     const id = typeof d.data.id === 'string' || typeof d.data.id === 'number' ? String(d.data.id).trim() : '';
     if (id) {
-      idsByKind.get(d.kind).add(id);
+      idsByKind.get(d.kind)?.add(id);
       const seen = seenByKind.get(d.kind);
-      if (!seen.has(id)) seen.set(id, []);
-      seen.get(id).push(d.file);
+      if (seen) {
+        if (!seen.has(id)) seen.set(id, []);
+        seen.get(id)?.push(d.file);
+      }
     }
     if (d.kind === 'person') {
       if (id) people.push({ id, manager: emptyToNull(strOrNull(d.data.manager)), file: d.file });
@@ -430,9 +495,10 @@ export function validateContentModel({ rootDir }) {
       if (isEmpty(value)) continue;
       const refs = fk.array ? asRefList(value) : asRefList(value).slice(0, 1);
       const targetIds = idsByKind.get(fk.target);
+      if (!targetIds) continue;
       for (const ref of refs) {
         const resolved =
-          targetIds.has(ref) || (fk.alias && fk.target === 'person' && personAliases.has(ref));
+          targetIds.has(ref) || (('alias' in fk && fk.alias) && fk.target === 'person' && personAliases.has(ref));
         if (!resolved) {
           push({
             severity: SEVERITY.ERROR,
@@ -457,7 +523,7 @@ export function validateContentModel({ rootDir }) {
       if (typeof entry !== 'string') continue; // structured relation maps are out of subset
       const rel = stripInlineComment(entry).trim().toLowerCase();
       if (!rel) continue;
-      if (!KNOWN_RELATIONS.includes(rel)) {
+      if (!(KNOWN_RELATIONS as readonly string[]).includes(rel)) {
         push({
           severity: SEVERITY.ERROR,
           rule: 'off-taxonomy-relation',
@@ -488,13 +554,13 @@ export function validateContentModel({ rootDir }) {
     exists,
     files: files.length,
     descriptors: descriptors.length,
-    byKind: descriptors.reduce((acc, d) => {
+    byKind: descriptors.reduce<Record<string, number>>((acc, d) => {
       acc[d.kind] = (acc[d.kind] || 0) + 1;
       return acc;
     }, {}),
     errors,
     warnings,
-    byRule: findings.reduce((acc, f) => {
+    byRule: findings.reduce<Record<string, number>>((acc, f) => {
       acc[f.rule] = (acc[f.rule] || 0) + 1;
       return acc;
     }, {}),
@@ -503,13 +569,13 @@ export function validateContentModel({ rootDir }) {
   return { findings, summary, exists };
 }
 
-function strOrNull(v) {
+function strOrNull(v: unknown): string | null {
   if (v == null) return null;
   if (typeof v === 'number') return String(v);
   return typeof v === 'string' ? v.trim() : null;
 }
 
-function emptyToNull(v) {
+function emptyToNull(v: string | null): string | null {
   return v == null || v === '' ? null : v;
 }
 
@@ -522,4 +588,3 @@ export const _internal = {
   listDescriptorFiles,
   asRefList,
 };
-

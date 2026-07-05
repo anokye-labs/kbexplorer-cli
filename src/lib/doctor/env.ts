@@ -8,11 +8,19 @@ import { manifestOutPath } from '../../commands/dev.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-function pass(id, message) { return { id, status: 'pass', message }; }
-function warn(id, message) { return { id, status: 'warn', message }; }
-function fail(id, message) { return { id, status: 'fail', message }; }
+type DoctorStatus = 'pass' | 'warn' | 'fail';
 
-function probeTool(binary, args, spawnSyncImpl) {
+interface DoctorCheck {
+  id: string;
+  status: DoctorStatus;
+  message: string;
+}
+
+function pass(id: string, message: string): DoctorCheck { return { id, status: 'pass', message }; }
+function warn(id: string, message: string): DoctorCheck { return { id, status: 'warn', message }; }
+function fail(id: string, message: string): DoctorCheck { return { id, status: 'fail', message }; }
+
+function probeTool(binary: string, args: string[], spawnSyncImpl: typeof spawnSync) {
   try {
     const res = spawnSyncImpl(binary, args, {
       encoding: 'utf-8',
@@ -22,14 +30,14 @@ function probeTool(binary, args, spawnSyncImpl) {
     });
     if (res.error || res.status == null) return { available: false };
     const text = (res.stdout || res.stderr || '').trim();
-    const line = text.split(/\r?\n/).find((l) => l.trim()) ?? '';
+    const line = text.split(/\r?\n/).find((l: string) => l.trim()) ?? '';
     return { available: true, version: line.slice(0, 80) || null };
   } catch {
     return { available: false };
   }
 }
 
-function getHeadCommitTime(cwd, spawnSyncImpl) {
+function getHeadCommitTime(cwd: string, spawnSyncImpl: typeof spawnSync): number | null {
   try {
     const res = spawnSyncImpl('git', ['log', '-1', '--format=%ci'], {
       cwd,
@@ -48,13 +56,21 @@ function getHeadCommitTime(cwd, spawnSyncImpl) {
   }
 }
 
-export function checkEnvironment({ cwd, env, spawnSync: spawnSyncImpl = spawnSync }) {
-  const checks = [];
+export function checkEnvironment({
+  cwd,
+  env: _env,
+  spawnSync: spawnSyncImpl = spawnSync,
+}: {
+  cwd: string;
+  env?: NodeJS.ProcessEnv;
+  spawnSync?: typeof spawnSync;
+}): DoctorCheck[] {
+  const checks: DoctorCheck[] = [];
   const nodeVersion = process.version;
   try {
     const pkgPath = resolve(__dirname, '..', '..', '..', 'package.json');
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-    const enginesNode = pkg?.engines?.node;
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { engines?: { node?: string } };
+    const enginesNode = pkg.engines?.node;
     if (enginesNode) {
       const minMatch = enginesNode.match(/>=?\s*(\d+)/);
       const minMajor = minMatch ? parseInt(minMatch[1], 10) : null;
@@ -96,8 +112,8 @@ export function checkEnvironment({ cwd, env, spawnSync: spawnSyncImpl = spawnSyn
   const manifestPath = appRoot ? manifestOutPath(appRoot) : null;
   if (manifestPath && existsSync(manifestPath)) {
     try {
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
-      const generatedAt = manifest?.generatedAt;
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as { generatedAt?: string };
+      const generatedAt = manifest.generatedAt;
       if (!generatedAt) {
         checks.push(warn('env.manifest', 'repo-manifest.json present but has no generatedAt field'));
       } else {

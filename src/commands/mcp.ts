@@ -22,7 +22,7 @@
 
 import { main as runServer, SERVER_NAME } from '../mcp/index.ts';
 import { runMcpServerPreflight, formatMcpServerPreflight } from '../mcp/server-preflight.ts';
-import { parseMcpArgs as parseSharedMcpArgs } from '../lib/args.ts';
+import { parseMcpArgs as parseSharedMcpArgs, type McpArgs } from '../lib/args.ts';
 
 const HELP = `
   kbx mcp — knowledge-graph affordances as an MCP server (optional, non-canvas hosts)
@@ -54,7 +54,18 @@ const HELP = `
  * @param {string[]} [args]
  * @returns {{ help: boolean, allow: boolean, skipPreflight: boolean, name: string|undefined, unknown: string[] }}
  */
-export function parseMcpArgs(args = []) {
+type McpDependencies = {
+  run?: typeof runServer;
+  preflight?: typeof runMcpServerPreflight;
+  env?: NodeJS.ProcessEnv;
+  io?: {
+    log?: (line: string) => void;
+    error?: (line: string) => void;
+  };
+  proc?: NodeJS.Process;
+};
+
+export function parseMcpArgs(args: string[] = []): McpArgs {
   return parseSharedMcpArgs(args);
 }
 
@@ -70,7 +81,7 @@ export function parseMcpArgs(args = []) {
  * @param {NodeJS.Process} [deps.proc=process]
  * @returns {Promise<void>}
  */
-export default async function mcp(argv = [], deps = {}) {
+export default async function mcp(argv: string[] = [], deps: McpDependencies = {}): Promise<void> {
   const {
     run = runServer,
     preflight = runMcpServerPreflight,
@@ -79,7 +90,7 @@ export default async function mcp(argv = [], deps = {}) {
     proc = process,
   } = deps;
   const log = io.log ?? console.log;
-  const errOut = io.error ?? ((line) => proc.stderr.write(`${line}\n`));
+  const errOut = io.error ?? ((line: string) => proc.stderr.write(`${line}\n`));
 
   const opts = parseMcpArgs(argv);
 

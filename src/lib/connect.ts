@@ -35,6 +35,16 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type {
+  IdentityClaim,
+  IdentityClaimKind,
+  KBConfig,
+  KBEdge,
+  KBGraph,
+  KBNode,
+  SourcePrecedenceConfig,
+  SourceRef,
+} from '@anokye-labs/kbexplorer-core';
 import { canonicalStringify } from './jsonld.ts';
 import { mintReferenceEdges } from './edge-mint.ts';
 import { conflateReferents } from './conflation.ts';
@@ -57,14 +67,77 @@ export const OVERRIDES_FILE = 'manual-overrides.json';
 
 /** Error carrying a stable `.code` for connect-layer failures. */
 export class ConnectError extends Error {
-  constructor(message, code = 'CONNECT_ERROR') {
+  code: string;
+
+  constructor(message: string, code = 'CONNECT_ERROR') {
     super(message);
     this.name = 'ConnectError';
     this.code = code;
   }
 }
 
-function cmp(a, b) {
+interface OverrideIdentityClaim {
+  node: string;
+  claim: IdentityClaimKind;
+  ref: string | Partial<SourceRef>;
+  source?: string;
+  basis?: string;
+}
+
+interface OverrideLinkedRef {
+  node: string;
+  ref?: string | Partial<SourceRef>;
+  href?: string;
+  resourceKind?: string;
+  role?: string;
+}
+
+interface NormalizedOverrides {
+  identityClaims: OverrideIdentityClaim[];
+  linkedRefs: OverrideLinkedRef[];
+}
+
+interface RunConnectOptions {
+  overrides?: NormalizedOverrides | null;
+  config?: KBConfig;
+  precedence?: SourcePrecedenceConfig;
+}
+
+interface ConnectGraph {
+  nodes?: KBNode[];
+  edges?: KBEdge[];
+  [key: string]: unknown;
+}
+
+interface PrecedenceInfo {
+  resolved?: Record<string, unknown>;
+  conflicts?: Record<string, unknown>;
+}
+
+interface PrecedenceEntry {
+  node: string;
+  resolved?: Record<string, unknown>;
+  conflicts?: Record<string, unknown>;
+}
+
+interface RunConnectResult {
+  graph: ReturnType<typeof resolvePrecedence>['graph'];
+  minted: ReturnType<typeof mintReferenceEdges>['minted'];
+  groups: ReturnType<typeof conflateReferents>['groups'];
+  warnings: ReturnType<typeof conflateReferents>['warnings'];
+  precedenceMap: PrecedenceEntry[];
+  stats: {
+    mintedEdges: number;
+    conflatedGroups: number;
+    contradictions: number;
+    precedenceResolved: number;
+    precedenceConflicts: number;
+  };
+}
+
+type ArtifactStatus = 'created' | 'updated' | 'unchanged';
+
+function cmp(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -76,13 +149,14 @@ function cmp(a, b) {
  * @param {unknown} raw
  * @returns {{ identityClaims: object[], linkedRefs: object[] }}
  */
-export function normalizeOverrides(raw) {
+export function normalizeOverrides(raw: unknown): NormalizedOverrides {
   if (raw == null) return { identityClaims: [], linkedRefs: [] };
   if (typeof raw !== 'object' || Array.isArray(raw)) {
     throw new ConnectError('manual-overrides.json must be a JSON object.', 'OVERRIDES_INVALID');
   }
-  const identityClaims = raw.identityClaims ?? [];
-  const linkedRefs = raw.linkedRefs ?? [];
+  const value = raw as { identityClaims?: unknown; linkedRefs?: unknown };
+  const identityClaims = value.identityClaims ?? [];
+  const linkedRefs = value.linkedRefs ?? [];
   if (!Array.isArray(identityClaims) || !Array.isArray(linkedRefs)) {
     throw new ConnectError(
       'manual-overrides.json: `identityClaims` and `linkedRefs` must be arrays.',
@@ -90,7 +164,13 @@ export function normalizeOverrides(raw) {
     );
   }
   for (const o of identityClaims) {
-    if (!o || typeof o.node !== 'string' || typeof o.claim !== 'string' || o.ref == null) {
+    if (
+      !o ||
+      typeof o !== 'object' ||
+      typeof (o as OverrideIdentityClaim).node !== 'string' ||
+      typeof (o as OverrideIdentityClaim).claim !== 'string' ||
+      (o as OverrideIdentityClaim).ref == null
+    ) {
       throw new ConnectError(
         'manual-overrides.json: each identityClaims entry needs `node`, `claim`, and `ref`.',
         'OVERRIDES_INVALID'
@@ -98,19 +178,27 @@ export function normalizeOverrides(raw) {
     }
   }
   for (const o of linkedRefs) {
-    if (!o || typeof o.node !== 'string' || (typeof o.ref !== 'string' && o.href == null)) {
+    if (
+      !o ||
+      typeof o !== 'object' ||
+      typeof (o as OverrideLinkedRef).node !== 'string' ||
+      (typeof (o as OverrideLinkedRef).ref !== 'string' && (o as OverrideLinkedRef).href == null)
+    ) {
       throw new ConnectError(
         'manual-overrides.json: each linkedRefs entry needs `node` and `ref`/`href`.',
         'OVERRIDES_INVALID'
       );
     }
   }
-  return { identityClaims, linkedRefs };
+  return {
+    identityClaims: identityClaims as OverrideIdentityClaim[],
+    linkedRefs: linkedRefs as OverrideLinkedRef[],
+  };
 }
 
 /** Coerce an override `ref` (string href or object) into a SourceRef. */
-function toRef(ref, extra = {}) {
-  const base = typeof ref === 'string' ? { kind: 'kg', href: ref } : { kind: 'kg', ...ref };
+function toRef(ref: string | Partial<SourceRef>, extra: Partial<SourceRef> = {}): SourceRef {
+  const base = typeof ref === 'string' ? { kind: 'kg', href: ref } : { kind: 'kg', href: '', ...ref };
   return { ...base, ...extra };
 }
 
@@ -124,24 +212,28 @@ function toRef(ref, extra = {}) {
  * @param {{ identityClaims?: object[], linkedRefs?: object[] }|null} overrides
  * @returns {{ nodes: object[] }}
  */
-export function applyOverrides(graph, overrides) {
+export function applyOverrides(graph: KBGraph, overrides: NormalizedOverrides | null | undefined): KBGraph {
   if (!overrides) return graph;
   const { identityClaims = [], linkedRefs = [] } = overrides;
   if (identityClaims.length === 0 && linkedRefs.length === 0) return graph;
 
-  const claimsByNode = new Map();
+  const claimsByNode = new Map<string, IdentityClaim[]>();
   for (const o of identityClaims) {
-    const entry = { claim: o.claim, ref: toRef(o.ref) };
+    const entry: IdentityClaim = { claim: o.claim, ref: toRef(o.ref) };
     if (o.source != null) entry.source = o.source;
     if (o.basis != null) entry.basis = o.basis;
-    (claimsByNode.get(o.node) ?? claimsByNode.set(o.node, []).get(o.node)).push(entry);
+    const nodeClaims = claimsByNode.get(o.node) ?? [];
+    nodeClaims.push(entry);
+    claimsByNode.set(o.node, nodeClaims);
   }
-  const refsByNode = new Map();
+  const refsByNode = new Map<string, SourceRef[]>();
   for (const o of linkedRefs) {
-    const ref = toRef(o.ref ?? { href: o.href }, {});
+    const ref = toRef(o.ref ?? { href: o.href ?? '' }, {});
     if (o.resourceKind != null) ref.resourceKind = o.resourceKind;
     if (o.role != null) ref.role = o.role;
-    (refsByNode.get(o.node) ?? refsByNode.set(o.node, []).get(o.node)).push(ref);
+    const nodeRefs = refsByNode.get(o.node) ?? [];
+    nodeRefs.push(ref);
+    refsByNode.set(o.node, nodeRefs);
   }
 
   const nodes = (graph.nodes ?? []).map((n) => {
@@ -168,20 +260,23 @@ export function applyOverrides(graph, overrides) {
  * @returns {{ graph: object, minted: object[], groups: object[], warnings: string[],
  *            precedenceMap: object[], stats: object }}
  */
-export function runConnect(graph, opts = {}) {
-  const withOverrides = applyOverrides(graph, opts.overrides);
-  const mint = mintReferenceEdges(withOverrides);
-  const conf = conflateReferents(mint.graph);
+export function runConnect(graph: ConnectGraph, opts: RunConnectOptions = {}): RunConnectResult {
+  // The downstream engines currently expose narrower structural input types than the full graph.
+  const withOverrides = applyOverrides(graph as unknown as KBGraph, opts.overrides);
+  const mint = mintReferenceEdges(withOverrides as unknown as Parameters<typeof mintReferenceEdges>[0]);
+  const conf = conflateReferents(mint.graph as unknown as Parameters<typeof conflateReferents>[0]);
   const prec = resolvePrecedence(conf.graph, { config: opts.config, precedence: opts.precedence });
+  const precedenceNodes =
+    (prec.graph.nodes ?? []) as unknown as Array<KBNode & { precedence?: PrecedenceInfo }>;
 
-  const precedenceMap = prec.graph.nodes
-    .filter((n) => n.precedence)
-    .map((n) => ({
+  const precedenceMap = precedenceNodes
+    .filter((n: KBNode & { precedence?: PrecedenceInfo }) => n.precedence)
+    .map((n: KBNode & { precedence?: PrecedenceInfo }) => ({
       node: n.id,
-      ...(n.precedence.resolved ? { resolved: n.precedence.resolved } : {}),
-      ...(n.precedence.conflicts ? { conflicts: n.precedence.conflicts } : {}),
+      ...(n.precedence?.resolved ? { resolved: n.precedence.resolved } : {}),
+      ...(n.precedence?.conflicts ? { conflicts: n.precedence.conflicts } : {}),
     }))
-    .sort((a, b) => cmp(a.node, b.node));
+    .sort((a: PrecedenceEntry, b: PrecedenceEntry) => cmp(a.node, b.node));
 
   return {
     graph: prec.graph,
@@ -206,7 +301,7 @@ export function runConnect(graph, opts = {}) {
  * @param {ReturnType<typeof runConnect>} result
  * @returns {Record<string, string>}
  */
-export function serializeConnectArtifacts(result) {
+export function serializeConnectArtifacts(result: RunConnectResult): Record<string, string> {
   return {
     [MINTED_EDGES_FILE]: canonicalStringify(result.minted),
     [CONFLATION_MAP_FILE]: canonicalStringify({
@@ -223,17 +318,17 @@ export function serializeConnectArtifacts(result) {
  * @param {string} dir  The `.kbx/connection` directory.
  * @returns {{ identityClaims: object[], linkedRefs: object[] }|null}
  */
-export function loadOverrides(dir) {
+export function loadOverrides(dir: string): NormalizedOverrides | null {
   const path = resolve(dir, OVERRIDES_FILE);
   if (!existsSync(path)) return null;
   const raw = readFileSync(path, 'utf-8').trim();
   if (raw === '') return null;
-  let parsed;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
     throw new ConnectError(
-      `${OVERRIDES_FILE} is not valid JSON: ${err.message}`,
+      `${OVERRIDES_FILE} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
       'OVERRIDES_INVALID'
     );
   }
@@ -248,9 +343,12 @@ export function loadOverrides(dir) {
  * @param {Record<string,string>} artifacts  filename → bytes
  * @returns {Array<{ file: string, status: 'created'|'updated'|'unchanged' }>}
  */
-export function writeConnectArtifacts(dir, artifacts) {
+export function writeConnectArtifacts(
+  dir: string,
+  artifacts: Record<string, string>,
+): Array<{ file: string; status: ArtifactStatus }> {
   mkdirSync(dir, { recursive: true });
-  const report = [];
+  const report: Array<{ file: string; status: ArtifactStatus }> = [];
   for (const file of ARTIFACT_FILES) {
     const bytes = artifacts[file];
     const path = resolve(dir, file);
@@ -274,8 +372,11 @@ export function writeConnectArtifacts(dir, artifacts) {
  * @param {Record<string,string>} artifacts  filename → expected bytes
  * @returns {{ ok: boolean, drift: Array<{ file: string, reason: string }> }}
  */
-export function checkConnectArtifacts(dir, artifacts) {
-  const drift = [];
+export function checkConnectArtifacts(
+  dir: string,
+  artifacts: Record<string, string>,
+): { ok: boolean; drift: Array<{ file: string; reason: string }> } {
+  const drift: Array<{ file: string; reason: string }> = [];
   for (const file of ARTIFACT_FILES) {
     const path = resolve(dir, file);
     if (!existsSync(path)) {

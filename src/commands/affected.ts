@@ -36,9 +36,21 @@ import { normalizeGraph, readGraphFile } from '../lib/graph-file.ts';
 import { resolveContentDir } from '../lib/kb-env.ts';
 import { parseAffectedArgs } from '../lib/args.ts';
 
+type LegacyAffectedResult = ReturnType<typeof affected>;
+type CompositeAffectedResult = ReturnType<typeof affectedFromGraphs>;
+type GraphLike = Parameters<typeof affectedFromGraphs>[0];
+type BaselineGraphOptions = {
+  cwd: string;
+  graphPath: string;
+  since: string;
+};
+type BaselineGraphDeps = {
+  gitShow?: (rel: string, ref: string) => string;
+};
+
 // -- Legacy git-citation report ----------------------------------------------
 
-function printHumanReport(result) {
+function printHumanReport(result: LegacyAffectedResult): void {
   console.log('');
   console.log('╔══════════════════════════════════════════╗');
   console.log('║       Affected Nodes Report              ║');
@@ -91,7 +103,10 @@ function printHumanReport(result) {
  *
  * @returns {{ nodes: object[], edges: object[] }|null}
  */
-export function loadBaselineGraph({ cwd, graphPath, since }, opts = {}) {
+export function loadBaselineGraph(
+  { cwd, graphPath, since }: BaselineGraphOptions,
+  opts: BaselineGraphDeps = {},
+): GraphLike | null {
   const gitShow =
     opts.gitShow ??
     ((rel, ref) =>
@@ -105,13 +120,13 @@ export function loadBaselineGraph({ cwd, graphPath, since }, opts = {}) {
   try {
     const raw = gitShow(rel, since);
     if (!raw || !raw.trim()) return null;
-    return normalizeGraph(JSON.parse(raw));
+    return normalizeGraph(JSON.parse(raw)) as GraphLike;
   } catch {
     return null;
   }
 }
 
-function printCompositeReport(result, ctx) {
+function printCompositeReport(result: CompositeAffectedResult, ctx: { graph: string; since: string }): void {
   console.log('');
   console.log('+------------------------------------------+');
   console.log('|   Affected Nodes Report (composite)      |');
@@ -147,7 +162,7 @@ function printCompositeReport(result, ctx) {
 
 // -- Entry point --------------------------------------------------------------
 
-export default async function affectedCommand(args) {
+export default async function affectedCommand(args: string[] = []): Promise<void> {
   const opts = parseAffectedArgs(args);
   const cwd = process.cwd();
 
@@ -159,7 +174,7 @@ export default async function affectedCommand(args) {
       process.exitCode = 1;
       return;
     }
-    const current = readGraphFile(graphPath);
+    const current = readGraphFile(graphPath) as GraphLike;
     const baseline = loadBaselineGraph({ cwd, graphPath: opts.graph, since: opts.since });
     const result = affectedFromGraphs(current, baseline);
     if (opts.json) {
@@ -171,7 +186,7 @@ export default async function affectedCommand(args) {
   }
 
   // Legacy git-citation mode (unchanged).
-  const { contentDir } = resolveContentDir(cwd, opts.content);
+  const { contentDir } = resolveContentDir(cwd, opts.content ?? undefined);
   const result = affected({ ref: opts.ref, contentDir, cwd });
 
   if (opts.json) {

@@ -12,21 +12,63 @@
 
 import { executeAffordance, createAffordanceContext, ACTION_CLASSES } from './index.ts';
 import { descriptorToJsonSchema } from '../extension/json-schema.ts';
+import type { AffordanceContext } from './context.ts';
+import type { ActionClass, AffordanceDescription } from './contract.ts';
+
+interface JsonSerializableError {
+  toJSON(): unknown;
+  message?: string;
+}
+
+export interface ToolResultEnvelope {
+  text: string;
+  resultType: 'success';
+}
+
+export interface ToolErrorEnvelope {
+  text: string;
+  resultType: 'failure';
+  error: string;
+}
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: object;
+  actionClass: ActionClass;
+  handler: (args: Record<string, unknown>) => Promise<ToolResultEnvelope | ToolErrorEnvelope | Record<string, unknown>>;
+}
+
+export interface BuildToolOptions {
+  prefix?: string;
+  execute?: (
+    name: string,
+    input: Record<string, unknown>,
+    context?: AffordanceContext,
+  ) => Promise<unknown> | unknown;
+  contextFactory?: () => AffordanceContext;
+  wrapSuccess?: (value: unknown) => Record<string, unknown>;
+  wrapError?: (err: unknown) => Record<string, unknown>;
+}
 
 /** Human-readable, advisory consent hint per action class. */
-export const ACTION_CLASS_HINT = Object.freeze({
+export const ACTION_CLASS_HINT: Readonly<Record<ActionClass, string>> = Object.freeze({
   [ACTION_CLASSES.READ]: 'read-only: observes the graph/repo, no side effects',
   [ACTION_CLASSES.WRITE]: 'write: produces or mutates committed artifacts on disk',
   [ACTION_CLASSES.SAMPLE]: 'sample: assembles context to feed a model (no model call here)',
 });
 
 /** Stable JSON stringify with 2-space indent; tolerant of non-serialisable values. */
-function stringify(value) {
+function stringify(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
   } catch {
     return String(value);
   }
+}
+
+function hasJsonSerializer(err: unknown): err is JsonSerializableError {
+  return typeof err === 'object' && err !== null && typeof (err as JsonSerializableError).toJSON === 'function';
 }
 
 /**
@@ -35,7 +77,9 @@ function stringify(value) {
  * @param {{ actionClass: string, title: string, summary: string }} described
  * @returns {string}
  */
-export function buildToolDescription(described) {
+export function buildToolDescription(
+  described: Pick<AffordanceDescription, 'actionClass' | 'title' | 'summary'>,
+): string {
   const { title, summary, actionClass } = described;
   const hint = ACTION_CLASS_HINT[actionClass] ?? actionClass;
   return `[${actionClass}] ${title} — ${summary} (${hint})`;
@@ -47,7 +91,7 @@ export function buildToolDescription(described) {
  * @param {*} value
  * @returns {{ text: string, resultType: 'success' }}
  */
-export function buildToolResultEnvelope(value) {
+export function buildToolResultEnvelope(value: unknown): ToolResultEnvelope {
   return {
     text: value === undefined ? '' : stringify(value),
     resultType: 'success',
@@ -60,13 +104,13 @@ export function buildToolResultEnvelope(value) {
  * @param {unknown} err
  * @returns {{ text: string, resultType: 'failure', error: string }}
  */
-export function buildToolErrorEnvelope(err) {
-  let payload;
-  let message;
+export function buildToolErrorEnvelope(err: unknown): ToolErrorEnvelope {
+  let payload: unknown;
+  let message: string;
 
-  if (err && typeof err === 'object' && typeof /** @type {any} */ (err).toJSON === 'function') {
-    payload = /** @type {any} */ (err).toJSON();
-    message = /** @type {any} */ (err).message ?? String(err);
+  if (hasJsonSerializer(err)) {
+    payload = err.toJSON();
+    message = err.message ?? String(err);
   } else if (err instanceof Error) {
     payload = { error: true, code: 'EXECUTION_FAILED', message: err.message };
     message = err.message;
@@ -94,7 +138,10 @@ export function buildToolErrorEnvelope(err) {
  * @param {(err: unknown) => object} [opts.wrapError]
  * @returns {{ name: string, description: string, inputSchema: object, actionClass: string, handler: (args: object) => Promise<object> }}
  */
-export function buildToolDefinition(described, opts = {}) {
+export function buildToolDefinition(
+  described: AffordanceDescription,
+  opts: BuildToolOptions = {},
+): ToolDefinition {
   const {
     prefix = 'kbx_',
     execute = executeAffordance,
@@ -109,7 +156,9 @@ export function buildToolDefinition(described, opts = {}) {
     description: buildToolDescription(described),
     inputSchema: descriptorToJsonSchema(described.input),
     actionClass,
-    async handler(args) {
+    async handler(
+      args: Record<string, unknown>,
+    ): Promise<ToolResultEnvelope | ToolErrorEnvelope | Record<string, unknown>> {
       try {
         const result = await execute(name, args ?? {}, contextFactory());
         return wrapSuccess(result);

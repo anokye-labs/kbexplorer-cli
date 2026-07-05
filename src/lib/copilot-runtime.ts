@@ -29,11 +29,141 @@ export const RuntimeErrorCode = Object.freeze({
   NONZERO_EXIT: 'COPILOT_NONZERO_EXIT',
   SPAWN_FAILED: 'COPILOT_SPAWN_FAILED',
   INVALID_INPUT: 'COPILOT_INVALID_INPUT',
-});
+} as const);
+
+type RuntimeErrorCodeValue = (typeof RuntimeErrorCode)[keyof typeof RuntimeErrorCode];
+type StringArrayable = string | readonly string[];
+type RuntimeEnv = NodeJS.ProcessEnv | Record<string, string | undefined>;
+
+interface RuntimeResult {
+  ok: boolean;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  timedOut: boolean;
+  stdout: string;
+  stderr: string;
+  response: string;
+  events: unknown[];
+  binary: string;
+  args: string[];
+  command: string;
+  durationMs: number;
+  adapter: string;
+}
+
+interface RuntimeParseResult {
+  response: string;
+  events: unknown[];
+}
+
+interface RuntimeAdapterErrorOptions {
+  code?: RuntimeErrorCodeValue;
+  exitCode?: number | null;
+  result?: RuntimeResult | null;
+  cause?: unknown;
+}
+
+interface ResolveBinaryOptions {
+  env?: RuntimeEnv;
+  envVar?: string;
+  binary?: string;
+  defaultBinary?: string;
+}
+
+interface RuntimeTaskOptions {
+  prompt?: string;
+  allowTools?: StringArrayable;
+  denyTools?: StringArrayable;
+  allowAllTools?: boolean;
+  allowAll?: boolean;
+  model?: string;
+  outputFormat?: string;
+  silent?: boolean;
+  noColor?: boolean;
+  addDirs?: StringArrayable;
+  logLevel?: string;
+  extraArgs?: StringArrayable;
+  binaryEnv?: string;
+  defaultBinary?: string;
+  argsTemplate?: StringArrayable;
+}
+
+interface RuntimeAdapterCapabilities {
+  toolAllowlist?: boolean;
+  toolDenylist?: boolean;
+  allowAllTools?: boolean;
+  allowAll?: boolean;
+  structuredOutput?: boolean;
+  stdinInput?: boolean;
+}
+
+interface RuntimeAdapter {
+  name: string;
+  defaultBinary?: string;
+  binaryEnv?: string;
+  installUrl?: string;
+  buildArgs: (task: RuntimeTaskOptions) => string[];
+  parseOutput?: (stdout: string, stderr: string, task: RuntimeTaskOptions) => RuntimeParseResult;
+  isAvailable?: (options?: ProbeBinaryOptions) => boolean;
+  capabilities?: RuntimeAdapterCapabilities;
+}
+
+interface CustomAdapterConfig {
+  name?: string;
+  defaultBinary?: string;
+  binaryEnv?: string;
+  outputFormat?: string;
+  argsTemplate?: StringArrayable;
+}
+
+interface ProbeBinaryOptions extends ResolveBinaryOptions {
+  spawnSync?: typeof nodeSpawnSync;
+  probeArgs?: string[];
+  timeoutMs?: number;
+}
+
+interface ResolveSpawnPlanOptions {
+  platform?: NodeJS.Platform;
+  execPath?: string;
+}
+
+interface SpawnPlan {
+  command: string;
+  args: string[];
+  shell: boolean;
+}
+
+interface RunRuntimeTaskOptions extends RuntimeTaskOptions {
+  adapter?: RuntimeAdapter;
+  binary?: string;
+  binaryArgs?: StringArrayable;
+  cwd?: string;
+  env?: RuntimeEnv;
+  timeoutMs?: number;
+  input?: string | Buffer;
+  throwOnError?: boolean;
+  spawn?: typeof nodeSpawn;
+  onEvent?: (event: unknown) => void;
+  errorClass?: RuntimeErrorClass;
+  platform?: NodeJS.Platform;
+}
+
+type RuntimeErrorClass = new (message: string, info?: RuntimeAdapterErrorOptions) => RuntimeAdapterError;
+type RuntimeEventRecord = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is RuntimeEventRecord =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
 
 /** Error thrown by runtime adapters. */
 export class RuntimeAdapterError extends Error {
-  constructor(message, { code = RuntimeErrorCode.SPAWN_FAILED, exitCode = null, result = null, cause } = {}) {
+  code: RuntimeErrorCodeValue;
+  exitCode: number | null;
+  result: RuntimeResult | null;
+
+  constructor(
+    message: string,
+    { code = RuntimeErrorCode.SPAWN_FAILED, exitCode = null, result = null, cause }: RuntimeAdapterErrorOptions = {},
+  ) {
     super(message, cause ? { cause } : undefined);
     this.name = 'RuntimeAdapterError';
     this.code = code;
@@ -44,7 +174,7 @@ export class RuntimeAdapterError extends Error {
 
 /** Backwards-compatible alias for existing callers/tests. */
 export class CopilotRuntimeError extends RuntimeAdapterError {
-  constructor(message, info) {
+  constructor(message: string, info?: RuntimeAdapterErrorOptions) {
     super(message, info);
     this.name = 'CopilotRuntimeError';
   }
@@ -54,14 +184,14 @@ export class CopilotRuntimeError extends RuntimeAdapterError {
 const LEGACY_ENV_MAP = {
   KBX_COPILOT_BIN: 'KBEXPLORER_COPILOT_BIN',
   KBX_CLAUDE_BIN: 'KBEXPLORER_CLAUDE_BIN',
-};
+} as const satisfies Record<string, string>;
 
-export function resolveBinary(options = {}) {
+export function resolveBinary(options: ResolveBinaryOptions = {}): string {
   const env = options.env ?? process.env;
   const envVar = options.envVar;
   let envVal = envVar ? env[envVar] : undefined;
-  if (!envVal && envVar && LEGACY_ENV_MAP[envVar]) {
-    const legacyVar = LEGACY_ENV_MAP[envVar];
+  if (!envVal && envVar && Object.prototype.hasOwnProperty.call(LEGACY_ENV_MAP, envVar)) {
+    const legacyVar = LEGACY_ENV_MAP[envVar as keyof typeof LEGACY_ENV_MAP];
     const legacyVal = env[legacyVar];
     if (legacyVal) {
       process.stderr.write(`[kbx] ${legacyVar} is deprecated; rename to ${envVar}\n`);
@@ -71,9 +201,9 @@ export function resolveBinary(options = {}) {
   return options.binary || envVal || options.defaultBinary || DEFAULT_COPILOT_BINARY;
 }
 
-function asArray(value) {
+function asArray(value: StringArrayable | null | undefined): string[] {
   if (value == null) return [];
-  return Array.isArray(value) ? value : [value];
+  return Array.isArray(value) ? [...value] : [String(value)];
 }
 
 /**
@@ -94,7 +224,7 @@ function asArray(value) {
  * @param {string|string[]} [options.extraArgs]
  * @returns {string[]}
  */
-export function buildCopilotArgs(options = {}) {
+export function buildCopilotArgs(options: RuntimeTaskOptions = {}): string[] {
   const {
     prompt,
     allowTools,
@@ -131,7 +261,7 @@ export function buildCopilotArgs(options = {}) {
   return args;
 }
 
-function normalizeClaudeTool(spec) {
+function normalizeClaudeTool(spec: unknown): string | null {
   const text = String(spec ?? '').trim();
   if (!text) return null;
   const match = text.match(/^([a-z_]+)(?:\((.*)\))?$/i);
@@ -160,7 +290,7 @@ function normalizeClaudeTool(spec) {
   return `${mapped}(${scope})`;
 }
 
-export function buildClaudeArgs(options = {}) {
+export function buildClaudeArgs(options: RuntimeTaskOptions = {}): string[] {
   const {
     prompt,
     allowTools,
@@ -194,11 +324,11 @@ export function buildClaudeArgs(options = {}) {
   return args;
 }
 
-function interpolateTemplate(token, values) {
-  return String(token).replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key) => (values[key] ?? ''));
+function interpolateTemplate(token: string, values: Record<string, unknown>): string {
+  return String(token).replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key: string) => String(values[key] ?? ''));
 }
 
-export function buildCustomArgs(options = {}) {
+export function buildCustomArgs(options: RuntimeTaskOptions = {}): string[] {
   const {
     prompt,
     argsTemplate = ['{prompt}'],
@@ -227,12 +357,12 @@ export function buildCustomArgs(options = {}) {
       code: RuntimeErrorCode.INVALID_INPUT,
     });
   }
-  return asArray(argsTemplate).map((token) => interpolateTemplate(token, options));
+  return asArray(argsTemplate).map((token) => interpolateTemplate(token, options as Record<string, unknown>));
 }
 
-export function parseJsonl(text) {
+export function parseJsonl(text: unknown): unknown[] {
   if (!text) return [];
-  const events = [];
+  const events: unknown[] = [];
   for (const line of String(text).split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -245,12 +375,12 @@ export function parseJsonl(text) {
   return events;
 }
 
-function pickText(value) {
+function pickText(value: unknown): string {
   if (typeof value === 'string') return value;
-  if (Array.isArray(value)) return value.map(pickText).filter(Boolean).join('');
-  if (value && typeof value === 'object') {
+  if (Array.isArray(value)) return value.map((entry) => pickText(entry)).filter(Boolean).join('');
+  if (isRecord(value)) {
     if (typeof value.text === 'string') return value.text;
-    if (typeof value.content?.text === 'string') return value.content.text;
+    if (isRecord(value.content) && typeof value.content.text === 'string') return value.content.text;
     if (typeof value.content === 'string') return value.content;
     // Claude `--output-format json` terminal payload includes `type: "result"` + `result`.
     if (typeof value.result === 'string') return value.result;
@@ -261,10 +391,10 @@ function pickText(value) {
   return '';
 }
 
-export function extractResponseText(events, rawStdout = '') {
-  const parts = [];
+export function extractResponseText(events: readonly unknown[] | null | undefined, rawStdout = ''): string {
+  const parts: string[] = [];
   for (const ev of events ?? []) {
-    if (!ev || typeof ev !== 'object') continue;
+    if (!isRecord(ev)) continue;
     const type = String(ev.type ?? ev.event ?? ev.role ?? '').toLowerCase();
     const looksAssistant =
       type.includes('assistant') ||
@@ -282,14 +412,14 @@ export function extractResponseText(events, rawStdout = '') {
   return joined || String(rawStdout ?? '').trim();
 }
 
-function defaultParseOutput(stdout, _stderr, options = {}) {
+function defaultParseOutput(stdout: string, _stderr: string, options: RuntimeTaskOptions = {}): RuntimeParseResult {
   const format = options.outputFormat;
   const wantsJsonl = format === 'json' || format === 'jsonl' || format === 'stream-json';
   const events = wantsJsonl ? parseJsonl(stdout) : [];
   return { response: extractResponseText(events, stdout), events };
 }
 
-function parseClaudeOutput(stdout, stderr, task = {}) {
+function parseClaudeOutput(stdout: string, stderr: string, task: RuntimeTaskOptions = {}): RuntimeParseResult {
   // Keep stream-json parsing for compatibility with callers that still request it.
   if (task.outputFormat === 'stream-json') {
     return defaultParseOutput(stdout, stderr, { ...task, outputFormat: 'stream-json' });
@@ -306,7 +436,7 @@ function parseClaudeOutput(stdout, stderr, task = {}) {
   }
 }
 
-export function createCopilotAdapter() {
+export function createCopilotAdapter(): RuntimeAdapter {
   return {
     name: 'copilot',
     defaultBinary: DEFAULT_COPILOT_BINARY,
@@ -331,7 +461,7 @@ export function createCopilotAdapter() {
   };
 }
 
-export function createClaudeAdapter() {
+export function createClaudeAdapter(): RuntimeAdapter {
   return {
     name: 'claude',
     defaultBinary: DEFAULT_CLAUDE_BINARY,
@@ -358,7 +488,7 @@ export function createClaudeAdapter() {
   };
 }
 
-export function createCustomAdapter(config = {}) {
+export function createCustomAdapter(config: CustomAdapterConfig = {}): RuntimeAdapter {
   const outputFormat = config.outputFormat ?? 'text';
   return {
     name: config.name || 'custom',
@@ -387,7 +517,7 @@ export function createCustomAdapter(config = {}) {
 export const copilotAdapter = createCopilotAdapter();
 export const claudeAdapter = createClaudeAdapter();
 
-export function isAdapterAvailable(adapter, options = {}) {
+export function isAdapterAvailable(adapter: RuntimeAdapter | null | undefined, options: ProbeBinaryOptions = {}): boolean {
   if (!adapter || typeof adapter !== 'object') return false;
   if (typeof adapter.isAvailable === 'function') return adapter.isAvailable(options);
   return probeBinary({
@@ -397,11 +527,11 @@ export function isAdapterAvailable(adapter, options = {}) {
   });
 }
 
-export function isCopilotAvailable(options = {}) {
+export function isCopilotAvailable(options: ProbeBinaryOptions = {}): boolean {
   return isAdapterAvailable(copilotAdapter, options);
 }
 
-function probeBinary(options = {}) {
+function probeBinary(options: ProbeBinaryOptions = {}): boolean {
   const spawnSyncImpl = options.spawnSync ?? nodeSpawnSync;
   const binary = resolveBinary(options);
   try {
@@ -416,7 +546,7 @@ function probeBinary(options = {}) {
   }
 }
 
-function quoteForDisplay(token) {
+function quoteForDisplay(token: string): string {
   return /[\s"'()]/.test(token) ? JSON.stringify(token) : token;
 }
 
@@ -456,7 +586,7 @@ const NODE_SCRIPT_EXTENSIONS = new Set(['.mjs', '.js']);
  * only). Backslash-immediately-before-an-embedded-quote (e.g. `a\"b`) is a
  * known residual of the `""` convention and is not among the launch payloads.
  */
-export function quoteCmdArg(token) {
+export function quoteCmdArg(token: unknown): string {
   const text = String(token ?? '');
   if (text === '') return '""';
   // Fast path: no whitespace and no cmd-relevant metacharacter → verbatim.
@@ -502,7 +632,11 @@ export function quoteCmdArg(token) {
  *
  * @returns {{ command: string, args: string[], shell: boolean }}
  */
-export function resolveSpawnPlan(binary, args, { platform = process.platform, execPath = process.execPath } = {}) {
+export function resolveSpawnPlan(
+  binary: string,
+  args: StringArrayable | null | undefined,
+  { platform = process.platform, execPath = process.execPath }: ResolveSpawnPlanOptions = {},
+): SpawnPlan {
   const plainArgs = asArray(args);
 
   if (platform !== 'win32') {
@@ -550,7 +684,7 @@ export function resolveSpawnPlan(binary, args, { platform = process.platform, ex
  * @param {object} options.adapter
  * @returns {Promise<RuntimeResult>}
  */
-export function runRuntimeTask(options = {}) {
+export function runRuntimeTask(options: RunRuntimeTaskOptions = {}): Promise<RuntimeResult> {
   const {
     adapter = copilotAdapter,
     binary: binaryOverride,
@@ -591,7 +725,7 @@ export function runRuntimeTask(options = {}) {
   const spawnPlan = resolveSpawnPlan(binary, args, { platform });
 
   return new Promise((resolve, reject) => {
-    let child;
+    let child: ReturnType<typeof nodeSpawn>;
     try {
       child = spawnImpl(spawnPlan.command, spawnPlan.args, {
         cwd,
@@ -608,9 +742,9 @@ export function runRuntimeTask(options = {}) {
     let stderr = '';
     let settled = false;
     let timedOut = false;
-    let timer = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-    const finish = (fn, value) => {
+    const finish = <T,>(fn: (value: T) => void, value: T): void => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
@@ -655,18 +789,18 @@ export function runRuntimeTask(options = {}) {
       if (typeof timer.unref === 'function') timer.unref();
     }
 
-    child.stdout?.on('data', (chunk) => {
+    child.stdout?.on('data', (chunk: Buffer | string) => {
       stdout += chunk.toString();
     });
-    child.stderr?.on('data', (chunk) => {
+    child.stderr?.on('data', (chunk: Buffer | string) => {
       stderr += chunk.toString();
     });
 
-    child.on('error', (err) => {
+    child.on('error', (err: Error) => {
       finish(reject, toSpawnError(err, { binary, command, adapter, errorClass, envVar: task.binaryEnv ?? adapter.binaryEnv }));
     });
 
-    child.on('close', (code, signal) => {
+    child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
       if (settled) return;
 
       const parsed =
@@ -734,11 +868,15 @@ export function runCopilot(options = {}) {
   });
 }
 
-function hasNonEmpty(values) {
+function hasNonEmpty(values: StringArrayable | null | undefined): boolean {
   return asArray(values).map((v) => String(v ?? '').trim()).filter(Boolean).length > 0;
 }
 
-function assertTaskCapabilities(adapter, task, errorClass) {
+function assertTaskCapabilities(
+  adapter: RuntimeAdapter,
+  task: RuntimeTaskOptions,
+  errorClass: RuntimeErrorClass,
+): void {
   const capabilities = adapter.capabilities ?? {};
   if (task.allowAllTools && !capabilities.allowAllTools) {
     throw new errorClass(`${titleCase(adapter.name)} adapter does not support \`allowAllTools\`.`, {
@@ -762,8 +900,23 @@ function assertTaskCapabilities(adapter, task, errorClass) {
   }
 }
 
-function toSpawnError(err, { binary, command, adapter, errorClass, envVar }) {
-  if (err && err.code === 'ENOENT') {
+function toSpawnError(
+  err: unknown,
+  {
+    binary,
+    command,
+    adapter,
+    errorClass,
+    envVar,
+  }: {
+    binary: string;
+    command: string;
+    adapter: RuntimeAdapter | null | undefined;
+    errorClass: RuntimeErrorClass;
+    envVar?: string;
+  },
+): RuntimeAdapterError {
+  if (isRecord(err) && err.code === 'ENOENT') {
     const installHint = adapter?.installUrl ?? null;
     const envHint = envVar ? `, or set ${envVar} to its full path.` : '.';
     return new errorClass(
@@ -774,12 +927,12 @@ function toSpawnError(err, { binary, command, adapter, errorClass, envVar }) {
     );
   }
   return new errorClass(
-    `Failed to start ${titleCase(adapter?.name ?? 'runtime')} CLI: ${err?.message ?? err}\n  command: ${command}`,
+    `Failed to start ${titleCase(adapter?.name ?? 'runtime')} CLI: ${isRecord(err) && typeof err.message === 'string' ? err.message : String(err)}\n  command: ${command}`,
     { code: RuntimeErrorCode.SPAWN_FAILED, cause: err },
   );
 }
 
-export function titleCase(s) {
+export function titleCase(s: unknown): string {
   const text = String(s ?? 'runtime');
   return text.charAt(0).toUpperCase() + text.slice(1);
 }

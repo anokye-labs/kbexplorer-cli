@@ -28,9 +28,23 @@ import { listMarkdownFiles } from './fs-utils.ts';
 
 const SEVERITY = { ERROR: 'error', WARNING: 'warning' };
 
-function parseClusterKeys(configRaw) {
+type FrontmatterNode = {
+  id?: string;
+  title?: string;
+  cluster?: string;
+  parent?: string | null;
+  connections?: Array<{ to?: string }>;
+  [key: string]: unknown;
+};
+
+interface ParsedNode {
+  file: string;
+  frontmatter: FrontmatterNode;
+}
+
+function parseClusterKeys(configRaw: string | null): Set<string> {
   if (!configRaw) return new Set();
-  const keys = new Set();
+  const keys = new Set<string>();
   const lines = configRaw.split(/\r?\n/);
   let inClusters = false;
   for (const line of lines) {
@@ -51,8 +65,8 @@ function parseClusterKeys(configRaw) {
   return keys;
 }
 
-function detectParentCycle(nodes) {
-  const cycles = [];
+function detectParentCycle(nodes: Array<{ id: string; parent: string | null }>) {
+  const cycles: Array<{ id: string; cycle: string[] }> = [];
   for (const node of nodes) {
     const seen = new Set([node.id]);
     let cursor = node.parent;
@@ -64,8 +78,8 @@ function detectParentCycle(nodes) {
         break;
       }
       seen.add(cursor);
-      const parent = nodes.find((n) => n.id === cursor);
-      cursor = parent?.parent;
+      const parent = nodes.find((n: { id: string }) => n.id === cursor);
+      cursor = parent?.parent ?? null;
     }
   }
   return cycles;
@@ -80,21 +94,30 @@ function detectParentCycle(nodes) {
  * @param {string} [options.contentPath='content'] - Content path used to find config.
  * @returns {{ findings: Array, summary: object }}
  */
-export function audit({ contentDir, cwd, contentPath = 'content' }) {
-  const findings = [];
+export function audit({
+  contentDir,
+  cwd,
+  contentPath = 'content',
+}: {
+  contentDir: string;
+  cwd?: string;
+  contentPath?: string;
+}) {
+  const findings: Array<Record<string, unknown>> = [];
   const files = listMarkdownFiles(contentDir);
 
-  const parsed = [];
+  const parsed: ParsedNode[] = [];
   for (const file of files) {
     let result;
     try {
       result = readContentFile(file);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       findings.push({
         severity: SEVERITY.ERROR,
         rule: 'read-error',
         file,
-        message: `cannot read file: ${err.message}`,
+        message: `cannot read file: ${message}`,
       });
       continue;
     }
@@ -109,7 +132,7 @@ export function audit({ contentDir, cwd, contentPath = 'content' }) {
       continue;
     }
 
-    parsed.push({ file, frontmatter: result.frontmatter });
+    parsed.push({ file, frontmatter: (result.frontmatter ?? {}) as FrontmatterNode });
   }
 
   // ── Required fields ──────────────────────────────────────
@@ -201,12 +224,12 @@ export function audit({ contentDir, cwd, contentPath = 'content' }) {
 
   // ── Broken parent reference ──────────────────────────────
   const nodes = parsed
-    .filter((p) => p.frontmatter.id)
+    .filter((p): p is ParsedNode & { frontmatter: FrontmatterNode & { id: string } } => typeof p.frontmatter.id === 'string')
     .map((p) => ({
       id: p.frontmatter.id,
       parent: p.frontmatter.parent || null,
       file: p.file,
-      connections: p.frontmatter.connections || [],
+      connections: Array.isArray(p.frontmatter.connections) ? p.frontmatter.connections : [],
     }));
 
   const idSet = new Set(nodes.map((n) => n.id));
@@ -265,8 +288,9 @@ export function audit({ contentDir, cwd, contentPath = 'content' }) {
     nodes: nodes.length,
     errors: findings.filter((f) => f.severity === SEVERITY.ERROR).length,
     warnings: findings.filter((f) => f.severity === SEVERITY.WARNING).length,
-    byRule: findings.reduce((acc, f) => {
-      acc[f.rule] = (acc[f.rule] || 0) + 1;
+    byRule: findings.reduce<Record<string, number>>((acc, f) => {
+      const rule = String(f.rule);
+      acc[rule] = (acc[rule] || 0) + 1;
       return acc;
     }, {}),
   };
@@ -275,4 +299,3 @@ export function audit({ contentDir, cwd, contentPath = 'content' }) {
 }
 
 export const _internal = { parseClusterKeys, detectParentCycle, listMarkdownFiles };
-

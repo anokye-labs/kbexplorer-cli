@@ -26,6 +26,21 @@ import {
   ConnectError,
 } from '../lib/connect.ts';
 
+type ConnectGraph = Parameters<typeof runConnect>[0];
+type ConnectPrecedence = NonNullable<Parameters<typeof runConnect>[1]>['precedence'];
+type ConnectStats = ReturnType<typeof runConnect>['stats'];
+type ConnectReport = ReturnType<typeof writeConnectArtifacts>;
+type ConnectDrift = ReturnType<typeof checkConnectArtifacts>['drift'];
+type RunConnectCommandOptions = {
+  cwd?: string;
+  check?: boolean;
+  graph?: ConnectGraph;
+  precedence?: ConnectPrecedence;
+};
+type RunConnectCommandResult =
+  | { check: true; dir: string; ok: boolean; drift: ConnectDrift; stats: ConnectStats }
+  | { check: false; dir: string; ok: true; report: ConnectReport; stats: ConnectStats };
+
 function printHelp() {
   console.log(`
   kbx connect — persist + verify the cross-source connection layer
@@ -46,16 +61,19 @@ function printHelp() {
 `);
 }
 
-function toPosix(p) {
+function toPosix(p: string): string {
   return String(p).split('\\').join('/');
 }
 
 /** Best-effort precedence config from a JSON .kbx.json (no YAML dependency). */
-function loadPrecedence(cwd) {
+function loadPrecedence(cwd: string): ConnectPrecedence {
   const path = resolve(cwd, '.kbx.json');
   if (!existsSync(path)) return undefined;
   try {
-    const cfg = JSON.parse(readFileSync(path, 'utf-8'));
+    const cfg = JSON.parse(readFileSync(path, 'utf-8')) as {
+      precedence?: ConnectPrecedence;
+      kbx?: { precedence?: ConnectPrecedence };
+    };
     return cfg.precedence ?? cfg.kbx?.precedence ?? undefined;
   } catch {
     return undefined;
@@ -73,10 +91,12 @@ function loadPrecedence(cwd) {
  * @returns {{ check: boolean, dir: string, ok: boolean,
  *            report?: Array<object>, drift?: Array<object>, stats: object }}
  */
-export async function runConnectCommand(options = {}) {
+export async function runConnectCommand(
+  options: RunConnectCommandOptions = {},
+): Promise<RunConnectCommandResult> {
   const cwd = options.cwd ?? process.cwd();
   const dir = resolve(cwd, CONNECT_DIR);
-  const graph = options.graph ?? (await buildEngineGraph(cwd));
+  const graph = (options.graph ?? (await buildEngineGraph(cwd))) as ConnectGraph;
   const overrides = loadOverrides(dir);
   const precedence = options.precedence ?? loadPrecedence(cwd);
 
@@ -91,7 +111,7 @@ export async function runConnectCommand(options = {}) {
   return { check: false, dir, ok: true, report, stats: result.stats };
 }
 
-export default async function connect(args = []) {
+export default async function connect(args: string[] = []): Promise<void> {
   const opts = parseConnectArgs(args);
   const check = opts.check;
   if (opts.help) {
@@ -105,7 +125,7 @@ export default async function connect(args = []) {
   }
 
   const cwd = process.cwd();
-  let res;
+  let res: RunConnectCommandResult;
   try {
     res = await runConnectCommand({ cwd, check });
   } catch (err) {

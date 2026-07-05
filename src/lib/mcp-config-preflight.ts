@@ -35,12 +35,41 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 
+type JsonRecord = Record<string, unknown>;
+
+interface AdapterLike {
+  name?: string;
+}
+
+interface RuntimeMcpConfig {
+  required?: string[];
+  optional?: string[];
+}
+
+interface RuntimeConfigLike {
+  mcp?: RuntimeMcpConfig | null;
+}
+
+interface DetectOptions {
+  env?: NodeJS.ProcessEnv;
+}
+
+interface DetectedServers {
+  servers: Set<string>;
+  sources: string[];
+}
+
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
-function tryReadJson(filePath) {
+function isRecord(value: unknown): value is JsonRecord {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function tryReadJson(filePath: string): JsonRecord | null {
   try {
     if (!existsSync(filePath)) return null;
-    return JSON.parse(readFileSync(filePath, 'utf-8'));
+    const parsed = JSON.parse(readFileSync(filePath, 'utf-8'));
+    return isRecord(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -54,14 +83,14 @@ function tryReadJson(filePath) {
  * @param {NodeJS.ProcessEnv} [opts.env]  Process env (for HOME override in tests).
  * @returns {{ servers: Set<string>, sources: string[] }}
  */
-function detectClaudeServers(cwd, { env } = {}) {
-  const servers = new Set();
-  const sources = [];
+function detectClaudeServers(cwd: string, { env }: DetectOptions = {}): DetectedServers {
+  const servers = new Set<string>();
+  const sources: string[] = [];
 
   // 1. Repo-local .mcp.json
   const repoMcpPath = join(cwd, '.mcp.json');
   const repoMcp = tryReadJson(repoMcpPath);
-  if (repoMcp && typeof repoMcp.mcpServers === 'object' && repoMcp.mcpServers !== null && !Array.isArray(repoMcp.mcpServers)) {
+  if (repoMcp && isRecord(repoMcp.mcpServers)) {
     for (const key of Object.keys(repoMcp.mcpServers)) {
       servers.add(key);
     }
@@ -72,7 +101,7 @@ function detectClaudeServers(cwd, { env } = {}) {
   const home = (env && (env.HOME || env.USERPROFILE)) || homedir();
   const userClaudeJsonPath = join(home, '.claude.json');
   const userClaude = tryReadJson(userClaudeJsonPath);
-  if (userClaude && typeof userClaude.projects === 'object' && userClaude.projects !== null) {
+  if (userClaude && isRecord(userClaude.projects)) {
     const projects = userClaude.projects;
     // projects is an object keyed by absolute path
     for (const [projectPath, projectData] of Object.entries(projects)) {
@@ -80,10 +109,8 @@ function detectClaudeServers(cwd, { env } = {}) {
       const normalizedCwd = resolve(cwd);
       if (normalizedProject === normalizedCwd) {
         if (
-          projectData &&
-          typeof projectData.mcpServers === 'object' &&
-          projectData.mcpServers !== null &&
-          !Array.isArray(projectData.mcpServers)
+          isRecord(projectData) &&
+          isRecord(projectData.mcpServers)
         ) {
           for (const key of Object.keys(projectData.mcpServers)) {
             servers.add(key);
@@ -107,9 +134,9 @@ function detectClaudeServers(cwd, { env } = {}) {
  * @param {NodeJS.ProcessEnv} [opts.env]  Process env (for HOME override in tests).
  * @returns {{ servers: Set<string>, sources: string[] }}
  */
-function detectCopilotServers(cwd, { env } = {}) {
-  const servers = new Set();
-  const sources = [];
+function detectCopilotServers(cwd: string, { env }: DetectOptions = {}): DetectedServers {
+  const servers = new Set<string>();
+  const sources: string[] = [];
 
   // Copilot CLI reads ~/.copilot/mcp-config.json (top-level "mcpServers",
   // verified against a live install). It has no repo-local MCP config file
@@ -129,10 +156,10 @@ function detectCopilotServers(cwd, { env } = {}) {
 }
 
 /** Return the first of obj.mcpServers / obj.servers that is a plain object. */
-function pickServerMap(obj) {
+function pickServerMap(obj: unknown): JsonRecord | null {
   for (const key of ['mcpServers', 'servers']) {
-    const value = obj?.[key];
-    if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+    const value = isRecord(obj) ? obj[key] : undefined;
+    if (isRecord(value)) return value;
   }
   return null;
 }
@@ -152,16 +179,21 @@ function pickServerMap(obj) {
  * @param {NodeJS.ProcessEnv} [opts.env]  Env override (used for HOME resolution in tests).
  * @returns {{ servers: Set<string>, sources: string[], undetectable: boolean }}
  */
-export function detectConfiguredMcpServers(adapter, cwd, { env } = {}) {
+export function detectConfiguredMcpServers(
+  adapter: AdapterLike | undefined,
+  cwd: string | undefined,
+  { env }: DetectOptions = {},
+): DetectedServers & { undetectable: boolean } {
   const name = String(adapter?.name ?? '').toLowerCase();
+  const repoRoot = cwd ?? process.cwd();
 
   if (name === 'claude') {
-    const { servers, sources } = detectClaudeServers(cwd, { env });
+    const { servers, sources } = detectClaudeServers(repoRoot, { env });
     return { servers, sources, undetectable: false };
   }
 
   if (name === 'copilot') {
-    const { servers, sources } = detectCopilotServers(cwd, { env });
+    const { servers, sources } = detectCopilotServers(repoRoot, { env });
     return { servers, sources, undetectable: false };
   }
 
@@ -179,7 +211,19 @@ export function detectConfiguredMcpServers(adapter, cwd, { env } = {}) {
  * @param {NodeJS.ProcessEnv} [opts.env]  Env override.
  * @returns {{ ok: boolean, missing: string[], unverifiable: string[], warnings: string[] }}
  */
-export function runMcpPreflight({ adapter, config, cwd, env } = {}) {
+export function runMcpPreflight(
+  {
+    adapter,
+    config,
+    cwd,
+    env,
+  }: {
+    adapter?: AdapterLike;
+    config?: RuntimeConfigLike;
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+  } = {},
+): { ok: boolean; missing: string[]; unverifiable: string[]; warnings: string[] } {
   const mcp = config?.mcp;
 
   // No MCP requirements declared → nothing to check.
@@ -208,11 +252,11 @@ export function runMcpPreflight({ adapter, config, cwd, env } = {}) {
     return { ok: true, missing: [], unverifiable: allDeclared, warnings };
   }
 
-  const missing = [];
-  const warnings = [];
-  const unverifiable = [];
+  const missing: string[] = [];
+  const warnings: string[] = [];
+  const unverifiable: string[] = [];
 
-  const configFiles = _expectedConfigFiles(adapterName, cwd, env);
+  const configFiles = _expectedConfigFiles(adapterName, cwd ?? process.cwd(), env);
 
   for (const server of required) {
     if (!servers.has(server)) {
@@ -243,7 +287,12 @@ export function runMcpPreflight({ adapter, config, cwd, env } = {}) {
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {string[]}  Lines to print to stderr.
  */
-export function formatMcpPreflightErrors(missing, adapterName, cwd, env) {
+export function formatMcpPreflightErrors(
+  missing: string[],
+  adapterName: string,
+  cwd: string,
+  env?: NodeJS.ProcessEnv,
+): string[] {
   if (missing.length === 0) return [];
 
   const files = _expectedConfigFiles(adapterName, cwd, env);
@@ -272,7 +321,11 @@ export function formatMcpPreflightErrors(missing, adapterName, cwd, env) {
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {{ primary: string, secondary: string }}
  */
-function _expectedConfigFiles(adapterName, cwd, env) {
+function _expectedConfigFiles(
+  adapterName: string,
+  cwd: string,
+  env?: NodeJS.ProcessEnv,
+): { primary: string; secondary: string } {
   const home = (env && (env.HOME || env.USERPROFILE)) || homedir();
   if (adapterName === 'claude') {
     return {
@@ -292,4 +345,3 @@ function _expectedConfigFiles(adapterName, cwd, env) {
     secondary: '<adapter-config-file>',
   };
 }
-

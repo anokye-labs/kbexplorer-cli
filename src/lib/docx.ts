@@ -25,13 +25,15 @@ const SIG_LOC = 0x04034b50; // Local file header
 
 /** Error thrown for malformed / unexpected archive content. */
 export class DocxParseError extends Error {
-  constructor(message) {
+  constructor(message: string) {
     super(message);
     this.name = 'DocxParseError';
   }
 }
 
-function toBuffer(input) {
+type ZipEntryRecord = { method: number; compressedSize: number; offset: number };
+
+function toBuffer(input: Buffer | Uint8Array | ArrayBuffer): Buffer {
   if (Buffer.isBuffer(input)) return input;
   if (input instanceof Uint8Array) return Buffer.from(input);
   if (input instanceof ArrayBuffer) return Buffer.from(input);
@@ -39,7 +41,7 @@ function toBuffer(input) {
 }
 
 /** Find the End-Of-Central-Directory record by scanning backwards. */
-function findEocd(buf) {
+function findEocd(buf: Buffer): number {
   // EOCD is at least 22 bytes; comment can push it back up to 0xFFFF.
   const minPos = Math.max(0, buf.length - 22 - 0xffff);
   for (let i = buf.length - 22; i >= minPos; i--) {
@@ -55,14 +57,14 @@ function findEocd(buf) {
  * @param {Buffer} buf
  * @returns {Map<string, { method: number, compressedSize: number, offset: number }>}
  */
-function parseCentralDirectory(buf) {
+function parseCentralDirectory(buf: Buffer): Map<string, ZipEntryRecord> {
   const eocd = findEocd(buf);
   if (eocd < 0) {
     throw new DocxParseError('Not a valid ZIP/.docx archive (no end-of-central-directory record).');
   }
   const total = buf.readUInt16LE(eocd + 10);
   let ptr = buf.readUInt32LE(eocd + 16); // offset of central directory
-  const entries = new Map();
+  const entries = new Map<string, ZipEntryRecord>();
 
   for (let i = 0; i < total; i++) {
     if (ptr + 46 > buf.length || buf.readUInt32LE(ptr) !== SIG_CEN) {
@@ -89,7 +91,7 @@ function parseCentralDirectory(buf) {
  * @param {string} name
  * @returns {Buffer|null}
  */
-export function readZipEntry(input, name) {
+export function readZipEntry(input: Buffer | Uint8Array | ArrayBuffer, name: string): Buffer | null {
   const buf = toBuffer(input);
   const entries = parseCentralDirectory(buf);
   const entry = entries.get(name);
@@ -114,7 +116,7 @@ export function readZipEntry(input, name) {
  * @param {Buffer|Uint8Array} input
  * @returns {string[]}
  */
-export function listZipEntries(input) {
+export function listZipEntries(input: Buffer | Uint8Array | ArrayBuffer): string[] {
   return [...parseCentralDirectory(toBuffer(input)).keys()];
 }
 
@@ -124,13 +126,13 @@ const XML_ENTITIES = {
   '&gt;': '>',
   '&quot;': '"',
   '&apos;': "'",
-};
+} as const;
 
-function decodeXmlEntities(text) {
+function decodeXmlEntities(text: string): string {
   return text
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
-    .replace(/&(amp|lt|gt|quot|apos);/g, (m) => XML_ENTITIES[m]);
+    .replace(/&#x([0-9a-fA-F]+);/g, (_match: string, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_match: string, dec: string) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&(amp|lt|gt|quot|apos);/g, (m: string) => XML_ENTITIES[m as keyof typeof XML_ENTITIES]);
 }
 
 /**
@@ -144,14 +146,14 @@ function decodeXmlEntities(text) {
  * @param {string} xml
  * @returns {string}
  */
-export function docxXmlToText(xml) {
+export function docxXmlToText(xml: string): string {
   if (!xml) return '';
   // Restrict to the body when present to avoid headers/footers/settings noise.
   const bodyMatch = xml.match(/<w:body[\s\S]*?<\/w:body>/);
   const scope = bodyMatch ? bodyMatch[0] : xml;
 
   const paragraphs = scope.split(/<\/w:p>/);
-  const lines = [];
+  const lines: string[] = [];
   // Walk text runs, tabs, and breaks in document order so inline <w:tab/> and
   // <w:br/> between runs are preserved (not just the <w:t> content).
   const token = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<w:tab\b[^>]*\/?>|<w:(?:br|cr)\b[^>]*\/?>/g;
@@ -179,7 +181,7 @@ export function docxXmlToText(xml) {
  * @returns {string}
  * @throws {DocxParseError} when the archive is not a valid `.docx`.
  */
-export function extractDocxText(input) {
+export function extractDocxText(input: Buffer | Uint8Array | ArrayBuffer): string {
   const xml = readZipEntry(input, 'word/document.xml');
   if (!xml) {
     throw new DocxParseError(

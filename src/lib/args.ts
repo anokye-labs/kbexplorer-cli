@@ -312,7 +312,125 @@ export function parseDoctorArgs(args: string[] = []): DoctorArgs {
 
 // ---- parsers merged from former args.js shim (cli#238) ----
 
-export function parseAffectedArgs(args: string[] = []): Record<string, unknown> {
+export interface AffectedArgs {
+  json: boolean;
+  ref: string;
+  content: string | null;
+  graph: string | null;
+  since: string;
+  positionals: string[];
+  unknown: string[];
+}
+
+export interface AuditArgs {
+  json: boolean;
+  content: string | null;
+  unknown: string[];
+}
+
+export interface BuildArgs {
+  base: string | null;
+  unknown: string[];
+}
+
+export interface ConnectArgs {
+  check: boolean;
+  help: boolean;
+  unknown: string[];
+}
+
+export interface DevArgs {
+  noWatch: boolean;
+  viteArgs: string[];
+  unknown: string[];
+}
+
+export interface LinksArgs {
+  json: boolean;
+  unknown: string[];
+}
+
+export interface ManifestArgs {
+  unknown: string[];
+}
+
+export interface McpArgs {
+  help: boolean;
+  allow: boolean;
+  skipPreflight: boolean;
+  name: string | undefined;
+  unknown: string[];
+}
+
+export interface PluginArgs {
+  sub: string | null;
+  scope: string;
+  sessionDir: string | null;
+  json: boolean;
+  help: boolean;
+  unknown: string[];
+  positionals: string[];
+  _: string[];
+}
+
+export interface ScaffoldArgs {
+  slug: string | null;
+  cluster: string | null;
+  parent: string | null;
+  title: string | null;
+  emoji: string | null;
+  content: string | null;
+  force: boolean;
+  unknown: string[];
+  positionals: string[];
+}
+
+export interface SearchIndexArgs {
+  check: boolean;
+  dryRun: boolean;
+  help: boolean;
+  json: boolean;
+  dir: string | null;
+  provider: string | null;
+  model: string | null;
+  content: string | null;
+  batchSize: number | null;
+  unknown: string[];
+}
+
+export interface SearchArgs {
+  query: string | null;
+  help: boolean;
+  json: boolean;
+  limit: number | null;
+  cluster: string | null;
+  entityType: string | null;
+  minScore: number | null;
+  dir: string | null;
+  provider: string | null;
+  model: string | null;
+  positionals: string[];
+  unknown: string[];
+}
+
+export interface SyncArgs {
+  check: boolean;
+  json: boolean;
+  graph: string;
+  since: string;
+  against: string | null;
+  help: boolean;
+  unknown: string[];
+}
+
+export interface ValidateArgs {
+  json: boolean;
+  dir: string | null;
+  help: boolean;
+  unknown: string[];
+}
+
+export function parseAffectedArgs(args: string[] = []): AffectedArgs {
   const out = parseArgs(
    {
      defaults: { json: false, ref: 'HEAD', content: null, graph: null, since: 'HEAD', unknown: [] },
@@ -325,12 +443,12 @@ export function parseAffectedArgs(args: string[] = []): Record<string, unknown> 
      positionals: 'positionals',
    },
    args,
-  );
+  ) as unknown as AffectedArgs;
   out.ref = out.positionals[0] ?? out.ref;
   return out;
 }
 
-export function parseAuditArgs(args: string[] = []): Record<string, unknown> {
+export function parseAuditArgs(args: string[] = []): AuditArgs {
   return parseArgs(
    {
      defaults: { json: false, content: null, unknown: [] },
@@ -340,21 +458,21 @@ export function parseAuditArgs(args: string[] = []): Record<string, unknown> {
      ],
    },
    args,
-  );
+  ) as unknown as AuditArgs;
 }
 
-export function parseBuildArgs(args: string[] = []): Record<string, unknown> {
+export function parseBuildArgs(args: string[] = []): BuildArgs {
   return parseArgs(
    {
      defaults: { base: null, unknown: [] },
      options: [{ name: 'base', aliases: ['--base'], type: 'value' }],
    },
    args,
-  );
+  ) as unknown as BuildArgs;
 }
 
-export function parseConnectArgs(args: string[] = []): Record<string, unknown> {
-  const out = { check: false, help: false, unknown: [] };
+export function parseConnectArgs(args: string[] = []): ConnectArgs {
+  const out: ConnectArgs = { check: false, help: false, unknown: [] };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--check') out.check = true;
@@ -364,7 +482,7 @@ export function parseConnectArgs(args: string[] = []): Record<string, unknown> {
   return out;
 }
 
-export function parseDevArgs(args: string[] = []): Record<string, unknown> {
+export function parseDevArgs(args: string[] = []): DevArgs {
   const out = parseArgs(
    {
      defaults: { noWatch: false, viteArgs: [], unknown: [] },
@@ -372,26 +490,26 @@ export function parseDevArgs(args: string[] = []): Record<string, unknown> {
      collectUnknown: false,
    },
    args,
-  );
+  ) as unknown as DevArgs;
   out.viteArgs = args.filter((arg) => arg !== '--no-watch');
   return out;
 }
 
-export function parseLinksArgs(args: string[] = []): Record<string, unknown> {
+export function parseLinksArgs(args: string[] = []): LinksArgs {
   return parseArgs(
    {
      defaults: { json: false, unknown: [] },
      options: [{ name: 'json', aliases: ['--json'], type: 'boolean' }],
    },
    args,
-  );
+  ) as unknown as LinksArgs;
 }
 
-export function parseManifestArgs(args: string[] = []): Record<string, unknown> {
-  return parseArgs({ defaults: { unknown: [] }, options: [] }, args);
+export function parseManifestArgs(args: string[] = []): ManifestArgs {
+  return parseArgs({ defaults: { unknown: [] }, options: [] }, args) as unknown as ManifestArgs;
 }
 
-export function parseMcpArgs(args: string[] = []): Record<string, unknown> {
+export function parseMcpArgs(args: string[] = []): McpArgs {
   const out = parseArgs(
    {
      defaults: { help: false, allow: false, skipPreflight: false, name: undefined, unknown: [] },
@@ -403,12 +521,12 @@ export function parseMcpArgs(args: string[] = []): Record<string, unknown> {
      ],
    },
    args,
-  );
+  ) as unknown as McpArgs;
   out.name = out.name ?? undefined;
   return out;
 }
 
-export function parsePluginArgs(args: string[] = []): Record<string, unknown> {
+export function parsePluginArgs(args: string[] = []): PluginArgs {
   const out = parseArgs(
    {
      defaults: { sub: null, scope: 'project', sessionDir: null, json: false, help: false, unknown: [] },
@@ -421,13 +539,13 @@ export function parsePluginArgs(args: string[] = []): Record<string, unknown> {
      positionals: 'positionals',
    },
    args,
-  );
+  ) as unknown as PluginArgs;
   out.sub = out.positionals[0] ?? null;
   out._ = out.positionals.slice(1);
   return out;
 }
 
-export function parseScaffoldArgs(args: string[] = []): Record<string, unknown> {
+export function parseScaffoldArgs(args: string[] = []): ScaffoldArgs {
   const out = parseArgs(
    {
      defaults: {
@@ -451,12 +569,12 @@ export function parseScaffoldArgs(args: string[] = []): Record<string, unknown> 
      positionals: 'positionals',
    },
    args,
-  );
+  ) as unknown as ScaffoldArgs;
   out.slug = out.positionals[0] ?? null;
   return out;
 }
 
-export function parseSearchIndexArgs(args: string[] = []): Record<string, unknown> {
+export function parseSearchIndexArgs(args: string[] = []): SearchIndexArgs {
   return parseArgs(
    {
      defaults: {
@@ -484,10 +602,10 @@ export function parseSearchIndexArgs(args: string[] = []): Record<string, unknow
      ],
    },
    args,
-  );
+  ) as unknown as SearchIndexArgs;
 }
 
-export function parseSearchArgs(args: string[] = []): Record<string, unknown> {
+export function parseSearchArgs(args: string[] = []): SearchArgs {
   const out = parseArgs(
    {
      defaults: {
@@ -517,12 +635,12 @@ export function parseSearchArgs(args: string[] = []): Record<string, unknown> {
      positionals: 'positionals',
    },
    args,
-  );
+  ) as unknown as SearchArgs;
   out.query = out.positionals.join(' ') || null;
   return out;
 }
 
-export function parseSyncArgs(args: string[] = []): Record<string, unknown> {
+export function parseSyncArgs(args: string[] = []): SyncArgs {
   return parseArgs(
    {
      defaults: { check: false, json: false, graph: '.kbx/connection/composite-graph.json', since: 'HEAD', against: null, help: false, unknown: [] },
@@ -536,10 +654,10 @@ export function parseSyncArgs(args: string[] = []): Record<string, unknown> {
      ],
    },
    args,
-  );
+  ) as unknown as SyncArgs;
 }
 
-export function parseValidateArgs(args: string[] = []): Record<string, unknown> {
+export function parseValidateArgs(args: string[] = []): ValidateArgs {
   return parseArgs(
    {
      defaults: { json: false, dir: null, help: false, unknown: [] },
@@ -550,6 +668,6 @@ export function parseValidateArgs(args: string[] = []): Record<string, unknown> 
      ],
    },
    args,
-  );
+  ) as unknown as ValidateArgs;
 }
 

@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export function resolvePackageAssetsDir(moduleUrl) {
+export function resolvePackageAssetsDir(moduleUrl: string): string {
   const moduleDir = dirname(fileURLToPath(moduleUrl));
   const candidates = [
     resolve(moduleDir, '..', 'assets'),

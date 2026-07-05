@@ -39,6 +39,25 @@ export const HostKind = Object.freeze({
   BARE_GIT: 'bare-git',
 });
 
+type HostKindValue = (typeof HostKind)[keyof typeof HostKind];
+
+export interface ForgeRef {
+  kind: HostKindValue;
+  owner: string;
+  repo: string;
+}
+
+export interface RepositoryRef {
+  kind: 'git';
+  remoteUrl: string;
+  host: ForgeRef | null;
+}
+
+interface ForgeAdapter {
+  kind: HostKindValue;
+  parse: (remoteUrl: string) => ForgeRef | null;
+}
+
 /**
  * @typedef {Object} ForgeRef
  * @property {string} kind  - One of {@link HostKind}.
@@ -69,7 +88,7 @@ export const HostKind = Object.freeze({
  */
 export const githubForgeAdapter = {
   kind: HostKind.GITHUB,
-  parse(remoteUrl) {
+  parse(remoteUrl: string): ForgeRef | null {
     if (!remoteUrl) return null;
 
     const sshMatch = remoteUrl.match(/git@[^:]+:([^/]+)\/([^/.]+)/);
@@ -88,7 +107,7 @@ export const githubForgeAdapter = {
  *
  * @type {ForgeAdapter[]}
  */
-const ADAPTERS = [githubForgeAdapter];
+const ADAPTERS: readonly ForgeAdapter[] = [githubForgeAdapter];
 
 /**
  * Resolve a remote URL into a host-specific {@link ForgeRef} via the registered
@@ -102,7 +121,7 @@ const ADAPTERS = [githubForgeAdapter];
  * @param {string|null|undefined} remoteUrl
  * @returns {ForgeRef|null}
  */
-export function resolveForgeRef(remoteUrl) {
+export function resolveForgeRef(remoteUrl: string | null | undefined): ForgeRef | null {
   if (!remoteUrl) return null;
   for (const adapter of ADAPTERS) {
     const ref = adapter.parse(remoteUrl);
@@ -122,7 +141,7 @@ export function resolveForgeRef(remoteUrl) {
  * @param {string} remoteUrl
  * @returns {ForgeRef|null}
  */
-function parseGenericHost(remoteUrl) {
+function parseGenericHost(remoteUrl: string): ForgeRef | null {
   const m = remoteUrl.match(/^[a-z][a-z0-9+.-]*:\/\/[^/]+\/([^/]+)\/([^/.]+)/i);
   if (m) return { kind: HostKind.BARE_GIT, owner: m[1], repo: m[2] };
   return null;
@@ -139,7 +158,7 @@ function parseGenericHost(remoteUrl) {
  * @param {string|null|undefined} remoteUrl
  * @returns {RepositoryRef|null} null only when `remoteUrl` is empty/absent.
  */
-export function resolveRepositoryRef(remoteUrl) {
+export function resolveRepositoryRef(remoteUrl: string | null | undefined): RepositoryRef | null {
   if (!remoteUrl) return null;
   const host = resolveForgeRef(remoteUrl) ?? parseGenericHost(remoteUrl);
   return { kind: 'git', remoteUrl, host };

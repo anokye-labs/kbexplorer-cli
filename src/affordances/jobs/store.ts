@@ -41,7 +41,92 @@
  */
 
 import { createHash } from 'node:crypto';
-import { stampProvenance } from '../provenance.ts';
+import { stampProvenance, type Derivation } from '../provenance.ts';
+
+export interface JobProgress extends Record<string, unknown> {
+  phase: string;
+  completed: number;
+  total: number;
+  message: string;
+}
+
+export interface JobChange extends Record<string, unknown> {
+  path: string;
+  contents?: string;
+  derivation?: Derivation;
+  provenance?: unknown;
+}
+
+export interface JobPartialFailure extends Record<string, unknown> {
+  unit?: string;
+  ok?: boolean;
+  error?: string;
+  path?: string;
+  reason?: string;
+}
+
+export interface JobNeeds {
+  credential: string;
+}
+
+export interface JobErrorInfo {
+  code: string;
+  message: string;
+}
+
+export type CredentialBag = Record<string, string>;
+
+export interface JobRunnerArgs {
+  request: Record<string, unknown>;
+  signal: AbortSignal;
+  onProgress: (progress: Partial<JobProgress>) => void;
+  getCredential: (name: string) => string;
+}
+
+export interface JobRunnerResult {
+  changes?: JobChange[];
+  partial?: JobPartialFailure[];
+}
+
+export type JobRun = (args: JobRunnerArgs) => Promise<JobRunnerResult>;
+
+export interface JobSnapshot {
+  id: string;
+  operation: string;
+  status: JobStatus;
+  progress: JobProgress;
+  changeCount: number;
+  applied: boolean;
+  needs: JobNeeds | null;
+  partial: JobPartialFailure[] | null;
+  error: JobErrorInfo | null;
+  derivation: Derivation | null;
+}
+
+export interface JobRecord {
+  id: string;
+  operation: string;
+  status: JobStatus;
+  progress: JobProgress;
+  request: Record<string, unknown>;
+  credentialNames: string[];
+  derivation: Derivation | null;
+  changes: JobChange[] | null;
+  partial: JobPartialFailure[] | null;
+  applied: boolean;
+  needs: JobNeeds | null;
+  error: JobErrorInfo | null;
+  _controller: AbortController;
+  _running: Promise<void> | null;
+}
+
+export interface StartJobSpec {
+  operation: string;
+  request: Record<string, unknown>;
+  credentials?: CredentialBag;
+  derivation?: Derivation | null;
+  run: JobRun;
+}
 
 /**
  * Lifecycle states a job can occupy. A job is *settled* once it is no longer
@@ -62,7 +147,9 @@ export const JOB_STATUS = Object.freeze({
   AWAITING_CREDENTIAL: 'awaiting_credential',
 });
 
-const SETTLED = new Set([JOB_STATUS.SUCCEEDED, JOB_STATUS.FAILED, JOB_STATUS.CANCELLED]);
+export type JobStatus = (typeof JOB_STATUS)[keyof typeof JOB_STATUS];
+
+const SETTLED = new Set<JobStatus>([JOB_STATUS.SUCCEEDED, JOB_STATUS.FAILED, JOB_STATUS.CANCELLED]);
 
 /**
  * Raised by a runtime seam (via `getCredential`) when it needs a credential the
@@ -71,8 +158,10 @@ const SETTLED = new Set([JOB_STATUS.SUCCEEDED, JOB_STATUS.FAILED, JOB_STATUS.CAN
  * prompt for the value and resume the *same* job.
  */
 export class CredentialRequiredError extends Error {
+  credential: string;
+
   /** @param {string} name  Credential identifier (e.g. `GITHUB_TOKEN`). */
-  constructor(name) {
+  constructor(name: string) {
     super(`Credential required: ${name}`);
     this.name = 'CredentialRequiredError';
     this.credential = name;
@@ -80,22 +169,23 @@ export class CredentialRequiredError extends Error {
 }
 
 /** Redact a credential bag down to its (sorted) key names — never the values. */
-function redactCredentialNames(credentials) {
-  return Object.keys(credentials ?? {}).sort();
+function redactCredentialNames(credentials: Record<string, unknown>): string[] {
+  return Object.keys(credentials).sort();
 }
 
 /** Stable, key-sorted JSON for deterministic id derivation (no timestamps). */
-function canonicalJson(value) {
+function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   if (value && typeof value === 'object') {
-    const keys = Object.keys(value).sort();
-    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(value[k])}`).join(',')}}`;
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
   }
   return JSON.stringify(value === undefined ? null : value);
 }
 
 /** Public, serialisable snapshot of a job (never leaks internal handles). */
-function snapshot(job) {
+function snapshot(job: JobRecord): JobSnapshot {
   return {
     id: job.id,
     operation: job.operation,
@@ -113,6 +203,17 @@ function snapshot(job) {
   };
 }
 
+function errorInfo(err: unknown): JobErrorInfo {
+  if (typeof err === 'object' && err !== null) {
+    const record = err as { code?: unknown; message?: unknown };
+    return {
+      code: typeof record.code === 'string' ? record.code : 'EXECUTION_FAILED',
+      message: typeof record.message === 'string' ? record.message : String(err),
+    };
+  }
+  return { code: 'EXECUTION_FAILED', message: String(err) };
+}
+
 /**
  * An in-process registry of long-running jobs. One store instance is shared
  * process-wide by default ({@link defaultJobStore}) so a job started in one
@@ -128,12 +229,15 @@ function snapshot(job) {
  * error report) cannot leak a secret just by touching the job.
  */
 export class JobStore {
+  _jobs: Map<string, JobRecord>;
+  _seq: number;
+  _credentialVault: Map<string, CredentialBag>;
+
   constructor() {
-    /** @type {Map<string, object>} */
-    this._jobs = new Map();
+    this._jobs = new Map<string, JobRecord>();
     this._seq = 0;
-    /** @type {Map<string, object>} Real credential values, isolated from job records. */
-    this._credentialVault = new Map();
+    /** Real credential values, isolated from job records. */
+    this._credentialVault = new Map<string, CredentialBag>();
   }
 
   /**
@@ -142,7 +246,7 @@ export class JobStore {
    * counter means id equality tracks "same content at the same position in
    * the call sequence", not "same content ever submitted".
    */
-  _nextId(operation, request) {
+  _nextId(operation: string, request: unknown): string {
     const seq = this._seq++;
     const digest = createHash('sha256')
       .update(`${operation}\u0000${canonicalJson(request)}\u0000${seq}`)
@@ -152,23 +256,23 @@ export class JobStore {
   }
 
   /** Public snapshot for a job id, or `undefined` when unknown. */
-  get(id) {
+  get(id: string): JobSnapshot | undefined {
     const job = this._jobs.get(id);
     return job ? snapshot(job) : undefined;
   }
 
   /** Internal record for a job id (used by operation handlers). */
-  _raw(id) {
+  _raw(id: string): JobRecord | undefined {
     return this._jobs.get(id);
   }
 
   /** All job snapshots in creation order. */
-  list() {
+  list(): JobSnapshot[] {
     return [...this._jobs.values()].map(snapshot);
   }
 
   /** Whether a job has reached a terminal state. */
-  isSettled(id) {
+  isSettled(id: string): boolean {
     const job = this._jobs.get(id);
     return Boolean(job && SETTLED.has(job.status));
   }
@@ -181,10 +285,10 @@ export class JobStore {
    * @param {string} id
    * @returns {Promise<object|undefined>} The settled snapshot (or current one).
    */
-  async settle(id) {
+  async settle(id: string): Promise<JobSnapshot | undefined> {
     const job = this._jobs.get(id);
     if (!job) return undefined;
-    if (job._running) await job._running.catch(() => {});
+    if (job._running) await job._running.catch(() => undefined);
     return this.get(id);
   }
 
@@ -207,11 +311,11 @@ export class JobStore {
    *        The injected runtime (e.g. `context.seams.runGenerate`).
    * @returns {object} The created job snapshot (`status: running`).
    */
-  start({ operation, request, credentials = {}, derivation = null, run }) {
+  start({ operation, request, credentials = {}, derivation = null, run }: StartJobSpec): JobSnapshot {
     const id = this._nextId(operation, request);
     const controller = new AbortController();
     this._credentialVault.set(id, { ...credentials });
-    const job = {
+    const job: JobRecord = {
       id,
       operation,
       status: JOB_STATUS.RUNNING,
@@ -243,10 +347,10 @@ export class JobStore {
    * @param {Function} run
    * @returns {object|undefined} The job snapshot now back in `running`.
    */
-  resume(id, credentials, run) {
+  resume(id: string, credentials: CredentialBag, run: JobRun): JobSnapshot | undefined {
     const job = this._jobs.get(id);
     if (!job) return undefined;
-    const merged = { ...this._credentialVault.get(id), ...credentials };
+    const merged = { ...(this._credentialVault.get(id) ?? {}), ...credentials };
     this._credentialVault.set(id, merged);
     job.credentialNames = redactCredentialNames(merged);
     job.needs = null;
@@ -258,21 +362,21 @@ export class JobStore {
   }
 
   /** Wire the runtime promise into the job record, translating its outcome. */
-  _launch(job, run) {
-    const onProgress = (progress) => {
+  _launch(job: JobRecord, run: JobRun): void {
+    const onProgress = (progress: Partial<JobProgress>): void => {
       if (job.status !== JOB_STATUS.RUNNING) return;
       job.progress = { ...job.progress, ...progress };
     };
-    const getCredential = (name) => {
+    const getCredential = (name: string): string => {
       // Real values live only in the vault, never on `job` — see class docstring.
-      const v = this._credentialVault.get(job.id)?.[name];
-      if (v === undefined || v === null || v === '') throw new CredentialRequiredError(name);
-      return v;
+      const value = this._credentialVault.get(job.id)?.[name];
+      if (value === undefined || value === null || value === '') throw new CredentialRequiredError(name);
+      return value;
     };
 
     job._running = Promise.resolve()
       .then(() =>
-        run({ request: job.request, signal: job._controller.signal, onProgress, getCredential })
+        run({ request: job.request, signal: job._controller.signal, onProgress, getCredential }),
       )
       .then((result) => {
         if (job.status !== JOB_STATUS.RUNNING) return; // already cancelled
@@ -281,13 +385,13 @@ export class JobStore {
         // so the model + inputs that produced it travel with the bytes through
         // preview_changes / apply_changes. Non-mutating, deterministic, no clock.
         job.changes = job.derivation
-          ? rawChanges.map((c) => stampProvenance(c, job.derivation))
+          ? rawChanges.map((change) => stampProvenance(change, job.derivation))
           : rawChanges;
         job.partial = Array.isArray(result?.partial) ? result.partial : null;
         job.progress = { ...job.progress, phase: 'done', message: 'completed' };
         job.status = JOB_STATUS.SUCCEEDED;
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (job.status === JOB_STATUS.CANCELLED) return;
         if (err instanceof CredentialRequiredError) {
           job.needs = { credential: err.credential };
@@ -298,7 +402,7 @@ export class JobStore {
           job.status = JOB_STATUS.CANCELLED;
           return;
         }
-        job.error = { code: err?.code ?? 'EXECUTION_FAILED', message: String(err?.message ?? err) };
+        job.error = errorInfo(err);
         job.status = JOB_STATUS.FAILED;
       });
   }
@@ -310,7 +414,7 @@ export class JobStore {
    * @param {string} id
    * @returns {object|undefined} The job snapshot, or `undefined` when unknown.
    */
-  cancel(id) {
+  cancel(id: string): JobSnapshot | undefined {
     const job = this._jobs.get(id);
     if (!job) return undefined;
     if (job.status === JOB_STATUS.RUNNING || job.status === JOB_STATUS.AWAITING_CREDENTIAL) {
@@ -329,8 +433,14 @@ export class JobStore {
  */
 export const defaultJobStore = new JobStore();
 
+export interface JobStoreCarrier {
+  seams?: {
+    jobStore?: JobStore;
+  };
+}
+
 /** Resolve the store an affordance should use: injected seam or the singleton. */
-export function resolveJobStore(context) {
+export function resolveJobStore(context: JobStoreCarrier | null | undefined): JobStore {
   return context?.seams?.jobStore ?? defaultJobStore;
 }
 

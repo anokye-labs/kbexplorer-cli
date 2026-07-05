@@ -3,11 +3,25 @@ import { spawnSync } from 'node:child_process';
 import { loadRuntimeConfig, resolveRuntime, RUNTIME_ENV } from '../runtime-config.ts';
 import { isAdapterAvailable, resolveBinary } from '../copilot-runtime.ts';
 
-function pass(id, message) { return { id, status: 'pass', message }; }
-function warn(id, message) { return { id, status: 'warn', message }; }
-function fail(id, message) { return { id, status: 'fail', message }; }
+type DoctorStatus = 'pass' | 'warn' | 'fail';
+type RuntimeConfig = NonNullable<ReturnType<typeof loadRuntimeConfig>>;
+type ResolvedAdapter = ReturnType<typeof resolveRuntime>;
 
-function resolveRuntimeSource(flag, config, env) {
+interface DoctorCheck {
+  id: string;
+  status: DoctorStatus;
+  message: string;
+}
+
+function pass(id: string, message: string): DoctorCheck { return { id, status: 'pass', message }; }
+function warn(id: string, message: string): DoctorCheck { return { id, status: 'warn', message }; }
+function fail(id: string, message: string): DoctorCheck { return { id, status: 'fail', message }; }
+
+function resolveRuntimeSource(
+  flag: string | null | undefined,
+  config: RuntimeConfig | null | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): { source: string; adapterName: string } {
   if (flag != null && flag !== '') {
     return { source: `--runtime flag (${flag})`, adapterName: flag };
   }
@@ -21,7 +35,10 @@ function resolveRuntimeSource(flag, config, env) {
   return { source: 'default', adapterName: 'copilot' };
 }
 
-function captureVersion(binary, { spawnSync: spawnSyncImpl = spawnSync } = {}) {
+function captureVersion(
+  binary: string,
+  { spawnSync: spawnSyncImpl = spawnSync }: { spawnSync?: typeof spawnSync } = {},
+): string | null {
   try {
     const res = spawnSyncImpl(binary, ['--version'], {
       encoding: 'utf-8',
@@ -31,21 +48,32 @@ function captureVersion(binary, { spawnSync: spawnSyncImpl = spawnSync } = {}) {
     });
     if (res.error || res.status == null) return null;
     const text = (res.stdout || res.stderr || '').trim();
-    const line = text.split(/\r?\n/).find((l) => l.trim()) ?? '';
+    const line = text.split(/\r?\n/).find((l: string) => l.trim()) ?? '';
     return line.slice(0, 80) || null;
   } catch {
     return null;
   }
 }
 
-export function checkRuntime({ flag, config, env, spawnSync: spawnSyncImpl = spawnSync }) {
-  const checks = [];
+export function checkRuntime({
+  flag,
+  config,
+  env,
+  spawnSync: spawnSyncImpl = spawnSync,
+}: {
+  flag?: string | null;
+  config?: RuntimeConfig | null;
+  env?: NodeJS.ProcessEnv;
+  spawnSync?: typeof spawnSync;
+}) {
+  const checks: DoctorCheck[] = [];
 
-  let adapter;
+  let adapter: ResolvedAdapter | null;
   try {
     adapter = resolveRuntime({ flag, config, env });
   } catch (err) {
-    checks.push(fail('runtime.resolve', `Failed to resolve runtime adapter: ${err.message}`));
+    const message = err instanceof Error ? err.message : String(err);
+    checks.push(fail('runtime.resolve', `Failed to resolve runtime adapter: ${message}`));
     return { checks, adapter: null, config };
   }
 

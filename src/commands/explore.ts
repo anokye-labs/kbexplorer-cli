@@ -3,10 +3,43 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, resolve, basename } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import type { KBGraph, KBNode, KBEdge, Cluster } from '@anokye-labs/kbexplorer-search';
+import type { RepoManifest } from '@anokye-labs/kbexplorer-engine/sources';
 import { loadKbEnv } from '../lib/kb-env.ts';
 
 const REPL_COMMANDS = ['ls', 'show', 'go', 'back', 'related', 'tree', 'view', 'pack', 'search', 'emit', 'help', 'quit', 'exit'];
 const DEFAULT_BUDGET = 600;
+
+type ExploreCommand = (typeof REPL_COMMANDS)[number];
+type ExploreArgs = {
+  help: boolean;
+  json: boolean;
+  manifest: string | null;
+  repo: string | null;
+  budget: number | null;
+  source: string | null;
+  command: ExploreCommand | null;
+  positionals: string[];
+  unknown: string[];
+};
+type ExploreNode = KBNode & {
+  rawContent?: string | null;
+  content?: string | null;
+  source?: unknown;
+  identity?: unknown;
+  kind?: string;
+};
+type ExploreEdge = KBEdge & { from: string; to: string; type?: string };
+type ExploreGraph = KBGraph;
+type TreeNode = { id: string; label: string; children: Array<TreeNode & { edgeType?: string }>; edgeType?: string };
+type ExploreState = { currentNodeId: string | null; history: string[] };
+type SourceInput = {
+  mode: 'cwd' | 'repo' | 'content-dir' | 'file';
+  cwd: string;
+  contentOverride?: string;
+  file?: string;
+};
+type EngineModule = Awaited<ReturnType<typeof loadEngineApi>>['engine'];
 
 function printHelp() {
   console.log(`
@@ -38,8 +71,8 @@ function printHelp() {
   `);
 }
 
-function parseExploreArgs(args = []) {
-  const out = {
+function parseExploreArgs(args: string[] = []): ExploreArgs {
+  const out: ExploreArgs = {
     help: false,
     json: false,
     manifest: null,
@@ -114,20 +147,20 @@ async function loadEngineApi() {
   return { engine: engineMod, sources: sourcesMod };
 }
 
-function formatNode(node) {
+function formatNode(node: ExploreNode) {
   return {
     id: node.id,
     title: node.title,
     cluster: node.cluster,
-    nodeType: node.nodeType ?? node.entityType ?? node.kind ?? null,
-    layer: node.layer ?? null,
+    nodeType: node.nodeType ?? node.entityType ?? (node as ExploreNode).kind ?? null,
+    layer: (node as { layer?: string | null }).layer ?? null,
     identity: node.identity ?? null,
     source: node.source ?? null,
     content: node.content ?? null,
   };
 }
 
-function formatGraphSummary(graph, currentNodeId) {
+function formatGraphSummary(graph: ExploreGraph, currentNodeId: string | null) {
   return {
     engine: getEngineBanner(),
     nodeCount: graph.nodes.length,
@@ -137,11 +170,11 @@ function formatGraphSummary(graph, currentNodeId) {
   };
 }
 
-function createJsonOutput(payload) {
+function createJsonOutput(payload: unknown): string {
   return JSON.stringify(payload, null, 2);
 }
 
-function writeOutput(payload, opts) {
+function writeOutput(payload: unknown, opts: Pick<ExploreArgs, 'json'>): void {
   if (opts.json) {
     console.log(createJsonOutput(payload));
     return;
@@ -150,20 +183,20 @@ function writeOutput(payload, opts) {
     console.log(payload);
     return;
   }
-  if (payload && typeof payload === 'object' && payload.text) {
+  if (payload && typeof payload === 'object' && 'text' in payload && typeof payload.text === 'string') {
     console.log(payload.text);
     return;
   }
   console.log(payload);
 }
 
-function trimToBudget(text, budget) {
+function trimToBudget(text: string, budget: number): string {
   if (!Number.isFinite(budget) || budget <= 0) return text;
   if (text.length <= budget) return text;
   return `${text.slice(0, Math.max(0, budget - 3))}...`;
 }
 
-function buildTree(graph, rootId, engine, maxDepth = 4) {
+function buildTree(graph: ExploreGraph, rootId: string, engine: EngineModule, maxDepth = 4): TreeNode {
   const root = engine.getNode(graph, rootId);
   if (!root) return { id: rootId, label: rootId, children: [] };
   const children = [];
@@ -178,7 +211,7 @@ function buildTree(graph, rootId, engine, maxDepth = 4) {
   return { id: root.id, label: root.title || root.id, children };
 }
 
-function renderTree(node, prefix = '', isLast = true) {
+function renderTree(node: TreeNode, prefix = '', isLast = true): string[] {
   const lines = [];
   const connector = isLast ? '└─' : '├─';
   lines.push(`${prefix}${connector} ${node.label}`);
@@ -190,7 +223,7 @@ function renderTree(node, prefix = '', isLast = true) {
   return lines;
 }
 
-function buildProjection(graph, currentNodeId, kind, engine) {
+function buildProjection(graph: ExploreGraph, currentNodeId: string, kind: string, engine: EngineModule) {
   const node = engine.getNode(graph, currentNodeId);
   if (!node) return { kind, nodes: [], edges: [] };
   if (kind === 'current') {
@@ -212,24 +245,24 @@ function buildProjection(graph, currentNodeId, kind, engine) {
   return { kind, nodes: [], edges: [] };
 }
 
-function collectClusters(graph) {
-  return graph.clusters.map((cluster) => ({
+function collectClusters(graph: ExploreGraph) {
+  return graph.clusters.map((cluster: Cluster) => ({
     id: cluster.id,
     name: cluster.name ?? cluster.id,
     nodeCount: graph.nodes.filter((node) => node.cluster === cluster.id).length,
   }));
 }
 
-function collectTypes(graph) {
-  const counts = new Map();
+function collectTypes(graph: ExploreGraph) {
+  const counts = new Map<string, number>();
   for (const node of graph.nodes) {
-    const key = node.nodeType ?? node.entityType ?? node.kind ?? 'unknown';
+    const key = node.nodeType ?? node.entityType ?? (node as ExploreNode).kind ?? 'unknown';
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return Array.from(counts.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function discoverSourceInput(cwd, sourceArg) {
+function discoverSourceInput(cwd: string, sourceArg: string | null): SourceInput {
   if (!sourceArg) return { mode: 'cwd', cwd };
   const resolved = resolve(cwd, sourceArg);
   if (!existsSync(resolved)) {
@@ -257,17 +290,17 @@ function discoverSourceInput(cwd, sourceArg) {
   return { mode: 'file', cwd: dirname(resolved), file: resolved };
 }
 
-function readManifest(manifestPath, cwd) {
+function readManifest(manifestPath: string, cwd: string): RepoManifest {
   const absolute = resolve(cwd, manifestPath);
   if (!existsSync(absolute)) {
     throw new Error(`Manifest not found: ${manifestPath}`);
   }
-  return JSON.parse(readFileSync(absolute, 'utf8'));
+  return JSON.parse(readFileSync(absolute, 'utf8')) as RepoManifest;
 }
 
-async function resolveGraph(opts, cwd) {
+async function resolveGraph(opts: ExploreArgs, cwd: string): Promise<{ graph: ExploreGraph; config: unknown; sourceLabel: string }> {
   const env = loadKbEnv(cwd);
-  const localConfigPath = opts.source ? discoverSourceInput(cwd, opts.source) : { mode: 'cwd', cwd };
+  const localConfigPath: SourceInput = opts.source ? discoverSourceInput(cwd, opts.source) : { mode: 'cwd', cwd };
   const contentOverride = localConfigPath.contentOverride ?? env.VITE_KB_PATH ?? null;
   const { engine, sources } = await loadEngineApi();
   const { DEFAULT_CONFIG, loadKnowledgeBase } = engine;
@@ -308,8 +341,15 @@ async function resolveGraph(opts, cwd) {
   return { graph, config: null, sourceLabel: `local:${cwd}` };
 }
 
-async function executeCommand(graph, state, command, args, opts, engine) {
-  const currentNodeId = state.currentNodeId;
+async function executeCommand(
+  graph: ExploreGraph,
+  state: ExploreState,
+  command: string | null,
+  args: string[],
+  opts: ExploreArgs,
+  engine: EngineModule,
+): Promise<Record<string, unknown>> {
+  const currentNodeId = state.currentNodeId ?? graph.nodes[0]?.id ?? '';
   const targetId = args[0] ?? currentNodeId;
 
   if (!command || command === 'help') {
@@ -339,7 +379,9 @@ async function executeCommand(graph, state, command, args, opts, engine) {
     if (!node) {
       throw new Error(`Unknown node: ${targetId}`);
     }
-    state.history.push(state.currentNodeId);
+    if (state.currentNodeId) {
+      state.history.push(state.currentNodeId);
+    }
     state.currentNodeId = node.id;
     return { currentNodeId: state.currentNodeId, node: formatNode(node) };
   }
@@ -400,7 +442,7 @@ async function executeCommand(graph, state, command, args, opts, engine) {
     const artifactDir = resolve(process.cwd(), '.search');
     if (existsSync(artifactDir)) {
       try {
-        const searchMod = await import('@anokye-labs/kbexplorer-search');
+        const searchMod: typeof import('@anokye-labs/kbexplorer-search') = await import('@anokye-labs/kbexplorer-search');
         const { readArtifacts, createSearchEngine, getProvider } = searchMod;
         const artifact = readArtifacts(artifactDir);
         if (artifact) {
@@ -425,7 +467,7 @@ async function executeCommand(graph, state, command, args, opts, engine) {
         '@type': 'Node',
         title: node.title ?? node.id,
         cluster: node.cluster ?? null,
-        nodeType: node.nodeType ?? node.entityType ?? node.kind ?? null,
+        nodeType: node.nodeType ?? node.entityType ?? (node as ExploreNode).kind ?? null,
       }));
       return { format, nodes };
     }
@@ -435,7 +477,7 @@ async function executeCommand(graph, state, command, args, opts, engine) {
   return { text: `Unknown command: ${command}` };
 }
 
-export default async function explore(args = []) {
+export default async function explore(args: string[] = []): Promise<void> {
   const opts = parseExploreArgs(args);
   if (opts.help) {
     printHelp();
@@ -452,8 +494,8 @@ export default async function explore(args = []) {
     const { graph, sourceLabel } = await resolveGraph(opts, cwd);
     const engineBanner = getEngineBanner();
     const { engine } = await loadEngineApi();
-    const state = { currentNodeId: null, history: [] };
-    const firstNode = graph.nodes.find((node) => node.id === 'home') ?? graph.nodes[0];
+    const state: ExploreState = { currentNodeId: null, history: [] };
+    const firstNode = graph.nodes.find((node: KBNode) => node.id === 'home') ?? graph.nodes[0];
     state.currentNodeId = firstNode?.id ?? null;
 
     if (!state.currentNodeId) {
@@ -495,7 +537,8 @@ export default async function explore(args = []) {
           const result = await executeCommand(graph, state, command, commandArgs, opts, engine);
           writeOutput(result, { ...opts, json: false });
         } catch (error) {
-          console.error(error.message);
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(message);
         }
       }
       rl.close();
@@ -511,11 +554,12 @@ export default async function explore(args = []) {
     };
     writeOutput(payload, opts);
   } catch (error) {
-    const payload = { error: error.message, engine: getEngineBanner() };
+    const message = error instanceof Error ? error.message : String(error);
+    const payload = { error: message, engine: getEngineBanner() };
     if (opts.json) {
       console.log(createJsonOutput(payload));
     } else {
-      console.error(error.message);
+      console.error(message);
     }
     process.exit(1);
   }

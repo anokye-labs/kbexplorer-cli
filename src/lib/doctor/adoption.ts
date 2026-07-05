@@ -49,15 +49,67 @@ const CONFIGURABLE_STRUCTURED_PATH_CAPABILITIES = [
   'structuredContentPath',
 ];
 
-function pass(id, message) { return { id, status: 'pass', message }; }
-function warn(id, message) { return { id, status: 'warn', message }; }
-function fail(id, message) { return { id, status: 'fail', message }; }
+type JsonRecord = Record<string, unknown>;
+type CheckStatus = 'pass' | 'warn' | 'fail';
+type StructuredPathSourceKind = 'config' | 'env' | 'env-file' | 'default';
 
-function isObject(value) {
+interface AdoptionCheck {
+  id: string;
+  status: CheckStatus;
+  message: string;
+}
+
+interface StructuredPathInfo {
+  path: string;
+  source: string;
+  sourceKind: StructuredPathSourceKind;
+}
+
+interface FileSummary {
+  exists: boolean;
+  count: number;
+  errors: string[];
+}
+
+interface TemplateCompatibility {
+  installed: boolean;
+  packageName?: string | null;
+  packageVersion?: string | null;
+  manifestScript?: boolean;
+  metadata: JsonRecord | null;
+  metadataSource: string | null;
+  capabilities: string[];
+  protocolVersion?: unknown;
+  minCliVersion?: unknown;
+  maxCliVersion?: unknown;
+}
+
+type SourceRecord = JsonRecord & {
+  structuredContent?: JsonRecord & { path?: unknown; required?: unknown };
+  structuredContentPath?: unknown;
+  structuredContentDir?: unknown;
+  contentModel?: JsonRecord & { path?: unknown; required?: unknown };
+  contentModelPath?: unknown;
+  contentModelDir?: unknown;
+  adoption?: JsonRecord & {
+    structuredContentRequired?: unknown;
+    structuredContent?: JsonRecord & { required?: unknown };
+  };
+};
+
+function pass(id: string, message: string): AdoptionCheck { return { id, status: 'pass', message }; }
+function warn(id: string, message: string): AdoptionCheck { return { id, status: 'warn', message }; }
+function fail(id: string, message: string): AdoptionCheck { return { id, status: 'fail', message }; }
+
+function isObject(value: unknown): value is JsonRecord {
   return value != null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function normalizePathSetting(value) {
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function normalizePathSetting(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   let out = value.trim();
   if (!out) return null;
@@ -68,12 +120,20 @@ function normalizePathSetting(value) {
   return out || null;
 }
 
-function formatPathForMessage(value) {
+function formatPathForMessage(value: unknown): string {
   const normalized = normalizePathSetting(value) ?? value;
   return String(normalized).replace(/\\/g, '/') + '/';
 }
 
-function resolveStructuredContentPath({ record, env, envFile }) {
+function resolveStructuredContentPath({
+  record,
+  env,
+  envFile,
+}: {
+  record: SourceRecord | null;
+  env?: NodeJS.ProcessEnv;
+  envFile?: Record<string, string>;
+}): StructuredPathInfo {
   const candidates = [
     { value: record?.structuredContent?.path, source: `${SOURCE_FILE} structuredContent.path`, sourceKind: 'config' },
     { value: record?.structuredContentPath, source: `${SOURCE_FILE} structuredContentPath`, sourceKind: 'config' },
@@ -87,7 +147,7 @@ function resolveStructuredContentPath({ record, env, envFile }) {
 
   for (const candidate of candidates) {
     const path = normalizePathSetting(candidate.value);
-    if (path) return { path, source: candidate.source, sourceKind: candidate.sourceKind };
+    if (path) return { path, source: candidate.source, sourceKind: candidate.sourceKind as StructuredPathSourceKind };
   }
 
   return {
@@ -97,7 +157,7 @@ function resolveStructuredContentPath({ record, env, envFile }) {
   };
 }
 
-function structuredContentRequired(record) {
+function structuredContentRequired(record: SourceRecord | null): boolean {
   const candidates = [
     record?.structuredContent?.required,
     record?.contentModel?.required,
@@ -107,19 +167,20 @@ function structuredContentRequired(record) {
   return candidates.some((value) => value === true || String(value).toLowerCase() === 'true');
 }
 
-function summarizeFiles(rootDir, extensions) {
-  const summary = { exists: existsSync(rootDir), count: 0, errors: [] };
+function summarizeFiles(rootDir: string, extensions: string[]): FileSummary {
+  const summary: FileSummary = { exists: existsSync(rootDir), count: 0, errors: [] };
   if (!summary.exists) return summary;
 
   const stack = [rootDir];
-  const extSet = new Set(extensions.map((ext) => ext.toLowerCase()));
+  const extSet = new Set(extensions.map((ext: string) => ext.toLowerCase()));
   while (stack.length > 0) {
     const dir = stack.pop();
+    if (!dir) continue;
     let entries;
     try {
       entries = readdirSync(dir, { withFileTypes: true });
     } catch (err) {
-      summary.errors.push(`${dir}: ${err.message}`);
+      summary.errors.push(`${dir}: ${getErrorMessage(err)}`);
       continue;
     }
     for (const entry of entries) {
@@ -139,9 +200,9 @@ function summarizeFiles(rootDir, extensions) {
   return summary;
 }
 
-function findStructuredContentCandidates(cwd, selectedPath) {
+function findStructuredContentCandidates(cwd: string, selectedPath: unknown): Array<{ path: string; count: number }> {
   const selected = normalizePathSetting(selectedPath);
-  const results = [];
+  const results: Array<{ path: string; count: number }> = [];
   for (const candidatePath of COMMON_STRUCTURED_CONTENT_PATHS) {
     if (candidatePath === selected) continue;
     const summary = summarizeFiles(resolve(cwd, candidatePath), ['.yaml', '.yml']);
@@ -152,7 +213,7 @@ function findStructuredContentCandidates(cwd, selectedPath) {
   return results;
 }
 
-function readJsonIfPresent(filePath) {
+function readJsonIfPresent(filePath: string): JsonRecord | null {
   if (!existsSync(filePath)) return null;
   try {
     const parsed = JSON.parse(readFileSync(filePath, 'utf-8'));
@@ -162,7 +223,7 @@ function readJsonIfPresent(filePath) {
   }
 }
 
-function firstObjectCandidate(candidates) {
+function firstObjectCandidate(candidates: Array<{ value: unknown; source: string }>): { value: JsonRecord; source: string } | null {
   for (const candidate of candidates) {
     if (isObject(candidate.value)) {
       return { value: candidate.value, source: candidate.source };
@@ -171,7 +232,7 @@ function firstObjectCandidate(candidates) {
   return null;
 }
 
-function normalizeCapabilityList(raw) {
+function normalizeCapabilityList(raw: unknown): string[] {
   if (Array.isArray(raw)) {
     return raw.filter((entry) => typeof entry === 'string' && entry.trim()).map((entry) => entry.trim());
   }
@@ -186,22 +247,22 @@ function normalizeCapabilityList(raw) {
   return [];
 }
 
-function normalizeCapabilityName(name) {
+function normalizeCapabilityName(name: unknown): string {
   return String(name).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-function hasAnyCapability(capabilities, aliases) {
+function hasAnyCapability(capabilities: string[], aliases: string[]): boolean {
   const available = new Set(capabilities.map(normalizeCapabilityName));
-  return aliases.some((alias) => available.has(normalizeCapabilityName(alias)));
+  return aliases.some((alias: string) => available.has(normalizeCapabilityName(alias)));
 }
 
-function parseSemver(value) {
+function parseSemver(value: unknown): [number, number, number] | null {
   const match = String(value ?? '').match(/v?(\d+)\.(\d+)\.(\d+)/);
   if (!match) return null;
-  return match.slice(1, 4).map((n) => Number.parseInt(n, 10));
+  return match.slice(1, 4).map((n) => Number.parseInt(n, 10)) as [number, number, number];
 }
 
-function compareSemver(a, b) {
+function compareSemver(a: unknown, b: unknown): -1 | 0 | 1 | null {
   const av = parseSemver(a);
   const bv = parseSemver(b);
   if (!av || !bv) return null;
@@ -212,7 +273,7 @@ function compareSemver(a, b) {
   return 0;
 }
 
-function readCliVersion() {
+function readCliVersion(): string | null {
   try {
     const pkg = JSON.parse(readFileSync(resolve(__dirname, '..', '..', '..', 'package.json'), 'utf-8'));
     return typeof pkg.version === 'string' ? pkg.version : null;
@@ -221,7 +282,7 @@ function readCliVersion() {
   }
 }
 
-function readTemplateCompatibility(appRoot) {
+function readTemplateCompatibility(appRoot: string | null | undefined): TemplateCompatibility {
   if (!appRoot) return { installed: false, metadata: null, metadataSource: null, capabilities: [] };
 
   const pkgPath = resolve(appRoot, 'package.json');
@@ -239,32 +300,39 @@ function readTemplateCompatibility(appRoot) {
 
   return {
     installed: true,
-    packageName: pkg?.name ?? null,
-    packageVersion: pkg?.version ?? null,
+    packageName: typeof pkg?.name === 'string' ? pkg.name : null,
+    packageVersion: typeof pkg?.version === 'string' ? pkg.version : null,
     manifestScript: existsSync(resolve(appRoot, 'scripts', 'generate-manifest.js')),
     metadata,
     metadataSource: candidate?.source ?? null,
     capabilities: normalizeCapabilityList(rawCapabilities),
     protocolVersion: metadata?.protocolVersion ?? metadata?.templateProtocolVersion ?? metadata?.protocol ?? null,
-    minCliVersion: metadata?.minCliVersion ?? metadata?.cli?.minVersion ?? metadata?.requires?.kbxCli ?? null,
-    maxCliVersion: metadata?.maxCliVersion ?? metadata?.cli?.maxVersion ?? null,
+    minCliVersion:
+      metadata?.minCliVersion ??
+      (isObject(metadata?.cli) ? metadata.cli.minVersion : undefined) ??
+      (isObject(metadata?.requires) ? metadata.requires.kbxCli : undefined) ??
+      null,
+    maxCliVersion:
+      metadata?.maxCliVersion ??
+      (isObject(metadata?.cli) ? metadata.cli.maxVersion : undefined) ??
+      null,
   };
 }
 
-function pushOptional(checks, required, id, message) {
+function pushOptional(checks: AdoptionCheck[], required: boolean, id: string, message: string): void {
   checks.push(required ? fail(id, message) : warn(id, message));
 }
 
-export function checkAdoption({ cwd, env }) {
-  const checks = [];
-  const record = readSourceRecord(cwd);
+export function checkAdoption({ cwd, env }: { cwd: string; env?: NodeJS.ProcessEnv }): AdoptionCheck[] {
+  const checks: AdoptionCheck[] = [];
+  const record = readSourceRecord(cwd) as SourceRecord | null;
   const required = structuredContentRequired(record);
-  let envFile = {};
+  let envFile: Record<string, string> = {};
 
   try {
-    envFile = loadKbEnv(cwd);
+    envFile = loadKbEnv(cwd) as Record<string, string>;
   } catch (err) {
-    checks.push(warn('adoption.env-file', `.env.kbx could not be parsed: ${err.message}`));
+    checks.push(warn('adoption.env-file', `.env.kbx could not be parsed: ${getErrorMessage(err)}`));
   }
 
   const pathInfo = resolveStructuredContentPath({ record, env, envFile });

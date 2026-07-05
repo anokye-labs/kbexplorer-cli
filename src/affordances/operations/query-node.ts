@@ -14,6 +14,11 @@ import {
   ERROR_CODES,
   ACTION_CLASSES,
 } from '../contract.ts';
+import type { AffordanceContext } from '../context.ts';
+
+interface QueryNodeInput extends Record<string, unknown> {
+  id: string;
+}
 
 export default defineAffordance({
   name: 'query_node',
@@ -33,12 +38,13 @@ export default defineAffordance({
     relPath: { type: 'string' },
     body: { type: 'string' },
   }),
-  async execute(context, input) {
+  async execute(context: AffordanceContext, input: Record<string, unknown>) {
+    const args = input as QueryNodeInput;
     const graph = await context.loadGraph();
-    const node = graph.nodes.get(input.id);
+    const node = graph.nodes.get(args.id);
     if (!node) {
-      throw new AffordanceError(ERROR_CODES.NOT_FOUND, `Unknown node id: ${input.id}`, {
-        id: input.id,
+      throw new AffordanceError(ERROR_CODES.NOT_FOUND, `Unknown node id: ${args.id}`, {
+        id: args.id,
       });
     }
     return {

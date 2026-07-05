@@ -17,10 +17,10 @@ import { inferIcon } from '../lib/transform.ts';
 import { resolveContentDir } from '../lib/kb-env.ts';
 import { parseScaffoldArgs } from '../lib/args.ts';
 
-function toTitle(slug) {
+function toTitle(slug: string): string {
   return slug
     .split('-')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
 }
 
@@ -32,7 +32,7 @@ function printUsage() {
   );
 }
 
-export default async function scaffoldCommand(args) {
+export default async function scaffoldCommand(args: string[] = []): Promise<void> {
   const opts = parseScaffoldArgs(args);
 
   if (!opts.slug) {
@@ -51,7 +51,7 @@ export default async function scaffoldCommand(args) {
   }
 
   const cwd = process.cwd();
-  const { contentDir } = resolveContentDir(cwd, opts.content);
+  const { contentDir } = resolveContentDir(cwd, opts.content ?? undefined);
 
   mkdirSync(contentDir, { recursive: true });
 
@@ -95,5 +95,4 @@ export default async function scaffoldCommand(args) {
   console.log(`  3. Run: kbx audit   # verify frontmatter is valid`);
   console.log('');
 }
-
 

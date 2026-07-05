@@ -22,10 +22,21 @@
 import { resolve, relative, isAbsolute, dirname } from 'node:path';
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { defineAffordance, defineSchema, AffordanceError, ERROR_CODES, ACTION_CLASSES } from '../contract.ts';
-import { resolveJobStore, JOB_STATUS } from './store.ts';
+import { resolveJobStore, JOB_STATUS, type JobChange } from './store.ts';
+import type { AffordanceContext } from '../context.ts';
+
+interface ApplyChangesInput extends Record<string, unknown> {
+  id: string;
+  only?: string[];
+}
+
+interface FailedChange {
+  path: string;
+  reason: string;
+}
 
 /** True when `abs` is inside (or equal to) `root`. */
-function within(root, abs) {
+function within(root: string, abs: string): boolean {
   const rel = relative(root, abs);
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
 }
@@ -39,17 +50,17 @@ export default defineAffordance({
   consent: {
     // Write-class: discloses the exact paths that will be written, resolved from
     // the target job's pending change set (restricted by `only` when given).
-    disclose: (input, context) => {
+    disclose: (input: Record<string, unknown>, context) => {
+      const args = input as ApplyChangesInput;
       try {
         const store = resolveJobStore(context);
-        const job = store?._raw?.(input?.id);
+        const job = store?._raw?.(args.id);
         const changes = Array.isArray(job?.changes) ? job.changes : [];
-        const onlySet =
-          Array.isArray(input?.only) && input.only.length ? new Set(input.only) : null;
+        const onlySet = Array.isArray(args.only) && args.only.length ? new Set(args.only) : null;
         return {
           writes: changes
-            .map((c) => c?.path)
-            .filter((p) => typeof p === 'string' && p && (!onlySet || onlySet.has(p))),
+            .map((change) => change.path)
+            .filter((path) => typeof path === 'string' && path && (!onlySet || onlySet.has(path))),
         };
       } catch {
         return { writes: [] };
@@ -69,27 +80,28 @@ export default defineAffordance({
     applied: { type: 'array' },
     failed: { type: 'array' },
   }),
-  execute(context, input) {
+  execute(context: AffordanceContext, input: Record<string, unknown>) {
+    const args = input as ApplyChangesInput;
     const store = resolveJobStore(context);
-    const job = store._raw(input.id);
+    const job = store._raw(args.id);
     if (!job) {
-      throw new AffordanceError(ERROR_CODES.NOT_FOUND, `No job with id "${input.id}"`, {
-        id: input.id,
+      throw new AffordanceError(ERROR_CODES.NOT_FOUND, `No job with id "${args.id}"`, {
+        id: args.id,
       });
     }
     if (job.status !== JOB_STATUS.SUCCEEDED) {
       throw new AffordanceError(
         ERROR_CODES.INVALID_INPUT,
-        `Job "${input.id}" is "${job.status}"; only a succeeded job can be applied`,
-        { id: input.id, status: job.status }
+        `Job "${args.id}" is "${job.status}"; only a succeeded job can be applied`,
+        { id: args.id, status: job.status }
       );
     }
 
-    const onlySet = Array.isArray(input.only) && input.only.length ? new Set(input.only) : null;
-    const pending = (job.changes ?? []).filter((c) => !onlySet || onlySet.has(c.path));
+    const onlySet = Array.isArray(args.only) && args.only.length ? new Set(args.only) : null;
+    const pending = (job.changes ?? []).filter((change: JobChange) => !onlySet || onlySet.has(change.path));
 
-    const applied = [];
-    const failed = [];
+    const applied: Array<{ path: string; status: 'unchanged' | 'written' }> = [];
+    const failed: FailedChange[] = [];
     for (const change of pending) {
       const text = typeof change.contents === 'string' ? change.contents : '';
       const abs = resolve(context.cwd, change.path);
@@ -105,14 +117,16 @@ export default defineAffordance({
           writeFileSync(abs, text, 'utf-8');
         }
         applied.push({ path: change.path, status: unchanged ? 'unchanged' : 'written' });
-      } catch (err) {
-        failed.push({ path: change.path, reason: String(err?.message ?? err) });
+      } catch (err: unknown) {
+        failed.push({ path: change.path, reason: err instanceof Error ? err.message : String(err) });
       }
     }
 
     // Marked fully applied only when nothing failed and every change was covered.
     job.applied = failed.length === 0 && !onlySet;
-    job.partial = failed.length ? failed.map((f) => ({ unit: f.path, ok: false, error: f.reason })) : job.partial;
+    job.partial = failed.length
+      ? failed.map((failure) => ({ unit: failure.path, ok: false, error: failure.reason }))
+      : job.partial;
 
     return { id: job.id, applied, failed };
   },

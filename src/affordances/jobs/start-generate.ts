@@ -20,17 +20,28 @@
  */
 
 import { defineAffordance, defineSchema, AffordanceError, ERROR_CODES, ACTION_CLASSES } from '../contract.ts';
-import { resolveJobStore, JOB_STATUS } from './store.ts';
+import { resolveJobStore, JOB_STATUS, type JobStatus } from './store.ts';
 import { buildDerivation, sampledSourceRef, SAMPLE_GENERATOR } from '../provenance.ts';
+import type { AffordanceContext } from '../context.ts';
+import type { SourceRef } from '../provenance.ts';
 
-const RESUMABLE = new Set([JOB_STATUS.AWAITING_CREDENTIAL, JOB_STATUS.FAILED]);
+const RESUMABLE = new Set<JobStatus>([JOB_STATUS.AWAITING_CREDENTIAL, JOB_STATUS.FAILED]);
+
+interface StartGenerateInput extends Record<string, unknown> {
+  resume?: string;
+  refresh?: boolean;
+  request?: Record<string, unknown>;
+  credentials?: Record<string, string>;
+}
 
 /** Collect declared provenance inputs from a generation request (SourceRef-ish). */
-function requestInputs(request) {
-  const raw = [];
+function requestInputs(request: Record<string, unknown>): SourceRef[] {
+  const raw: unknown[] = [];
   if (Array.isArray(request?.inputs)) raw.push(...request.inputs);
   if (Array.isArray(request?.sources)) raw.push(...request.sources);
-  return raw.map(sampledSourceRef).filter((r) => r !== null);
+  return raw
+    .map((input) => sampledSourceRef(input as string | Record<string, unknown> | null | undefined))
+    .filter((ref): ref is SourceRef => ref !== null);
 }
 
 export default defineAffordance({
@@ -43,8 +54,8 @@ export default defineAffordance({
     // Sample-class: discloses that a model runtime is invoked, plus any
     // credential names the caller is handing in (names only — never values).
     cost: { kind: 'sample', runtime: 'context.seams.runGenerate', generator: SAMPLE_GENERATOR },
-    disclose: (input) => ({
-      credentials: Object.keys(input?.credentials ?? {}),
+    disclose: (input: Record<string, unknown>) => ({
+      credentials: Object.keys(((input as StartGenerateInput).credentials ?? {}) as Record<string, string>),
     }),
   },
   input: defineSchema({
@@ -70,7 +81,8 @@ export default defineAffordance({
     id: { type: 'string' },
     status: { type: 'string' },
   }),
-  execute(context, input) {
+  execute(context: AffordanceContext, input: Record<string, unknown>) {
+    const args = input as StartGenerateInput;
     const run = context.seams?.runGenerate;
     if (typeof run !== 'function') {
       throw new AffordanceError(
@@ -81,26 +93,26 @@ export default defineAffordance({
     }
 
     const store = resolveJobStore(context);
-    const credentials = input.credentials ?? {};
+    const credentials = args.credentials ?? {};
 
-    if (input.resume) {
-      const existing = store.get(input.resume);
+    if (args.resume) {
+      const existing = store.get(args.resume);
       if (!existing) {
-        throw new AffordanceError(ERROR_CODES.NOT_FOUND, `No job with id "${input.resume}"`, {
-          id: input.resume,
+        throw new AffordanceError(ERROR_CODES.NOT_FOUND, `No job with id "${args.resume}"`, {
+          id: args.resume,
         });
       }
       if (!RESUMABLE.has(existing.status)) {
         throw new AffordanceError(
           ERROR_CODES.INVALID_INPUT,
-          `Job "${input.resume}" is "${existing.status}" and cannot be resumed`,
-          { id: input.resume, status: existing.status }
+          `Job "${args.resume}" is "${existing.status}" and cannot be resumed`,
+          { id: args.resume, status: existing.status }
         );
       }
-      return store.resume(input.resume, credentials, run);
+      return store.resume(args.resume, credentials, run);
     }
 
-    const request = { refresh: input.refresh ?? false, ...(input.request ?? {}) };
+    const request = { refresh: args.refresh ?? false, ...(args.request ?? {}) };
     // Deterministic sampled-content provenance for the changes this job produces:
     // the generator + declared inputs + a digest of the request (no timestamps).
     const derivation = buildDerivation({

@@ -25,6 +25,37 @@
 
 import { buildMcpTools } from './tools.ts';
 
+type McpTool = ReturnType<typeof buildMcpTools>[number];
+type ToolBuildOptions = NonNullable<Parameters<typeof buildMcpTools>[0]>;
+
+interface ListToolsResponse {
+  tools: Array<Pick<McpTool, 'name' | 'description' | 'inputSchema'>>;
+}
+
+type CallToolResponse = Awaited<ReturnType<McpTool['handler']>>;
+
+interface CallToolRequest {
+  params?: {
+    name?: string;
+    arguments?: Record<string, unknown>;
+  };
+}
+
+interface McpServer {
+  setRequestHandler(
+    schema: object,
+    handler: (request?: CallToolRequest) => Promise<ListToolsResponse | CallToolResponse>
+  ): void;
+}
+
+interface RegisterKbxMcpServerOptions {
+  server?: McpServer;
+  listToolsSchema?: object;
+  callToolSchema?: object;
+  tools?: McpTool[];
+  toolOptions?: ToolBuildOptions;
+}
+
 /**
  * Register kbexplorer's affordance tools on a low-level MCP `Server`.
  *
@@ -45,7 +76,7 @@ export function registerKbxMcpServer({
   callToolSchema,
   tools,
   toolOptions = {},
-} = {}) {
+}: RegisterKbxMcpServerOptions = {}) {
   if (!server || typeof server.setRequestHandler !== 'function') {
     throw new TypeError('registerKbxMcpServer: "server" must expose setRequestHandler');
   }
@@ -58,7 +89,7 @@ export function registerKbxMcpServer({
   const toolList = tools ?? buildMcpTools(toolOptions);
   const byName = new Map(toolList.map((t) => [t.name, t]));
 
-  server.setRequestHandler(listToolsSchema, async () => ({
+  server.setRequestHandler(listToolsSchema, async (): Promise<ListToolsResponse> => ({
     tools: toolList.map((t) => ({
       name: t.name,
       description: t.description,
@@ -66,9 +97,9 @@ export function registerKbxMcpServer({
     })),
   }));
 
-  server.setRequestHandler(callToolSchema, async (request) => {
+  server.setRequestHandler(callToolSchema, async (request): Promise<CallToolResponse> => {
     const params = request?.params ?? {};
-    const tool = byName.get(params.name);
+    const tool = byName.get(params.name as string);
     if (!tool) {
       return {
         isError: true,

@@ -35,15 +35,62 @@
  */
 
 import { formatContentHash } from '@anokye-labs/kbexplorer-core';
+import type { Derivation, Evidence, KBEdge, KBGraph, KBNode, Provenance, SourceRef } from '@anokye-labs/kbexplorer-core';
+
+interface ItemLike {
+  id?: unknown;
+  '@id'?: unknown;
+  address?: unknown;
+  href?: unknown;
+  derivation?: Derivation;
+  provenance?: Provenance;
+  sourceRefs?: SourceRef[];
+  evidence?: Array<Evidence | null | undefined>;
+}
+
+interface EdgeLike extends ItemLike {
+  from?: string | { '@id'?: string; id?: string } | null;
+  to?: string | { '@id'?: string; id?: string } | null;
+}
+
+interface GraphLike {
+  nodes?: ItemLike[];
+  edges?: EdgeLike[];
+}
+
+interface InputIndex {
+  fingerprints: Map<string, string>;
+  consumers: Map<string, Set<string>>;
+  keys: Set<string>;
+}
+
+interface AffectedResult {
+  full: boolean;
+  dirtyInputs: string[];
+  addedInputs: string[];
+  changedInputs: string[];
+  removedInputs: string[];
+  seeds: string[];
+  affected: string[];
+  nodeCount: number;
+}
 
 /** Stable string comparator. */
-function cmp(a, b) {
+function cmp(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /** Sorted, de-duplicated copy of an iterable of strings. */
-function sortedUnique(values) {
+function sortedUnique(values: Iterable<string>): string[] {
   return [...new Set(values)].sort(cmp);
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object';
+}
+
+function isSourceRef(ref: unknown): ref is SourceRef {
+  return isObject(ref) && typeof ref.href === 'string' && ref.href.length > 0;
 }
 
 /**
@@ -54,7 +101,7 @@ function sortedUnique(values) {
  * @param {object} item
  * @returns {string|undefined}
  */
-export function itemKey(item) {
+export function itemKey(item: ItemLike | null | undefined): string | undefined {
   if (!item || typeof item !== 'object') return undefined;
   const key = item.id ?? item['@id'] ?? item.address ?? item.href;
   return typeof key === 'string' && key ? key : undefined;
@@ -75,18 +122,18 @@ export function itemKey(item) {
  * @param {object} item
  * @returns {Array<object>} SourceRef[]
  */
-export function extractInputRefs(item) {
+export function extractInputRefs(item: ItemLike | null | undefined): SourceRef[] {
   if (!item || typeof item !== 'object') return [];
-  const refs = [];
-  const push = (ref) => {
-    if (ref && typeof ref === 'object' && typeof ref.href === 'string' && ref.href) refs.push(ref);
+  const refs: SourceRef[] = [];
+  const push = (ref: unknown) => {
+    if (isSourceRef(ref)) refs.push(ref);
   };
   const der = item.derivation;
   if (der && Array.isArray(der.inputs)) der.inputs.forEach(push);
   const prov = item.provenance;
   if (prov && Array.isArray(prov.sourceRefs)) prov.sourceRefs.forEach(push);
   if (Array.isArray(item.sourceRefs)) item.sourceRefs.forEach(push);
-  const evidences = [
+  const evidences: Array<Evidence | null | undefined> = [
     ...(prov && Array.isArray(prov.evidence) ? prov.evidence : []),
     ...(Array.isArray(item.evidence) ? item.evidence : []),
   ];
@@ -103,7 +150,7 @@ export function extractInputRefs(item) {
  * @param {object} ref SourceRef
  * @returns {string}
  */
-export function refFingerprint(ref) {
+export function refFingerprint(ref: SourceRef | null | undefined): string {
   if (ref && ref.contentHash && typeof ref.contentHash === 'object') {
     try {
       return formatContentHash(ref.contentHash);
@@ -125,13 +172,13 @@ export function refFingerprint(ref) {
  * @param {{ nodes?: object[], edges?: object[] }} graph
  * @returns {{ fingerprints: Map<string,string>, consumers: Map<string,Set<string>>, keys: Set<string> }}
  */
-export function buildInputIndex(graph = {}) {
-  const items = [...(graph.nodes ?? []), ...(graph.edges ?? [])];
+export function buildInputIndex(graph: GraphLike = {}): InputIndex {
+  const items: ItemLike[] = [...(graph.nodes ?? []), ...(graph.edges ?? [])];
   /** @type {Map<string, Set<string>>} */
   const fpParts = new Map();
   /** @type {Map<string, Set<string>>} */
   const consumers = new Map();
-  const keys = new Set();
+  const keys = new Set<string>();
 
   for (const item of items) {
     const key = itemKey(item);
@@ -161,7 +208,7 @@ export function buildInputIndex(graph = {}) {
  * @param {{ nodes?: object[], edges?: object[] }} priorGraph
  * @returns {Map<string,string>}
  */
-export function baselineFromGraph(priorGraph) {
+export function baselineFromGraph(priorGraph: GraphLike): Map<string, string> {
   return buildInputIndex(priorGraph).fingerprints;
 }
 
@@ -175,10 +222,13 @@ export function baselineFromGraph(priorGraph) {
  * @param {Map<string,string>} baseline
  * @returns {{ dirty: string[], added: string[], changed: string[], removed: string[] }}
  */
-export function diffFingerprints(current, baseline) {
-  const added = [];
-  const changed = [];
-  const removed = [];
+export function diffFingerprints(
+  current: Map<string, string>,
+  baseline: Map<string, string>,
+): { dirty: string[]; added: string[]; changed: string[]; removed: string[] } {
+  const added: string[] = [];
+  const changed: string[] = [];
+  const removed: string[] = [];
   for (const [href, fp] of current) {
     if (!baseline.has(href)) added.push(href);
     else if (baseline.get(href) !== fp) changed.push(href);
@@ -203,10 +253,10 @@ export function diffFingerprints(current, baseline) {
  * @param {{ consumers: Map<string,Set<string>>, keys: Set<string> }} index
  * @returns {Map<string, Set<string>>}
  */
-function buildDownstream(graph, index) {
+function buildDownstream(graph: GraphLike, index: InputIndex): Map<string, Set<string>> {
   /** @type {Map<string, Set<string>>} */
   const down = new Map();
-  const link = (from, to) => {
+  const link = (from: string | undefined, to: string | undefined) => {
     if (!from || !to || from === to) return;
     if (!down.has(from)) down.set(from, new Set());
     down.get(from).add(to);
@@ -229,7 +279,7 @@ function buildDownstream(graph, index) {
 }
 
 /** Coerce an edge endpoint (string id or `{ '@id' }`/`{ id }` object) to a key. */
-function edgeEndpoint(end) {
+function edgeEndpoint(end: EdgeLike['from']): string | undefined {
   if (typeof end === 'string') return end;
   if (end && typeof end === 'object') {
     const k = end['@id'] ?? end.id;
@@ -245,13 +295,14 @@ function edgeEndpoint(end) {
  * @param {Map<string, Set<string>>} down
  * @returns {string[]} sorted unique reachable keys (seeds included)
  */
-export function closure(seeds, down) {
-  const seen = new Set();
+export function closure(seeds: Iterable<string>, down: Map<string, Set<string>>): string[] {
+  const seen = new Set<string>();
   // Sort the frontier for a stable visitation order (output is sorted anyway,
   // but a deterministic walk keeps the computation itself reproducible).
   const stack = sortedUnique(seeds);
   while (stack.length) {
     const key = stack.pop();
+    if (!key) continue;
     if (seen.has(key)) continue;
     seen.add(key);
     const next = down.get(key);
@@ -286,7 +337,10 @@ export function closure(seeds, down) {
  * @param {{ nodes?: object[], edges?: object[] }|null} [baselineGraph]
  * @returns {ReturnType<typeof computeAffected>}
  */
-export function affectedFromGraphs(currentGraph, baselineGraph) {
+export function affectedFromGraphs(
+  currentGraph: GraphLike,
+  baselineGraph: GraphLike | null = null,
+): AffectedResult {
   const hasBaseline =
     baselineGraph &&
     ((baselineGraph.nodes && baselineGraph.nodes.length) ||
@@ -295,7 +349,15 @@ export function affectedFromGraphs(currentGraph, baselineGraph) {
   return computeAffected({ graph: currentGraph ?? {}, baseline });
 }
 
-export function computeAffected({ graph = {}, baseline = null } = {}) {
+export function computeAffected(
+  {
+    graph = {},
+    baseline = null,
+  }: {
+    graph?: GraphLike;
+    baseline?: Map<string, string> | null;
+  } = {},
+): AffectedResult {
   const nodes = graph.nodes ?? [];
   const edges = graph.edges ?? [];
   const allKeys = sortedUnique(
@@ -321,7 +383,7 @@ export function computeAffected({ graph = {}, baseline = null } = {}) {
 
   // Seeds: any node/edge whose inputs intersect the dirty href set.
   const dirtySet = new Set(dirty);
-  const seedSet = new Set();
+  const seedSet = new Set<string>();
   for (const href of dirtySet) {
     const consumerKeys = index.consumers.get(href);
     if (consumerKeys) for (const k of consumerKeys) seedSet.add(k);

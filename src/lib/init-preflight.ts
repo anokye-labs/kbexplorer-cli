@@ -26,7 +26,23 @@ import { detectGitRemote } from './detect-repo.ts';
 
 export const MIN_NODE_MAJOR = 22;
 
-function diag(level, id, message, recovery) {
+type DiagnosticLevel = 'error' | 'warn';
+
+interface PreflightDiagnostic {
+  level: DiagnosticLevel;
+  id: string;
+  message: string;
+  recovery: string;
+}
+
+interface InitPreflightProbes {
+  detect?: (cwd: string) => ({ owner: string; repo: string } | null);
+  write?: typeof writeFileSync;
+  remove?: typeof unlinkSync;
+  spawnSync?: typeof nodeSpawnSync;
+}
+
+function diag(level: DiagnosticLevel, id: string, message: string, recovery: string): PreflightDiagnostic {
   return { level, id, message, recovery };
 }
 
@@ -38,7 +54,7 @@ function diag(level, id, message, recovery) {
  * @param {number} [minMajor]
  * @returns {object|null} a diagnostic, or null when satisfied
  */
-export function checkNodeVersion(version = process.version, minMajor = MIN_NODE_MAJOR) {
+export function checkNodeVersion(version = process.version, minMajor = MIN_NODE_MAJOR): PreflightDiagnostic | null {
   const major = parseInt(String(version).replace(/^v/, ''), 10);
   if (Number.isNaN(major)) return null;
   if (major < minMajor) {
@@ -64,7 +80,10 @@ export function checkNodeVersion(version = process.version, minMajor = MIN_NODE_
  * @param {(cwd: string) => ({owner:string,repo:string}|null)} [opts.detect]
  * @returns {object|null}
  */
-export function checkGitRemote(cwd, { detect = detectGitRemote } = {}) {
+export function checkGitRemote(
+  cwd: string,
+  { detect = detectGitRemote }: { detect?: (cwd: string) => ({ owner: string; repo: string } | null) } = {},
+): PreflightDiagnostic | null {
   const remote = detect(cwd);
   if (remote && remote.owner && remote.repo) return null;
   return diag(
@@ -87,15 +106,22 @@ export function checkGitRemote(cwd, { detect = detectGitRemote } = {}) {
  * @param {typeof unlinkSync} [opts.remove]
  * @returns {object|null}
  */
-export function checkWritePermission(cwd, { write = writeFileSync, remove = unlinkSync } = {}) {
+export function checkWritePermission(
+  cwd: string,
+  { write = writeFileSync, remove = unlinkSync }: { write?: typeof writeFileSync; remove?: typeof unlinkSync } = {},
+): PreflightDiagnostic | null {
   const probe = resolve(cwd, `.kbx-write-probe-${process.pid}-${Date.now()}`);
   try {
     write(probe, '', 'utf-8');
   } catch (err) {
+    const reason =
+      err && typeof err === 'object' && 'code' in err
+        ? String((err as { code?: unknown }).code ?? (err as { message?: unknown }).message ?? err)
+        : String(err);
     return diag(
       'error',
       'write-permission',
-      `Cannot write to ${cwd} (${err.code || err.message}).`,
+      `Cannot write to ${cwd} (${reason}).`,
       'Choose a writable directory, fix the directory permissions, or run with an ' +
         'account that can write here. init needs to create .env.kbx and .kbx.json.',
     );
@@ -116,7 +142,7 @@ export function checkWritePermission(cwd, { write = writeFileSync, remove = unli
  * @param {typeof nodeSpawnSync} [opts.spawnSync]
  * @returns {object|null}
  */
-export function checkNpmAvailable({ spawnSync = nodeSpawnSync } = {}) {
+export function checkNpmAvailable({ spawnSync = nodeSpawnSync }: { spawnSync?: typeof nodeSpawnSync } = {}): PreflightDiagnostic | null {
   let available = false;
   try {
     const res = spawnSync('npm', ['--version'], { encoding: 'utf-8', shell: process.platform === 'win32' });
@@ -157,9 +183,16 @@ export function runInitPreflight({
   yes = false,
   nodeVersion = process.version,
   probes = {},
+}: {
+  cwd?: string;
+  selfHosted?: boolean;
+  hasTemplate?: boolean;
+  yes?: boolean;
+  nodeVersion?: string;
+  probes?: InitPreflightProbes;
 } = {}) {
-  const diagnostics = [];
-  const push = (d) => { if (d) diagnostics.push(d); };
+  const diagnostics: PreflightDiagnostic[] = [];
+  const push = (d: PreflightDiagnostic | null) => { if (d) diagnostics.push(d); };
 
   push(checkNodeVersion(nodeVersion));
   push(checkWritePermission(cwd, probes));
@@ -182,8 +215,8 @@ export function runInitPreflight({
  * @param {object[]} diagnostics
  * @returns {string[]}
  */
-export function formatPreflightDiagnostics(diagnostics) {
-  const lines = [];
+export function formatPreflightDiagnostics(diagnostics: PreflightDiagnostic[]): string[] {
+  const lines: string[] = [];
   for (const d of diagnostics) {
     const icon = d.level === 'error' ? '✗' : '⚠';
     lines.push(`${icon} ${d.message}`);
@@ -202,8 +235,11 @@ export function formatPreflightDiagnostics(diagnostics) {
  * @param {string} [opts.templateUrl]
  * @returns {{ message: string, recovery: string[] }}
  */
-export function explainInstallFailure(err, { templateUrl } = {}) {
-  const raw = String(err?.message ?? err ?? '').toLowerCase();
+export function explainInstallFailure(err: unknown, { templateUrl }: { templateUrl?: string } = {}): { message: string; recovery: string[] } {
+  const raw =
+    err && typeof err === 'object' && 'message' in err
+      ? String((err as { message?: unknown }).message ?? '').toLowerCase()
+      : String(err ?? '').toLowerCase();
   const recovery = [];
   let cause = 'The template could not be installed.';
   if (/could not resolve host|network|getaddrinfo|enotfound|timed out|timeout/.test(raw)) {

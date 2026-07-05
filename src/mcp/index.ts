@@ -42,6 +42,51 @@ export { runMcpServerPreflight, formatMcpServerPreflight } from './server-prefli
 export const SERVER_NAME = 'kbexplorer';
 export const SERVER_VERSION = '0.1.0';
 
+type McpTools = ReturnType<typeof buildMcpTools>;
+type McpContextFactory = NonNullable<
+  NonNullable<Parameters<typeof registerKbxMcpServer>[0]>['toolOptions']
+>['contextFactory'];
+type RegisterableMcpServer = NonNullable<NonNullable<Parameters<typeof registerKbxMcpServer>[0]>['server']>;
+
+interface McpToolCallRequest {
+  message: string;
+  requestedSchema: object;
+}
+
+interface McpClientCapabilities {
+  elicitation?: unknown;
+  [key: string]: unknown;
+}
+
+interface McpServerInstance extends RegisterableMcpServer {
+  elicitInput(params: McpToolCallRequest): Promise<{ action?: string; content?: Record<string, unknown> }>;
+  getClientCapabilities?(): McpClientCapabilities | undefined;
+  connect(transport: object): Promise<void>;
+  onclose?: () => void;
+}
+
+interface McpServerConstructor {
+  new (
+    info: { name: string; version: string },
+    options: { capabilities: { tools: object } }
+  ): McpServerInstance;
+}
+
+interface CreateKbxMcpServerOptions {
+  Server?: McpServerConstructor;
+  listToolsSchema?: object;
+  callToolSchema?: object;
+  name?: string;
+  version?: string;
+  allow?: boolean;
+  cwd?: string;
+}
+
+interface WaitForCloseIo {
+  stdin?: Pick<NodeJS.ReadableStream, 'once'>;
+  proc?: Pick<NodeJS.Process, 'once'>;
+}
+
 /**
  * Build a low-level MCP `Server` with the kbexplorer affordance tools registered
  * and consent wired to MCP elicitation. Pure w.r.t. the SDK: the `Server`
@@ -67,7 +112,7 @@ export function createKbxMcpServer({
   version = SERVER_VERSION,
   allow = false,
   cwd = process.cwd(),
-} = {}) {
+}: CreateKbxMcpServerOptions = {}): { server: McpServerInstance; tools: McpTools } {
   if (typeof Server !== 'function') {
     throw new TypeError('createKbxMcpServer: "Server" constructor must be provided');
   }
@@ -79,7 +124,7 @@ export function createKbxMcpServer({
     { capabilities: { tools: {} } }
   );
 
-  const contextFactory = createMcpContextFactory({
+  const contextFactory: McpContextFactory = createMcpContextFactory({
     cwd,
     allow,
     elicitInput: (params) => server.elicitInput(params),
@@ -106,8 +151,8 @@ export function createKbxMcpServer({
  * @param {NodeJS.Process} [io.proc=process]
  * @returns {Promise<void>}
  */
-export function waitForClose(server, { stdin = process.stdin, proc = process } = {}) {
-  return new Promise((resolve) => {
+export function waitForClose(server: McpServerInstance, { stdin = process.stdin, proc = process }: WaitForCloseIo = {}) {
+  return new Promise<void>((resolve) => {
     let settled = false;
     const settle = () => {
       if (settled) return;
@@ -141,11 +186,15 @@ export function waitForClose(server, { stdin = process.stdin, proc = process } =
  */
 export async function main({ cwd = process.cwd(), allow = false, name = SERVER_NAME } = {}) {
   const [{ Server }, { StdioServerTransport }, { ListToolsRequestSchema, CallToolRequestSchema }] =
-    await Promise.all([
+    (await Promise.all([
       import('@modelcontextprotocol/sdk/server/index.js'),
       import('@modelcontextprotocol/sdk/server/stdio.js'),
       import('@modelcontextprotocol/sdk/types.js'),
-    ]);
+    ])) as [
+      { Server: McpServerConstructor },
+      { StdioServerTransport: new () => object },
+      { ListToolsRequestSchema: object; CallToolRequestSchema: object },
+    ];
 
   const { server } = createKbxMcpServer({
     Server,

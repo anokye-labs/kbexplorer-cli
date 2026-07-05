@@ -21,7 +21,28 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { parseRichFrontmatter } from '@anokye-labs/kbexplorer-provider-rich-markdown/lib';
+import { createRequire } from 'node:module';
+
+interface RichFrontmatterResult {
+  ok: boolean;
+  frontmatter: Record<string, unknown>;
+  body: string;
+  raw: string;
+  bodyOffset: number;
+}
+
+interface ParsedContentFile {
+  ok: boolean;
+  frontmatter: Record<string, unknown> | null;
+  body: string;
+  raw: string;
+  error?: string;
+}
+
+const require = createRequire(import.meta.url);
+const { parseRichFrontmatter } = require('@anokye-labs/kbexplorer-provider-rich-markdown/lib') as {
+  parseRichFrontmatter: (raw: string) => RichFrontmatterResult;
+};
 
 /**
  * Parse a kbx content file's frontmatter + body.
@@ -29,7 +50,7 @@ import { parseRichFrontmatter } from '@anokye-labs/kbexplorer-provider-rich-mark
  * @param {string} raw
  * @returns {{ ok: boolean, frontmatter: object|null, body: string, raw: string, error?: string }}
  */
-export function parseFrontmatter(raw) {
+export function parseFrontmatter(raw: string): ParsedContentFile {
   const text = String(raw ?? '');
   const result = parseRichFrontmatter(text);
 
@@ -60,7 +81,7 @@ export function parseFrontmatter(raw) {
  * @param {string} absPath
  * @returns {{ ok: boolean, frontmatter: object|null, body: string, raw: string, path: string, error?: string }}
  */
-export function readContentFile(absPath) {
+export function readContentFile(absPath: string): ParsedContentFile & { path: string } {
   const raw = readFileSync(absPath, 'utf-8');
   return { ...parseFrontmatter(raw), path: absPath };
 }

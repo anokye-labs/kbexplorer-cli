@@ -46,6 +46,24 @@ export const GH_TOKEN_ENV = 'KBX_GH_TOKEN';
 /** Fallback token env var (gh CLI convention). */
 export const GH_TOKEN_FALLBACK_ENV = 'GH_TOKEN';
 
+type ExecOptions = {
+  cwd?: string;
+  timeout?: number;
+  encoding?: BufferEncoding;
+  [key: string]: unknown;
+};
+
+type ExecFn = (command: string, options?: ExecOptions) => string | Buffer;
+
+interface GhFetchOptions {
+  base: string | null | undefined;
+  path: string;
+  token?: string;
+  execOpts?: ExecOptions;
+  _exec?: ExecFn;
+  _fetch?: typeof fetch;
+}
+
 /**
  * Resolve the GitHub API base URL using the precedence chain:
  *
@@ -63,9 +81,15 @@ export function resolveGhApiBase(cwd = process.cwd(), env = process.env) {
     const configFile = resolve(cwd, fileName);
     if (existsSync(configFile)) {
       try {
-        const data = JSON.parse(readFileSync(configFile, 'utf-8'));
-        if (data && typeof data.ghApiBase === 'string' && data.ghApiBase.trim()) {
-          return data.ghApiBase.trim();
+        const data: unknown = JSON.parse(readFileSync(configFile, 'utf-8'));
+        if (
+          data &&
+          typeof data === 'object' &&
+          !Array.isArray(data) &&
+          typeof (data as { ghApiBase?: unknown }).ghApiBase === 'string' &&
+          (data as { ghApiBase: string }).ghApiBase.trim()
+        ) {
+          return (data as { ghApiBase: string }).ghApiBase.trim();
         }
       } catch { /* ignore malformed JSON */ }
       break; // found a config file (even if it had no ghApiBase), stop searching
@@ -112,7 +136,7 @@ export function resolveGhToken(env = process.env) {
  * @param {string} path - API path (e.g. "/repos/owner/repo/issues")
  * @returns {string}
  */
-export function buildApiUrl(base, path) {
+export function buildApiUrl(base: string, path: string): string {
   const trimmedBase = base.replace(/\/+$/, '');
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   return `${trimmedBase}${normalizedPath}`;
@@ -138,7 +162,7 @@ export function buildApiUrl(base, path) {
  * @returns {Promise<unknown>} Parsed JSON response
  * @throws {Error} on non-200 HTTP status or JSON parse failure
  */
-export async function ghFetch({ base, path, token, execOpts = {}, _exec, _fetch }) {
+export async function ghFetch({ base, path, token, execOpts = {}, _exec, _fetch }: GhFetchOptions): Promise<unknown> {
   if (base === null || base === undefined) {
     // ── Default path: gh CLI ───────────────────────────────────────────────
     const exec = _exec ?? _defaultExecSync;
@@ -150,13 +174,13 @@ export async function ghFetch({ base, path, token, execOpts = {}, _exec, _fetch 
       timeout: 30000,
       ...execOpts,
     });
-    return JSON.parse(json);
+    return JSON.parse(String(json));
   }
 
   // ── Override path: direct HTTP ─────────────────────────────────────────
   const fetchFn = _fetch ?? globalThis.fetch;
   const url = buildApiUrl(base, path);
-  const headers = {
+  const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
   };
@@ -187,6 +211,12 @@ export async function ghFetch({ base, path, token, execOpts = {}, _exec, _fetch 
  * @param {Function}    [opts._fetch]
  * @returns {(path: string) => Promise<unknown>}
  */
-export function createFetcher({ base, token, execOpts = {}, _exec, _fetch } = {}) {
-  return (path) => ghFetch({ base, path, token, execOpts, _exec, _fetch });
+export function createFetcher({
+  base = null,
+  token,
+  execOpts = {},
+  _exec,
+  _fetch,
+}: Partial<GhFetchOptions> = {}) {
+  return (path: string) => ghFetch({ base, path, token, execOpts, _exec, _fetch });
 }

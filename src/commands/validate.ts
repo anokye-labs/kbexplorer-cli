@@ -19,9 +19,12 @@
 
 import { resolve } from 'node:path';
 import { validateContentModel } from '../lib/descriptor-model.ts';
-import { parseValidateArgs as parseSharedValidateArgs } from '../lib/args.ts';
+import { parseValidateArgs as parseSharedValidateArgs, type ValidateArgs } from '../lib/args.ts';
 
-function parseArgs(args) {
+type ValidateResult = ReturnType<typeof validateContentModel>;
+type ValidateFinding = ValidateResult['findings'][number];
+
+function parseArgs(args: string[] = []): ValidateArgs {
   return parseSharedValidateArgs(args);
 }
 
@@ -43,7 +46,7 @@ function printHelp() {
 `);
 }
 
-function printHumanReport({ findings, summary }) {
+function printHumanReport({ findings, summary }: ValidateResult): void {
   console.log('');
   console.log('╔══════════════════════════════════════════╗');
   console.log('║       Content-Model Validation           ║');
@@ -68,10 +71,10 @@ function printHumanReport({ findings, summary }) {
     return;
   }
 
-  const grouped = new Map();
+  const grouped = new Map<string, ValidateFinding[]>();
   for (const f of findings) {
     if (!grouped.has(f.rule)) grouped.set(f.rule, []);
-    grouped.get(f.rule).push(f);
+    grouped.get(f.rule)?.push(f);
   }
   for (const [rule, items] of grouped) {
     const marker = items[0].severity === 'error' ? '✗' : '⚠';
@@ -86,7 +89,7 @@ function printHumanReport({ findings, summary }) {
   }
 }
 
-export default async function validateCommand(args) {
+export default async function validateCommand(args: string[] = []): Promise<void> {
   const opts = parseArgs(args);
   if (opts.help) {
     printHelp();
@@ -111,5 +114,4 @@ export default async function validateCommand(args) {
     process.exit(1);
   }
 }
-
 

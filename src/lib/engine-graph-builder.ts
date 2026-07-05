@@ -6,6 +6,16 @@ import { FileSystemSource } from '@anokye-labs/kbexplorer-engine/sources';
 import { readConfig } from './repo-manifest.ts';
 import { resolveContentDir } from './kb-env.ts';
 
+interface BuildEngineGraphOptions {
+  contentOverride?: string;
+  sourceRoot?: string;
+}
+
+interface EngineConfig {
+  clusters?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 /**
  * Build a KBGraph through the engine's config-first pipeline.
  *
@@ -26,7 +36,7 @@ import { resolveContentDir } from './kb-env.ts';
  *    exist under the source root, top-level `.md` files ARE the content
  *    (`contentPath: ''`), matching the CLI's root-level content convention.
  */
-export async function buildEngineGraph(cwd, options = {}) {
+export async function buildEngineGraph(cwd: string, options: BuildEngineGraphOptions = {}) {
   const { contentPath } = resolveContentDir(cwd, options.contentOverride);
   const sourceRoot = options.sourceRoot ?? (isAbsolute(contentPath) ? dirname(contentPath) : cwd);
   const resolvedContentPath = isAbsolute(contentPath) ? basename(contentPath) : contentPath;
@@ -37,7 +47,7 @@ export async function buildEngineGraph(cwd, options = {}) {
   const sourceContentPath = hasContentDir ? resolvedContentPath : '';
 
   const configRaw = readConfig(cwd, contentPath);
-  const parsedConfig = configRaw ? parseYaml(configRaw) : undefined;
+  const parsedConfig = (configRaw ? parseYaml(configRaw) : undefined) as EngineConfig | undefined;
   // The engine's cluster extraction does `Object.entries(config.clusters)`, so a
   // user config that omits `clusters` (a minimal `title:`-only config.yaml) must
   // still carry an empty `clusters` map. Merge a `{}` default UNDER the parsed
@@ -54,5 +64,8 @@ export async function buildEngineGraph(cwd, options = {}) {
     contentPath: sourceContentPath,
     includeFileTree: false,
   });
-  return loadKnowledgeBase(config, { source });
+  return loadKnowledgeBase(
+    config as Parameters<typeof loadKnowledgeBase>[0],
+    { source } as Parameters<typeof loadKnowledgeBase>[1],
+  );
 }

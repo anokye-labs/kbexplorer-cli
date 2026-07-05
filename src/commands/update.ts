@@ -9,19 +9,19 @@ import { createInterface } from 'node:readline';
 import { hasSubmodule, isTemplateRepo, isSubmoduleInstall, getSubmoduleUrl } from '../lib/detect-repo.ts';
 import { getCurrentTag, getLatestTag, resolveHeadSha, checkoutRef, TEMPLATE_REPO } from '../lib/version.ts';
 import { parseUpdateArgs } from '../lib/args.ts';
-import { readSourceRecord, writeSourceRecord, classifyRef } from '../lib/source.ts';
+import { readSourceRecord, writeSourceRecord, classifyRef, type SourceRecord } from '../lib/source.ts';
 import { resolvePackageAssetsDir } from '../lib/assets.ts';
 
 const ASSETS_DIR = resolvePackageAssetsDir(import.meta.url);
 
-function ask(question) {
+function ask(question: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((res) => {
     rl.question(question, (answer) => { rl.close(); res(answer.trim()); });
   });
 }
 
-function refreshAssets(cwd) {
+function refreshAssets(cwd: string): void {
   const agentsDir = resolve(cwd, '.github', 'agents');
   mkdirSync(agentsDir, { recursive: true });
   const agentsSrc = resolve(ASSETS_DIR, 'agents');
@@ -41,7 +41,7 @@ function refreshAssets(cwd) {
   console.log('✓ Refreshed skills in .github/skills/kbx/');
 }
 
-function safeRemove(p) {
+function safeRemove(p: string): void {
   try {
     rmSync(p, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   } catch { /* best effort */ }
@@ -51,7 +51,7 @@ function timestamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
-export default async function update(args) {
+export default async function update(args: string[] = []): Promise<void> {
   const opts = parseUpdateArgs(args);
   const cwd = process.cwd();
 
@@ -88,7 +88,7 @@ export default async function update(args) {
  * Update a submodule install: pin to the newest release, track a branch, or
  * report a pinned tag. Uses the recorded source URL, not the hardcoded default.
  */
-async function updateSubmodule(cwd, record, force) {
+async function updateSubmodule(cwd: string, record: SourceRecord, force: boolean): Promise<void> {
   const url = record.template;
   const submodulePath = resolve(cwd, '.kbx');
 
@@ -120,13 +120,14 @@ async function updateSubmodule(cwd, record, force) {
       }
     }
     try {
-      checkoutRef(record.ref, cwd);
+      checkoutRef(record.ref as string, cwd);
       execSync('git add .kbx', { cwd, stdio: 'pipe' });
       execSync('npm install --no-audit --no-fund', { cwd: submodulePath, stdio: 'inherit' });
       writeSourceRecord(cwd, { ...record, template: url, resolvedCommit: resolveHeadSha(submodulePath) });
       console.log(`  ✓ Updated to latest ${record.ref}`);
     } catch (err) {
-      console.error('  ✗ Update failed:', err.message);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('  ✗ Update failed:', message);
     }
     return;
   }
@@ -180,7 +181,8 @@ async function updateSubmodule(cwd, record, force) {
     });
     console.log(`  ✓ Updated to ${latestTag}`);
   } catch (err) {
-    console.error('  ✗ Update failed:', err.message);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('  ✗ Update failed:', message);
   }
 }
 
@@ -189,7 +191,7 @@ async function updateSubmodule(cwd, record, force) {
  * fetches the new version into a sibling review dir; with --force, backs up the
  * current install before swapping the new one into place.
  */
-async function updateVendor(cwd, record, force) {
+async function updateVendor(cwd: string, record: SourceRecord, force: boolean): Promise<void> {
   const url = record.template;
   const refType = record.refType || classifyRef(record.ref);
 
@@ -218,7 +220,8 @@ async function updateVendor(cwd, record, force) {
     execSync(`git clone --depth 1 ${branchArg}${url} "${reviewDir}"`, { cwd, stdio: 'inherit' });
   } catch (err) {
     safeRemove(reviewDir);
-    console.error('  ✗ Failed to fetch update:', err.message);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('  ✗ Failed to fetch update:', message);
     return;
   }
   const newSha = resolveHeadSha(reviewDir);
@@ -245,7 +248,8 @@ async function updateVendor(cwd, record, force) {
     renameSync(resolve(cwd, '.kbx'), backup);
     renameSync(reviewDir, resolve(cwd, '.kbx'));
   } catch (err) {
-    console.error('  ✗ Swap failed:', err.message);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('  ✗ Swap failed:', message);
     safeRemove(reviewDir);
     return;
   }
@@ -263,5 +267,3 @@ async function updateVendor(cwd, record, force) {
   });
   console.log(`  ✓ Updated. Previous install backed up to ${backup}`);
 }
-
-

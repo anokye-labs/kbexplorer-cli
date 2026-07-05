@@ -41,11 +41,11 @@ function printHelp() {
 `);
 }
 
-function formatScore(score) {
+function formatScore(score: number): string {
   return (score * 100).toFixed(1) + '%';
 }
 
-export default async function search(args = []) {
+export default async function search(args: string[] = []): Promise<void> {
   const opts = parseSearchArgs(args);
   if (opts.help) {
     printHelp();
@@ -61,7 +61,7 @@ export default async function search(args = []) {
   const artifactDir = resolve(cwd, opts.dir || DEFAULT_ARTIFACT_DIR);
 
   // Lazy-import kbx-search to avoid a hard dependency at CLI load time.
-  let searchMod;
+  let searchMod: typeof import('@anokye-labs/kbexplorer-search');
   try {
     searchMod = await import('@anokye-labs/kbexplorer-search');
   } catch {
@@ -91,16 +91,17 @@ export default async function search(args = []) {
       dimensions: artifact.meta.dimensions,
     });
   } catch (err) {
-    console.error(`✗ ${err.message}`);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`✗ ${message}`);
     process.exit(1);
   }
 
   const engine = createSearchEngine(artifact, provider);
   const results = await engine.search(opts.query, {
-    limit: opts.limit || DEFAULT_LIMIT,
-    cluster: opts.cluster,
-    entityType: opts.entityType,
-    minScore: opts.minScore,
+    limit: opts.limit ?? DEFAULT_LIMIT,
+    cluster: opts.cluster ?? undefined,
+    entityType: opts.entityType ?? undefined,
+    minScore: opts.minScore ?? undefined,
   });
 
   if (opts.json) {
@@ -130,5 +131,4 @@ export default async function search(args = []) {
     console.log('');
   }
 }
-
 

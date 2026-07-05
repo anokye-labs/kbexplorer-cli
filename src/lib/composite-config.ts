@@ -38,6 +38,52 @@
 
 import { normalizeAccessLabel } from './access-label.ts';
 
+type JsonRecord = Record<string, unknown>;
+type CompositeConfigErrorCodeValue =
+  (typeof CompositeConfigErrorCode)[keyof typeof CompositeConfigErrorCode];
+type FailureMode = (typeof FAILURE_MODES)[number];
+type BudgetKey = (typeof BUDGET_KEYS)[number];
+type NormalizedAccessLabel = NonNullable<ReturnType<typeof normalizeAccessLabel>>;
+
+interface CompositeConfigErrorOptions {
+  code?: CompositeConfigErrorCodeValue;
+  cause?: unknown;
+}
+
+interface ResolveCredentialsResult {
+  resolved: Record<string, string>;
+  envNames: Record<string, string>;
+  warnings: string[];
+}
+
+interface NormalizedSource {
+  sourceId: string;
+  kind: string | null;
+  module: string | null;
+  options: JsonRecord;
+  cluster?: string;
+  name?: string;
+  access?: NormalizedAccessLabel;
+  credentials: Record<string, string>;
+  credentialEnv: Record<string, string>;
+}
+
+interface NormalizedIngestion {
+  failureMode: FailureMode;
+  concurrency: number;
+  budgets: Partial<Record<BudgetKey, number>>;
+}
+
+interface NormalizeCompositeConfigOptions {
+  env?: Record<string, string | undefined>;
+}
+
+interface NormalizeCompositeConfigResult {
+  sources: NormalizedSource[];
+  ingestion: NormalizedIngestion;
+  warnings: string[];
+}
+
 /** Stable error codes for composite-config validation failures. */
 export const CompositeConfigErrorCode = Object.freeze({
   INVALID: 'KBX_COMPOSITE_INVALID',
@@ -45,51 +91,59 @@ export const CompositeConfigErrorCode = Object.freeze({
   MISSING_RESOLVER: 'KBX_COMPOSITE_MISSING_RESOLVER',
   INVALID_FAILURE_MODE: 'KBX_COMPOSITE_INVALID_FAILURE_MODE',
   INVALID_BUDGET: 'KBX_COMPOSITE_INVALID_BUDGET',
-});
+} as const);
 
 /** Error thrown when a composite config is structurally invalid. */
 export class CompositeConfigError extends Error {
-  constructor(message, { code = CompositeConfigErrorCode.INVALID, cause } = {}) {
-    super(message, cause ? { cause } : undefined);
+  code: CompositeConfigErrorCodeValue;
+
+  constructor(message: string, { code = CompositeConfigErrorCode.INVALID, cause }: CompositeConfigErrorOptions = {}) {
+    super(message, cause === undefined ? undefined : { cause });
     this.name = 'CompositeConfigError';
     this.code = code;
   }
 }
 
 /** The two supported ingestion failure modes. */
-export const FAILURE_MODES = Object.freeze(['fail-fast', 'best-effort']);
+export const FAILURE_MODES = Object.freeze(['fail-fast', 'best-effort'] as const);
 
 /** Default ingestion policy applied when the `ingestion` block is omitted. */
-export const DEFAULT_INGESTION = Object.freeze({
+export const DEFAULT_INGESTION: Readonly<NormalizedIngestion> = Object.freeze({
   failureMode: 'fail-fast',
   concurrency: 1,
-  budgets: Object.freeze({}),
+  budgets: Object.freeze({}) as Partial<Record<BudgetKey, number>>,
 });
 
 /** Budget keys understood by the engine (all optional, all positive integers). */
-const BUDGET_KEYS = Object.freeze(['maxSources', 'maxNodes', 'maxEdges', 'timeoutMs']);
+const BUDGET_KEYS = Object.freeze(['maxSources', 'maxNodes', 'maxEdges', 'timeoutMs'] as const);
 
-function isPlainObject(value) {
+function isPlainObject(value: unknown): value is JsonRecord {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function isPositiveInt(value) {
-  return Number.isInteger(value) && value > 0;
+function isPositiveInt(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+function isFailureMode(value: unknown): value is FailureMode {
+  return typeof value === 'string' && (FAILURE_MODES as readonly string[]).includes(value);
+}
+
+function isBudgetKey(value: string): value is BudgetKey {
+  return (BUDGET_KEYS as readonly string[]).includes(value);
 }
 
 /** Pull the composite block out of either `{ kbx: {...} }` or a root object. */
-function unwrap(raw) {
+function unwrap(raw: unknown): JsonRecord {
   if (!isPlainObject(raw)) {
     throw new CompositeConfigError('Composite config must be an object.', {
       code: CompositeConfigErrorCode.INVALID,
     });
   }
   // Prefer an explicit `kbx` envelope; fall back to the root object.
-  if (
-    isPlainObject(raw.kbx) &&
-    (Array.isArray(raw.kbx.sources) || isPlainObject(raw.kbx.ingestion))
-  ) {
-    return raw.kbx;
+  const kbx = raw.kbx;
+  if (isPlainObject(kbx) && (Array.isArray(kbx.sources) || isPlainObject(kbx.ingestion))) {
+    return kbx;
   }
   return raw;
 }
@@ -104,22 +158,26 @@ function unwrap(raw) {
  * @param {Record<string,string|undefined>} env
  * @returns {{ resolved: Record<string,string>, envNames: Record<string,string>, warnings: string[] }}
  */
-function resolveCredentials(sourceId, credentials, env) {
-  const resolved = {};
-  const envNames = {};
-  const warnings = [];
+function resolveCredentials(
+  sourceId: string,
+  credentials: unknown,
+  env: Record<string, string | undefined>,
+): ResolveCredentialsResult {
+  const resolved: Record<string, string> = {};
+  const envNames: Record<string, string> = {};
+  const warnings: string[] = [];
   if (credentials == null) return { resolved, envNames, warnings };
   if (!isPlainObject(credentials)) {
     throw new CompositeConfigError(
       `Source "${sourceId}": "credentials" must be a { logicalKey: ENV_VAR_NAME } map.`,
-      { code: CompositeConfigErrorCode.INVALID }
+      { code: CompositeConfigErrorCode.INVALID },
     );
   }
   for (const [key, envName] of Object.entries(credentials)) {
     if (typeof envName !== 'string' || !envName) {
       throw new CompositeConfigError(
         `Source "${sourceId}": credential "${key}" must map to a non-empty env var name.`,
-        { code: CompositeConfigErrorCode.INVALID }
+        { code: CompositeConfigErrorCode.INVALID },
       );
     }
     envNames[key] = envName;
@@ -127,7 +185,7 @@ function resolveCredentials(sourceId, credentials, env) {
     if (value == null || value === '') {
       warnings.push(
         `Source "${sourceId}": credential "${key}" env var "${envName}" is unset; ` +
-          'the provider will receive no value for it.'
+          'the provider will receive no value for it.',
       );
       continue;
     }
@@ -143,7 +201,11 @@ function resolveCredentials(sourceId, credentials, env) {
  * @param {number} index
  * @param {Record<string,string|undefined>} env
  */
-function normalizeSource(entry, index, env) {
+function normalizeSource(
+  entry: unknown,
+  index: number,
+  env: Record<string, string | undefined>,
+): { source: NormalizedSource; warnings: string[] } {
   if (!isPlainObject(entry)) {
     throw new CompositeConfigError(`sources[${index}] must be an object.`, {
       code: CompositeConfigErrorCode.INVALID,
@@ -166,7 +228,7 @@ function normalizeSource(entry, index, env) {
       `Source "${sourceId}": "module" must be a non-empty string when set.`,
       {
         code: CompositeConfigErrorCode.INVALID,
-      }
+      },
     );
   }
   // A source must be resolvable to a provider: either a module specifier (the
@@ -174,7 +236,7 @@ function normalizeSource(entry, index, env) {
   if (entry.module == null && kind == null) {
     throw new CompositeConfigError(
       `Source "${sourceId}": specify a "module" (ES specifier) or a "kind" so the engine can resolve a provider.`,
-      { code: CompositeConfigErrorCode.MISSING_RESOLVER }
+      { code: CompositeConfigErrorCode.MISSING_RESOLVER },
     );
   }
   if (entry.options != null && !isPlainObject(entry.options)) {
@@ -188,7 +250,7 @@ function normalizeSource(entry, index, env) {
   if (entry.access != null && !isPlainObject(entry.access)) {
     throw new CompositeConfigError(
       `Source "${sourceId}": "access" must be a KBAccessLabel object when set.`,
-      { code: CompositeConfigErrorCode.INVALID }
+      { code: CompositeConfigErrorCode.INVALID },
     );
   }
   const access = normalizeAccessLabel(entry.access);
@@ -210,7 +272,7 @@ function normalizeSource(entry, index, env) {
 }
 
 /** Validate and normalize the `ingestion` policy block. */
-function normalizeIngestion(raw) {
+function normalizeIngestion(raw: unknown): NormalizedIngestion {
   if (raw == null) return { ...DEFAULT_INGESTION, budgets: {} };
   if (!isPlainObject(raw)) {
     throw new CompositeConfigError('"ingestion" must be an object when set.', {
@@ -218,10 +280,10 @@ function normalizeIngestion(raw) {
     });
   }
   const failureMode = raw.failureMode ?? DEFAULT_INGESTION.failureMode;
-  if (!FAILURE_MODES.includes(failureMode)) {
+  if (!isFailureMode(failureMode)) {
     throw new CompositeConfigError(
       `"ingestion.failureMode" must be one of ${FAILURE_MODES.join(' | ')} (got ${JSON.stringify(failureMode)}).`,
-      { code: CompositeConfigErrorCode.INVALID_FAILURE_MODE }
+      { code: CompositeConfigErrorCode.INVALID_FAILURE_MODE },
     );
   }
   let concurrency = DEFAULT_INGESTION.concurrency;
@@ -233,7 +295,7 @@ function normalizeIngestion(raw) {
     }
     concurrency = raw.concurrency;
   }
-  const budgets = {};
+  const budgets: Partial<Record<BudgetKey, number>> = {};
   if (raw.budgets != null) {
     if (!isPlainObject(raw.budgets)) {
       throw new CompositeConfigError('"ingestion.budgets" must be an object when set.', {
@@ -241,10 +303,10 @@ function normalizeIngestion(raw) {
       });
     }
     for (const [key, value] of Object.entries(raw.budgets)) {
-      if (!BUDGET_KEYS.includes(key)) {
+      if (!isBudgetKey(key)) {
         throw new CompositeConfigError(
           `Unknown budget "${key}". Supported: ${BUDGET_KEYS.join(', ')}.`,
-          { code: CompositeConfigErrorCode.INVALID_BUDGET }
+          { code: CompositeConfigErrorCode.INVALID_BUDGET },
         );
       }
       if (!isPositiveInt(value)) {
@@ -272,7 +334,10 @@ function normalizeIngestion(raw) {
  * }}
  * @throws {CompositeConfigError}
  */
-export function normalizeCompositeConfig(raw, opts = {}) {
+export function normalizeCompositeConfig(
+  raw: unknown,
+  opts: NormalizeCompositeConfigOptions = {},
+): NormalizeCompositeConfigResult {
   const env = opts.env ?? process.env;
   const block = unwrap(raw);
   if (!Array.isArray(block.sources)) {
@@ -286,11 +351,11 @@ export function normalizeCompositeConfig(raw, opts = {}) {
     });
   }
 
-  const sources = [];
-  const warnings = [];
-  const seen = new Set();
+  const sources: NormalizedSource[] = [];
+  const warnings: string[] = [];
+  const seen = new Set<string>();
   block.sources.forEach((entry, index) => {
-    const { source, warnings: w } = normalizeSource(entry, index, env);
+    const { source, warnings: sourceWarnings } = normalizeSource(entry, index, env);
     if (seen.has(source.sourceId)) {
       throw new CompositeConfigError(`Duplicate sourceId "${source.sourceId}".`, {
         code: CompositeConfigErrorCode.DUPLICATE_SOURCE,
@@ -298,7 +363,7 @@ export function normalizeCompositeConfig(raw, opts = {}) {
     }
     seen.add(source.sourceId);
     sources.push(source);
-    warnings.push(...w);
+    warnings.push(...sourceWarnings);
   });
 
   return { sources, ingestion: normalizeIngestion(block.ingestion), warnings };

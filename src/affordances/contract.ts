@@ -29,6 +29,8 @@
  * @module src/affordances/contract
  */
 
+import type { AffordanceContext } from './context.ts';
+
 /**
  * Stable, machine-readable error codes for affordance execution. Adapters map
  * these to their own protocol error shapes; nothing here is transport-specific.
@@ -58,6 +60,8 @@ export const ERROR_CODES = Object.freeze({
   CONSENT_DENIED: 'CONSENT_DENIED',
 });
 
+export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
+
 /**
  * Action classes for consent/provenance reasoning (PE3-F3). Advisory metadata on
  * the contract — the contract itself enforces nothing.
@@ -75,7 +79,90 @@ export const ACTION_CLASSES = Object.freeze({
   SAMPLE: 'sample',
 });
 
-const VALID_ACTION_CLASSES = new Set(Object.values(ACTION_CLASSES));
+export type ActionClass = (typeof ACTION_CLASSES)[keyof typeof ACTION_CLASSES];
+
+const VALID_ACTION_CLASSES = new Set<ActionClass>(Object.values(ACTION_CLASSES));
+
+export type FieldType = 'string' | 'number' | 'boolean' | 'array' | 'object';
+
+export interface FieldDescriptor {
+  type: FieldType;
+  required?: boolean;
+  default?: unknown;
+  description?: string;
+  min?: number;
+  max?: number;
+  minItems?: number;
+  item?: FieldDescriptor;
+  enum?: string[];
+}
+
+export interface SchemaDescriptor {
+  fields: Record<string, FieldDescriptor>;
+}
+
+export interface ConsentCost {
+  kind?: 'sample' | 'none' | string;
+  runtime?: string;
+  model?: string;
+  estimate?: string;
+  generator?: string;
+  [key: string]: unknown;
+}
+
+export interface ConsentDisclosure {
+  credentials?: string[];
+  writes?: string[];
+  cost?: ConsentCost;
+  [key: string]: unknown;
+}
+
+export interface ConsentDescriptor {
+  credentials?: string[];
+  cost?: ConsentCost;
+  writes?: string[];
+  disclose?: (
+    input: Record<string, unknown>,
+    context?: AffordanceContext,
+  ) => ConsentDisclosure | null | undefined;
+  readOnlyWhen?: (input: Record<string, unknown>) => boolean;
+}
+
+export interface Affordance<Output = unknown> {
+  name: string;
+  title: string;
+  summary: string;
+  actionClass: ActionClass;
+  input: SchemaDescriptor;
+  output?: SchemaDescriptor;
+  consent?: Readonly<ConsentDescriptor>;
+  execute: (context: AffordanceContext, input: Record<string, unknown>) => Promise<Output> | Output;
+}
+
+export interface AffordanceSpec<Output = unknown> {
+  name: string;
+  title?: string;
+  summary: string;
+  actionClass: ActionClass;
+  input: SchemaDescriptor;
+  output?: SchemaDescriptor;
+  consent?: ConsentDescriptor;
+  execute: (context: AffordanceContext, input: Record<string, unknown>) => Promise<Output> | Output;
+}
+
+export interface AffordanceDescription {
+  name: string;
+  title: string;
+  summary: string;
+  actionClass: ActionClass;
+  input: SchemaDescriptor;
+  output: SchemaDescriptor | null;
+  consent: {
+    credentials?: string[];
+    cost?: ConsentCost;
+    writes?: string[];
+  } | null;
+}
 
 /**
  * A typed error raised by affordance validation/execution.
@@ -84,12 +171,15 @@ const VALID_ACTION_CLASSES = new Set(Object.values(ACTION_CLASSES));
  * @property {object} [details]  Structured, serialisable diagnostic detail.
  */
 export class AffordanceError extends Error {
+  code: ErrorCode;
+  details?: unknown;
+
   /**
    * @param {string} code     One of {@link ERROR_CODES}.
    * @param {string} message  Human-readable description.
    * @param {object} [details]  Structured, serialisable detail (e.g. field list).
    */
-  constructor(code, message, details = undefined) {
+  constructor(code: ErrorCode, message: string, details: unknown = undefined) {
     super(message);
     this.name = 'AffordanceError';
     this.code = code;
@@ -97,7 +187,7 @@ export class AffordanceError extends Error {
   }
 
   /** Serialisable shape for adapters that emit JSON error payloads. */
-  toJSON() {
+  toJSON(): { error: true; code: ErrorCode; message: string; details?: unknown } {
     return {
       error: true,
       code: this.code,
@@ -109,23 +199,7 @@ export class AffordanceError extends Error {
 
 // ── Schema descriptor + validation ──────────────────────────────────────────
 
-const SUPPORTED_TYPES = new Set(['string', 'number', 'boolean', 'array', 'object']);
-
-/**
- * @typedef {object} FieldDescriptor
- * @property {'string'|'number'|'boolean'|'array'|'object'} type
- * @property {boolean} [required=false]
- * @property {*} [default]            Applied when the field is absent.
- * @property {string} [description]
- * @property {number} [min]           Numeric lower clamp (inclusive).
- * @property {number} [max]           Numeric upper clamp (inclusive).
- * @property {number} [minItems]      Array minimum length.
- * @property {FieldDescriptor} [item] Element descriptor for `type: 'array'`.
- * @property {string[]} [enum]        Allowed string values.
- *
- * @typedef {object} SchemaDescriptor
- * @property {Record<string, FieldDescriptor>} fields
- */
+const SUPPORTED_TYPES = new Set<FieldType>(['string', 'number', 'boolean', 'array', 'object']);
 
 /**
  * Declare a transport-neutral input schema. Returned verbatim plus a marker so
@@ -134,24 +208,27 @@ const SUPPORTED_TYPES = new Set(['string', 'number', 'boolean', 'array', 'object
  * @param {Record<string, FieldDescriptor>} fields
  * @returns {SchemaDescriptor}
  */
-export function defineSchema(fields = {}) {
+export function defineSchema(fields: Record<string, FieldDescriptor> = {}): SchemaDescriptor {
   for (const [name, desc] of Object.entries(fields)) {
     if (!desc || !SUPPORTED_TYPES.has(desc.type)) {
       throw new TypeError(`defineSchema: field "${name}" has unsupported type "${desc?.type}"`);
     }
     if (desc.type === 'array' && desc.item && !SUPPORTED_TYPES.has(desc.item.type)) {
       throw new TypeError(
-        `defineSchema: field "${name}.item" has unsupported type "${desc.item.type}"`
+        `defineSchema: field "${name}.item" has unsupported type "${desc.item.type}"`,
       );
     }
   }
   return { fields };
 }
 
-function coerceScalar(value, type) {
+function coerceScalar(
+  value: unknown,
+  type: Extract<FieldType, 'string' | 'number' | 'boolean'>,
+): string | number | boolean | undefined {
   if (type === 'number') {
-    const n = typeof value === 'number' ? value : Number(value);
-    return Number.isFinite(n) ? n : undefined;
+    const numeric = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(numeric) ? numeric : undefined;
   }
   if (type === 'boolean') {
     if (typeof value === 'boolean') return value;
@@ -159,13 +236,15 @@ function coerceScalar(value, type) {
     if (value === 'false') return false;
     return undefined;
   }
-  if (type === 'string') {
-    return typeof value === 'string' ? value : undefined;
-  }
-  return value;
+  return typeof value === 'string' ? value : undefined;
 }
 
-function validateField(name, desc, raw, errors) {
+function validateField(
+  name: string,
+  desc: FieldDescriptor,
+  raw: unknown,
+  errors: string[],
+): unknown {
   if (raw === undefined || raw === null) {
     if (desc.default !== undefined) return desc.default;
     if (desc.required) errors.push(`"${name}" is required`);
@@ -177,11 +256,11 @@ function validateField(name, desc, raw, errors) {
       errors.push(`"${name}" must be an array`);
       return undefined;
     }
-    const out = [];
+    const out: unknown[] = [];
     raw.forEach((el, i) => {
       if (desc.item) {
-        const v = validateField(`${name}[${i}]`, desc.item, el, errors);
-        if (v !== undefined) out.push(v);
+        const value = validateField(`${name}[${i}]`, desc.item, el, errors);
+        if (value !== undefined) out.push(value);
       } else {
         out.push(el);
       }
@@ -193,7 +272,7 @@ function validateField(name, desc, raw, errors) {
   }
 
   if (desc.type === 'object') {
-    if (typeof raw !== 'object' || Array.isArray(raw)) {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
       errors.push(`"${name}" must be an object`);
       return undefined;
     }
@@ -206,16 +285,14 @@ function validateField(name, desc, raw, errors) {
     return undefined;
   }
   if (desc.type === 'number') {
-    let n = coerced;
-    if (typeof desc.min === 'number') n = Math.max(desc.min, n);
-    if (typeof desc.max === 'number') n = Math.min(desc.max, n);
-    return n;
+    let numeric = coerced as number;
+    if (typeof desc.min === 'number') numeric = Math.max(desc.min, numeric);
+    if (typeof desc.max === 'number') numeric = Math.min(desc.max, numeric);
+    return numeric;
   }
-  if (desc.type === 'string') {
-    if (Array.isArray(desc.enum) && !desc.enum.includes(coerced)) {
-      errors.push(`"${name}" must be one of: ${desc.enum.join(', ')}`);
-      return undefined;
-    }
+  if (desc.type === 'string' && Array.isArray(desc.enum) && !desc.enum.includes(coerced as string)) {
+    errors.push(`"${name}" must be one of: ${desc.enum.join(', ')}`);
+    return undefined;
   }
   return coerced;
 }
@@ -232,51 +309,24 @@ function validateField(name, desc, raw, errors) {
  * @param {object} [input={}]
  * @returns {{ ok: boolean, value: object, errors: string[] }}
  */
-export function validateInput(schema, input = {}) {
-  const errors = [];
-  const value = {};
-  const src = input && typeof input === 'object' ? input : {};
-  for (const [name, desc] of Object.entries(schema?.fields ?? {})) {
-    const v = validateField(name, desc, src[name], errors);
-    if (v !== undefined) value[name] = v;
+export function validateInput(
+  schema: SchemaDescriptor,
+  input: Record<string, unknown> = {},
+): { ok: boolean; value: Record<string, unknown>; errors: string[] } {
+  const errors: string[] = [];
+  const value: Record<string, unknown> = {};
+  const src =
+    input && typeof input === 'object' && !Array.isArray(input)
+      ? input
+      : ({} as Record<string, unknown>);
+  for (const [name, desc] of Object.entries(schema.fields)) {
+    const fieldValue = validateField(name, desc, src[name], errors);
+    if (fieldValue !== undefined) value[name] = fieldValue;
   }
   return { ok: errors.length === 0, value, errors };
 }
 
 // ── Affordance definition ───────────────────────────────────────────────────
-
-/**
- * @typedef {object} Affordance
- * @property {string} name          Stable identifier (snake_case operation name).
- * @property {string} title         Short human label.
- * @property {string} summary       One-line description of the action.
- * @property {'read'|'write'|'sample'} actionClass  Consent classification.
- * @property {SchemaDescriptor} input   Typed input contract.
- * @property {SchemaDescriptor} [output]  Advisory output shape (documentation).
- * @property {ConsentDescriptor} [consent]  Optional disclosure metadata used by
- *           the consent layer (PE3-F3) to tell the user what a write/sample
- *           action will touch (credentials, written paths, model cost). Purely
- *           additive — affordances without it disclose only their class/summary.
- * @property {(context: object, input: object) => Promise<*>|*} execute
- *           Pure-of-protocol handler: typed context in, typed result out.
- */
-
-/**
- * @typedef {object} ConsentDescriptor
- * @property {string[]} [credentials]  Credential NAMES (never values) the action
- *           may consume, e.g. `['GITHUB_TOKEN']`.
- * @property {{kind?: 'sample'|'none', runtime?: string, model?: string, estimate?: string}} [cost]
- *           For sample-class actions: which model/runtime is invoked. Advisory.
- * @property {string[]} [writes]  Static list of paths/targets a write touches.
- * @property {(input: object, context?: object) => {credentials?: string[], writes?: string[], cost?: object}} [disclose]
- *           Optional input-derived disclosure merged over the static fields.
- *           Must be deterministic and timestamp-free.
- * @property {(input: object) => boolean} [readOnlyWhen]
- *           Optional, explicit opt-in predicate marking specific invocations of a
- *           write/sample action as side-effect-free so they skip the consent gate
- *           (e.g. `derive --check`). Omitting it means the action is always gated
- *           (fail-closed; never fail-open by omission).
- */
 
 /**
  * Declare a single affordance (action contract). Validates the declaration shape
@@ -293,7 +343,7 @@ export function validateInput(schema, input = {}) {
  * @param {(context: object, input: object) => Promise<*>|*} spec.execute
  * @returns {Affordance}
  */
-export function defineAffordance(spec) {
+export function defineAffordance<Output = unknown>(spec: AffordanceSpec<Output>): Affordance<Output> {
   const { name, title, summary, actionClass, input, output, consent, execute } = spec ?? {};
   if (typeof name !== 'string' || !name.trim()) {
     throw new TypeError('defineAffordance: "name" is required');
@@ -303,11 +353,17 @@ export function defineAffordance(spec) {
   }
   if (!VALID_ACTION_CLASSES.has(actionClass)) {
     throw new TypeError(
-      `defineAffordance(${name}): "actionClass" must be one of ${[...VALID_ACTION_CLASSES].join(', ')}`
+      `defineAffordance(${name}): "actionClass" must be one of ${[...VALID_ACTION_CLASSES].join(', ')}`,
     );
   }
-  if (!input || typeof input !== 'object' || !input.fields) {
+  if (!input || typeof input !== 'object' || !('fields' in input)) {
     throw new TypeError(`defineAffordance(${name}): "input" must be a schema descriptor`);
+  }
+  if (
+    output !== undefined &&
+    (typeof output !== 'object' || output === null || !('fields' in output))
+  ) {
+    throw new TypeError(`defineAffordance(${name}): "output" must be a schema descriptor`);
   }
   if (consent !== undefined && (typeof consent !== 'object' || consent === null)) {
     throw new TypeError(`defineAffordance(${name}): "consent" must be an object when provided`);
@@ -341,7 +397,7 @@ export function defineAffordance(spec) {
  * @param {Affordance} affordance
  * @returns {{name: string, title: string, summary: string, actionClass: string, input: SchemaDescriptor, output: SchemaDescriptor|null, consent: object|null}}
  */
-export function describeAffordance(affordance) {
+export function describeAffordance(affordance: Affordance): AffordanceDescription {
   return {
     name: affordance.name,
     title: affordance.title,
@@ -354,7 +410,9 @@ export function describeAffordance(affordance) {
     // call time via buildConsentRequest.
     consent: affordance.consent
       ? {
-          ...(affordance.consent.credentials ? { credentials: affordance.consent.credentials } : {}),
+          ...(affordance.consent.credentials
+            ? { credentials: affordance.consent.credentials }
+            : {}),
           ...(affordance.consent.cost ? { cost: affordance.consent.cost } : {}),
           ...(affordance.consent.writes ? { writes: affordance.consent.writes } : {}),
         }

@@ -17,7 +17,13 @@
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { defineAffordance, defineSchema, AffordanceError, ERROR_CODES, ACTION_CLASSES } from '../contract.ts';
-import { resolveJobStore, JOB_STATUS } from './store.ts';
+import { resolveJobStore, JOB_STATUS, type JobChange } from './store.ts';
+import type { AffordanceContext } from '../context.ts';
+
+interface PreviewChangesInput extends Record<string, unknown> {
+  id: string;
+  contents?: boolean;
+}
 
 export default defineAffordance({
   name: 'preview_changes',
@@ -36,30 +42,31 @@ export default defineAffordance({
     id: { type: 'string' },
     changes: { type: 'array' },
   }),
-  execute(context, input) {
+  execute(context: AffordanceContext, input: Record<string, unknown>) {
+    const args = input as PreviewChangesInput;
     const store = resolveJobStore(context);
-    const job = store._raw(input.id);
+    const job = store._raw(args.id);
     if (!job) {
-      throw new AffordanceError(ERROR_CODES.NOT_FOUND, `No job with id "${input.id}"`, {
-        id: input.id,
+      throw new AffordanceError(ERROR_CODES.NOT_FOUND, `No job with id "${args.id}"`, {
+        id: args.id,
       });
     }
     if (job.status !== JOB_STATUS.SUCCEEDED) {
       throw new AffordanceError(
         ERROR_CODES.INVALID_INPUT,
-        `Job "${input.id}" is "${job.status}"; only a succeeded job has previewable changes`,
-        { id: input.id, status: job.status }
+        `Job "${args.id}" is "${job.status}"; only a succeeded job has previewable changes`,
+        { id: args.id, status: job.status }
       );
     }
 
-    const changes = (job.changes ?? []).map((c) => {
-      const abs = resolve(context.cwd, c.path);
-      const text = typeof c.contents === 'string' ? c.contents : '';
+    const changes = (job.changes ?? []).map((change: JobChange) => {
+      const abs = resolve(context.cwd, change.path);
+      const text = typeof change.contents === 'string' ? change.contents : '';
       return {
-        path: c.path,
+        path: change.path,
         bytes: Buffer.byteLength(text, 'utf-8'),
         disposition: existsSync(abs) ? 'overwrite' : 'create',
-        ...(input.contents ? { contents: text } : {}),
+        ...(args.contents ? { contents: text } : {}),
       };
     });
 

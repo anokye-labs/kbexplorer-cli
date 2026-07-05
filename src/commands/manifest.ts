@@ -22,7 +22,7 @@ import { generateManifest } from '../lib/repo-manifest.ts';
 import { manifestOutPath } from './dev.ts';
 import { parseManifestArgs } from '../lib/args.ts';
 
-export default async function manifest(args) {
+export default async function manifest(args: string[] = []): Promise<void> {
   parseManifestArgs(args);
   const cwd = process.cwd();
   const appRoot = getAppRoot(cwd);
@@ -50,5 +50,3 @@ export default async function manifest(args) {
   writeFileSync(outPath, JSON.stringify(manifestData, null, 2), 'utf-8');
   console.log(`✓ Manifest written to ${outPath}`);
 }
-
-

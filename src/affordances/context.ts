@@ -19,8 +19,42 @@
  */
 
 import { resolve } from 'node:path';
-import { loadGraph } from '../lib/engine-graph.ts';
+import { loadGraph, type LoadedGraph } from '../lib/engine-graph.ts';
 import { resolveContentDir } from '../lib/kb-env.ts';
+import type { JobChange, JobPartialFailure, JobProgress, JobStore } from './jobs/store.ts';
+
+type IngestedDocument = ReturnType<typeof import('../lib/ingest.ts').readSource>;
+
+export interface ExtractionIntermediate {
+  entities: unknown[];
+  relationships: unknown[];
+}
+
+export interface GenerateRunArgs {
+  request: Record<string, unknown>;
+  signal: AbortSignal;
+  onProgress: (progress: Partial<JobProgress>) => void;
+  getCredential: (name: string) => string;
+}
+
+export interface GenerateRunResult {
+  changes?: JobChange[];
+  partial?: JobPartialFailure[];
+}
+
+export interface CreatePullRequestArgs {
+  title: string;
+  body: string;
+  branch?: string;
+  base?: string;
+  changes: JobChange[];
+  cwd: string;
+}
+
+export interface CreatePullRequestResult {
+  url?: string;
+  branch?: string;
+}
 
 /**
  * @typedef {object} AffordanceContextSeams
@@ -37,6 +71,34 @@ import { resolveContentDir } from '../lib/kb-env.ts';
  * @property {(opts?: {content?: string}) => {contentDir: string, contentPath: string}} resolveContent
  * @property {() => Promise<import('../lib/engine-graph.ts').Graph>} loadGraph  Cached graph view.
  */
+export interface AffordanceContextSeams {
+  loadSearchModule?: () => Promise<unknown>;
+  runExtraction?: (document: IngestedDocument) => Promise<ExtractionIntermediate>;
+  requestConsent?: (request: unknown) => Promise<unknown> | unknown;
+  consentPolicy?: 'allow';
+  jobStore?: JobStore;
+  runGenerate?: (args: GenerateRunArgs) => Promise<GenerateRunResult>;
+  createPullRequest?: (args: CreatePullRequestArgs) => Promise<CreatePullRequestResult>;
+}
+
+export interface ResolvedContentDir {
+  contentDir: string;
+  contentPath: string;
+}
+
+export interface AffordanceContext {
+  cwd: string;
+  roots?: string[];
+  seams: AffordanceContextSeams;
+  resolveContent: (opts?: { content?: string }) => ResolvedContentDir;
+  loadGraph: () => Promise<LoadedGraph>;
+}
+
+export interface CreateAffordanceContextOptions {
+  cwd?: string;
+  roots?: string[];
+  seams?: AffordanceContextSeams;
+}
 
 /**
  * Build a protocol-neutral affordance execution context.
@@ -48,10 +110,13 @@ import { resolveContentDir } from '../lib/kb-env.ts';
  * @param {AffordanceContextSeams} [opts.seams={}]  Injectable capabilities.
  * @returns {AffordanceContext}
  */
-export function createAffordanceContext({ cwd = process.cwd(), roots, seams = {} } = {}) {
+export function createAffordanceContext({
+  cwd = process.cwd(),
+  roots,
+  seams = {},
+}: CreateAffordanceContextOptions = {}): AffordanceContext {
   const absCwd = resolve(cwd);
-  /** @type {import('../lib/engine-graph.ts').Graph|null} */
-  let graphCache = null;
+  let graphCache: LoadedGraph | null = null;
 
   return {
     cwd: absCwd,
@@ -59,12 +124,12 @@ export function createAffordanceContext({ cwd = process.cwd(), roots, seams = {}
     seams,
 
     /** Resolve the content directory (honours an optional `content` override). */
-    resolveContent({ content } = {}) {
+    resolveContent({ content }: { content?: string } = {}): ResolvedContentDir {
       return resolveContentDir(absCwd, content);
     },
 
     /** Load (and memoise) the knowledge graph scoped to `roots` (or `cwd`). */
-    async loadGraph() {
+    async loadGraph(): Promise<LoadedGraph> {
       if (!graphCache) {
         graphCache = await loadGraph(roots ? { roots, cwd: absCwd } : { cwd: absCwd });
       }

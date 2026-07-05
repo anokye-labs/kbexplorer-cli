@@ -20,6 +20,13 @@ import {
   ACTION_CLASSES,
 } from '../contract.ts';
 import { shortestPath, neighbors } from '../../lib/engine-graph.ts';
+import type { AffordanceContext } from '../context.ts';
+
+interface TraceInput extends Record<string, unknown> {
+  fromId?: string;
+  toId?: string;
+  nodeId?: string;
+}
 
 export default defineAffordance({
   name: 'trace',
@@ -42,9 +49,10 @@ export default defineAffordance({
     path: { type: 'array' },
     nodes: { type: 'array' },
   }),
-  async execute(context, input) {
-    const fromId = input.fromId || input.nodeId;
-    const toId = input.toId;
+  async execute(context: AffordanceContext, input: Record<string, unknown>) {
+    const args = input as TraceInput;
+    const fromId = args.fromId || args.nodeId;
+    const toId = args.toId;
     if (!fromId) {
       throw new AffordanceError(
         ERROR_CODES.INVALID_INPUT,
@@ -72,6 +80,7 @@ export default defineAffordance({
         path: ids,
         nodes: ids.map((id) => {
           const node = graph.nodes.get(id);
+          if (!node) return { id, title: id, cluster: 'unknown' };
           return { id, title: node.title, cluster: node.cluster };
         }),
       };
@@ -92,8 +101,8 @@ export default defineAffordance({
       nodes: [
         {
           id: fromId,
-          title: graph.nodes.get(fromId).title,
-          cluster: graph.nodes.get(fromId).cluster,
+          title: graph.nodes.get(fromId)?.title ?? fromId,
+          cluster: graph.nodes.get(fromId)?.cluster ?? 'unknown',
         },
         ...nb.map(({ id, title, cluster }) => ({ id, title, cluster })),
       ],

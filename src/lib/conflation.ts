@@ -60,7 +60,15 @@
  * @module lib/conflation
  */
 
-import { buildEdgeId, mapRelation } from '@anokye-labs/kbexplorer-core';
+import {
+  buildEdgeId,
+  mapRelation,
+  type KBAccessLabel,
+  type KBEdge,
+  type KBGraph,
+  type KBNode,
+  type SourceRef,
+} from '@anokye-labs/kbexplorer-core';
 import { canonicalStringify } from './jsonld.ts';
 import { buildResolutionIndex, resolveLinkedRef } from './edge-mint.ts';
 import { mergeAccessLabels, normalizeAccessLabel } from './access-label.ts';
@@ -70,6 +78,47 @@ export const CONFLATE_GENERATOR = 'conflate@1';
 
 /** Canonical fallback relation when an edge carries no usable relation. */
 const FALLBACK_RELATION = 'structural';
+
+type AttributeSnapshot = Record<string, unknown>;
+
+interface ConflatedFromEntry {
+  id: string;
+  identity?: string;
+  sourceId?: string;
+  sourceRefs?: SourceRef[];
+  access?: KBAccessLabel;
+  attributes: AttributeSnapshot;
+}
+
+type ConflationNode = KBNode & {
+  conflatedFrom?: ConflatedFromEntry[];
+  [key: string]: unknown;
+};
+
+type ConflationGraph = Omit<KBGraph, 'nodes'> & {
+  nodes?: ConflationNode[];
+  edges?: KBEdge[];
+  [key: string]: unknown;
+};
+
+interface ConflationOptions {
+  generator?: string;
+}
+
+interface ConflationResult {
+  graph: KBGraph & { nodes: ConflationNode[] };
+  groups: Array<{ representative: string; identity?: string; members: string[] }>;
+  stats: {
+    inputNodes: number;
+    conflatedGroups: number;
+    mergedNodes: number;
+    contradictions: number;
+    edgesRepointed: number;
+    edgesDropped: number;
+    edgesDeduped: number;
+  };
+  warnings: string[];
+}
 
 /**
  * Node fields that are structural / identity / already-unioned-provenance and
@@ -111,23 +160,24 @@ const NON_ATTRIBUTE_FIELDS = new Set([
  * @param {object} node
  * @returns {Record<string, unknown>}
  */
-export function snapshotAttributes(node) {
-  const out = {};
-  for (const key of Object.keys(node).sort()) {
+export function snapshotAttributes(node: ConflationNode): AttributeSnapshot {
+  const out: AttributeSnapshot = {};
+  const source = node as Record<string, unknown>;
+  for (const key of Object.keys(source).sort()) {
     if (NON_ATTRIBUTE_FIELDS.has(key)) continue;
-    out[key] = node[key];
+    out[key] = source[key];
   }
   return out;
 }
 
 /** Stable comparator helper. */
-function cmp(a, b) {
+function cmp(a: string | number, b: string | number): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /** Stable, order-independent dedupe of a provenance array. */
-function uniqueSorted(items) {
-  const seen = new Map();
+function uniqueSorted<T>(items: readonly T[] | null | undefined): T[] {
+  const seen = new Map<string, T>();
   for (const item of items ?? []) {
     const key = canonicalStringify(item);
     if (!seen.has(key)) seen.set(key, item);
@@ -137,23 +187,26 @@ function uniqueSorted(items) {
 
 /** Minimal deterministic union-find over node-id strings. */
 class UnionFind {
-  constructor(ids) {
+  parent: Map<string, string>;
+
+  constructor(ids: readonly string[]) {
     this.parent = new Map();
     for (const id of ids) this.parent.set(id, id);
   }
-  find(x) {
+  find(x: string): string {
     let root = x;
-    while (this.parent.get(root) !== root) root = this.parent.get(root);
+    while (this.parent.get(root) !== root) root = this.parent.get(root) ?? root;
     // Path-compress.
     let cur = x;
     while (this.parent.get(cur) !== root) {
       const next = this.parent.get(cur);
+      if (!next) break;
       this.parent.set(cur, root);
       cur = next;
     }
     return root;
   }
-  union(a, b) {
+  union(a: string, b: string): void {
     const ra = this.find(a);
     const rb = this.find(b);
     if (ra === rb) return;
@@ -171,7 +224,7 @@ class UnionFind {
  * @param {object[]} members
  * @returns {object}
  */
-export function pickRepresentative(members) {
+export function pickRepresentative(members: readonly ConflationNode[]): ConflationNode {
   return [...members].sort((a, b) => {
     const ai = a.identity ? 0 : 1;
     const bi = b.identity ? 0 : 1;
@@ -180,13 +233,13 @@ export function pickRepresentative(members) {
 }
 
 /** Deterministic key identifying an edge by endpoints + relation. */
-function edgeKey(edge) {
+function edgeKey(edge: KBEdge): string {
   const relation = edge.relation ?? mapRelation(edge.type).relation ?? FALLBACK_RELATION;
   return buildEdgeId(edge.from, relation, edge.to);
 }
 
 /** Final, stable edge comparator (mirrors the union-graph order). */
-function edgeComparator(a, b) {
+function edgeComparator(a: KBEdge, b: KBEdge): number {
   return (
     cmp(a.sourceId ?? '', b.sourceId ?? '') ||
     cmp(a.from, b.from) ||
@@ -198,16 +251,16 @@ function edgeComparator(a, b) {
 }
 
 /** Re-derive the `related` projection (nodeId → sorted unique neighbor ids). */
-function deriveRelated(nodes, edges) {
+function deriveRelated(nodes: readonly ConflationNode[], edges: readonly KBEdge[]): Record<string, string[]> {
   const nodeIds = new Set(nodes.map((n) => n.id));
-  const related = {};
+  const related: Record<string, Set<string>> = {};
   for (const edge of edges) {
     if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to) || edge.from === edge.to) continue;
     (related[edge.from] ??= new Set()).add(edge.to);
     (related[edge.to] ??= new Set()).add(edge.from);
   }
-  const out = {};
-  for (const nid of Object.keys(related).sort()) out[nid] = [...related[nid]].sort();
+  const out: Record<string, string[]> = {};
+  for (const nid of Object.keys(related).sort()) out[nid] = [...related[nid]!].sort();
   return out;
 }
 
@@ -225,24 +278,26 @@ function deriveRelated(nodes, edges) {
  *   warnings: string[]
  * }}
  */
-export function conflateReferents(graph, opts = {}) {
+export function conflateReferents(graph: ConflationGraph, opts: ConflationOptions = {}): ConflationResult {
   const generator = opts.generator ?? CONFLATE_GENERATOR;
-  const nodes = graph?.nodes ?? [];
-  const edges = graph?.edges ?? [];
-  const byId = new Map(nodes.filter((n) => n && n.id != null).map((n) => [n.id, n]));
+  const nodes: ConflationNode[] = graph?.nodes ?? [];
+  const edges: KBEdge[] = graph?.edges ?? [];
+  const byId = new Map<string, ConflationNode>(
+    nodes.filter((n): n is ConflationNode => !!n && n.id != null).map((n) => [n.id, n]),
+  );
   const index = buildResolutionIndex(nodes);
 
   const uf = new UnionFind([...byId.keys()]);
   /** @type {Set<string>} unordered "a\u0000b" forbidden pairs (a<b). */
-  const forbidden = new Set();
-  const pairKey = (a, b) => (cmp(a, b) <= 0 ? `${a}\u0000${b}` : `${b}\u0000${a}`);
+  const forbidden = new Set<string>();
+  const pairKey = (a: string, b: string): string => (cmp(a, b) <= 0 ? `${a}\u0000${b}` : `${b}\u0000${a}`);
 
   // Process identity claims. Sort source nodes for deterministic union order.
   const claimants = [...byId.values()]
     .filter((n) => Array.isArray(n.identityClaims) && n.identityClaims.length > 0)
     .sort((a, b) => cmp(a.id, b.id));
   for (const node of claimants) {
-    for (const claim of node.identityClaims) {
+    for (const claim of node.identityClaims ?? []) {
       const resolved = resolveLinkedRef(claim?.ref, index);
       if (!('id' in resolved)) continue; // dangling or ambiguous → ignore
       const targetId = resolved.id;
@@ -254,17 +309,22 @@ export function conflateReferents(graph, opts = {}) {
   }
 
   // Gather components by root.
-  const components = new Map();
+  const components = new Map<string, string[]>();
   for (const id of byId.keys()) {
     const root = uf.find(id);
-    (components.get(root) ?? components.set(root, []).get(root)).push(id);
+    let memberIds = components.get(root);
+    if (!memberIds) {
+      memberIds = [];
+      components.set(root, memberIds);
+    }
+    memberIds.push(id);
   }
 
-  const warnings = [];
-  const removedIds = new Set(); // non-representative members of conflated groups
-  const conflatedByRepId = new Map();
-  const remap = new Map(); // member id → representative id
-  const groups = [];
+  const warnings: string[] = [];
+  const removedIds = new Set<string>(); // non-representative members of conflated groups
+  const conflatedByRepId = new Map<string, ConflationNode>();
+  const remap = new Map<string, string>(); // member id → representative id
+  const groups: Array<{ representative: string; identity?: string; members: string[] }> = [];
   let contradictions = 0;
 
   for (const [, memberIds] of [...components.entries()].sort((a, b) => cmp(a[0], b[0]))) {
@@ -273,7 +333,7 @@ export function conflateReferents(graph, opts = {}) {
 
     // Negative-constraint validation: any forbidden pair fully inside this
     // component blocks the whole merge.
-    const blocking = [];
+    const blocking: Array<[string, string]> = [];
     for (const pk of forbidden) {
       const [a, b] = pk.split('\u0000');
       if (sortedMemberIds.includes(a) && sortedMemberIds.includes(b)) blocking.push([a, b]);
@@ -291,7 +351,7 @@ export function conflateReferents(graph, opts = {}) {
       continue; // leave every member as a distinct, untouched node
     }
 
-    const members = sortedMemberIds.map((id) => byId.get(id));
+    const members = sortedMemberIds.map((id) => byId.get(id)).filter((member): member is ConflationNode => member !== undefined);
     const rep = pickRepresentative(members);
     groups.push({
       representative: rep.id,
@@ -304,7 +364,7 @@ export function conflateReferents(graph, opts = {}) {
     // members (intersect / never broaden). Member labels are not lost — each is
     // preserved on its `conflatedFrom[]` entry.
     const mergedAccess = mergeAccessLabels(members.map((m) => m.access));
-    const conflated = {
+    const conflated: ConflationNode = {
       ...rep,
       sourceRefs: allSourceRefs,
       evidence: uniqueSorted(members.flatMap((m) => m.evidence ?? [])),
@@ -312,13 +372,13 @@ export function conflateReferents(graph, opts = {}) {
       linkedRefs: uniqueSorted(members.flatMap((m) => m.linkedRefs ?? [])),
       conflatedFrom: sortedMemberIds.map((id) => {
         const m = byId.get(id);
-        const entry = { id: m.id };
+        if (!m) return { id, attributes: {} };
+        const entry: ConflatedFromEntry = { id: m.id, attributes: snapshotAttributes(m) };
         if (m.identity) entry.identity = m.identity;
         if (m.sourceId != null) entry.sourceId = m.sourceId;
         if (m.sourceRefs?.length) entry.sourceRefs = uniqueSorted(m.sourceRefs);
         const memberAccess = normalizeAccessLabel(m.access);
         if (memberAccess) entry.access = memberAccess;
-        entry.attributes = snapshotAttributes(m);
         return entry;
       }),
       derivation: { mode: 'derived', generator, inputs: allSourceRefs },
@@ -327,8 +387,9 @@ export function conflateReferents(graph, opts = {}) {
     else delete conflated.access;
     // Drop empty unioned arrays so absent-everywhere fields stay absent (keeps
     // singletons-vs-conflated output shapes consistent and re-runs byte-stable).
-    for (const key of ['sourceRefs', 'evidence', 'identityClaims', 'linkedRefs']) {
-      if (Array.isArray(conflated[key]) && conflated[key].length === 0) delete conflated[key];
+    for (const key of ['sourceRefs', 'evidence', 'identityClaims', 'linkedRefs'] as const) {
+      const value = conflated[key];
+      if (Array.isArray(value) && value.length === 0) delete conflated[key];
     }
 
     conflatedByRepId.set(rep.id, conflated);
@@ -340,7 +401,7 @@ export function conflateReferents(graph, opts = {}) {
 
   // Build the output node list: replace representatives with conflated nodes,
   // drop merged-away members, pass everything else through verbatim.
-  const outNodes = [];
+  const outNodes: ConflationNode[] = [];
   for (const node of nodes) {
     if (node?.id != null && removedIds.has(node.id)) continue;
     outNodes.push(conflatedByRepId.get(node?.id) ?? node);
@@ -350,7 +411,7 @@ export function conflateReferents(graph, opts = {}) {
   // Repoint edges onto representatives, drop self-loops, dedupe with merge.
   let edgesRepointed = 0;
   let edgesDropped = 0;
-  const edgeByKey = new Map();
+  const edgeByKey = new Map<string, KBEdge>();
   for (const edge of edges) {
     const from = remap.get(edge.from) ?? edge.from;
     const to = remap.get(edge.to) ?? edge.to;
@@ -374,14 +435,17 @@ export function conflateReferents(graph, opts = {}) {
       ]);
     if (repointed.evidence || existing.evidence)
       existing.evidence = uniqueSorted([...(existing.evidence ?? []), ...(repointed.evidence ?? [])]);
-    if (existing.derivation?.inputs || repointed.derivation?.inputs)
+    if (existing.derivation?.inputs || repointed.derivation?.inputs) {
+      const baseDerivation = existing.derivation ?? repointed.derivation;
+      if (!baseDerivation) continue;
       existing.derivation = {
-        ...(existing.derivation ?? repointed.derivation),
+        ...baseDerivation,
         inputs: uniqueSorted([
           ...(existing.derivation?.inputs ?? []),
           ...(repointed.derivation?.inputs ?? []),
         ]),
       };
+    }
     // Collapsing two edges into one must never broaden access: merge labels
     // most-restrictively.
     if (repointed.access || existing.access) {
@@ -395,7 +459,7 @@ export function conflateReferents(graph, opts = {}) {
 
   // Edge access carries its OWN label; an unlabeled edge derives the
   // most-restrictive label of its (post-conflation) endpoints. Never broadens.
-  const accessByNodeId = new Map(outNodes.map((n) => [n.id, n.access]));
+  const accessByNodeId = new Map<string, KBAccessLabel | undefined>(outNodes.map((n) => [n.id, n.access]));
   for (const edge of outEdges) {
     if (normalizeAccessLabel(edge.access)) continue;
     const derived = mergeAccessLabels([accessByNodeId.get(edge.from), accessByNodeId.get(edge.to)]);

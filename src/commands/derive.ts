@@ -53,6 +53,50 @@ import {
 
 const DEFAULT_OUT_DIR = 'content/derived';
 
+type SourceDocument = ReturnType<typeof readSource>;
+type ExtractionIntermediate = Awaited<ReturnType<typeof extractEntities>>;
+type ArtifactValidation = ReturnType<typeof validateArtifact>;
+type BuiltArtifact = {
+  artifact: ReturnType<typeof buildArtifact>;
+  bytes: string;
+  validation: ArtifactValidation;
+};
+type DerivedArtifactRecord = {
+  kbx?: { source?: { sha256?: string }; extraction?: ExtractionIntermediate };
+  kbexplorer?: { source?: { sha256?: string }; extraction?: ExtractionIntermediate };
+};
+type DeriveRuntimeOptions = {
+  cwd: string;
+  allowTools: string[];
+  allowAllTools: boolean;
+  model?: string;
+  timeoutMs?: number;
+  silent: boolean;
+  noColor: boolean;
+};
+type DeriveResult = {
+  source: string;
+  outPath: string;
+  relOut: string;
+  status: string;
+  drift: boolean;
+  reason: string;
+  artifact?: ReturnType<typeof buildArtifact>;
+  bytes?: string;
+  validation?: ArtifactValidation;
+  nodeCount?: number;
+  edgeCount?: number;
+};
+type DeriveSourceOptions = {
+  outDir: string;
+  cwd?: string;
+  check?: boolean;
+  refresh?: boolean;
+  context?: string;
+  runExtraction?: (document: SourceDocument) => Promise<ExtractionIntermediate>;
+};
+type ValidationError = Error & { validation?: ArtifactValidation };
+
 function printHelp() {
   console.log(`
   kbx derive — build-time fuzzy/docx → JSON-LD extraction
@@ -85,30 +129,33 @@ function printHelp() {
 }
 
 /** Build runtime options for the fuzzy extraction step from parsed args. */
-export function buildDeriveRuntimeOptions(opts, cwd) {
+export function buildDeriveRuntimeOptions(
+  opts: ReturnType<typeof parseDeriveArgs>,
+  cwd: string,
+): DeriveRuntimeOptions {
   const useScoped = opts.allowTools && opts.allowTools.length > 0;
   return {
     cwd,
     allowTools: useScoped ? opts.allowTools : [],
     allowAllTools: useScoped ? false : opts.allowAllTools !== false,
-    model: opts.model || undefined,
-    timeoutMs: opts.timeout || undefined,
+    model: opts.model ?? undefined,
+    timeoutMs: opts.timeout ?? undefined,
     silent: true,
     noColor: true,
   };
 }
 
 /** Compute the output artifact path for a source file. */
-export function artifactPathFor(sourcePath, outDir) {
+export function artifactPathFor(sourcePath: string, outDir: string): string {
   const base = basename(sourcePath, extname(sourcePath));
   return resolve(outDir, `${base}.jsonld`);
 }
 
 /** Read + parse a committed artifact; null when missing or invalid JSON. */
-function readArtifact(path) {
+function readArtifact(path: string): DerivedArtifactRecord | null {
   if (!existsSync(path)) return null;
   try {
-    return JSON.parse(readFileSync(path, 'utf-8'));
+    return JSON.parse(readFileSync(path, 'utf-8')) as DerivedArtifactRecord;
   } catch {
     return null;
   }
@@ -134,14 +181,17 @@ function readArtifact(path) {
  *   reason?: string, artifact: object, bytes: string, validation: object
  * }>}
  */
-export async function deriveSource(sourcePath, options = {}) {
+export async function deriveSource(
+  sourcePath: string,
+  options: DeriveSourceOptions,
+): Promise<DeriveResult> {
   const {
     outDir,
     cwd = process.cwd(),
     check = false,
     refresh = false,
     context = DEFAULT_CONTEXT,
-    runExtraction = (document) => extractEntities({ document }),
+    runExtraction = (document: SourceDocument) => extractEntities({ document }),
   } = options;
 
   const document = readSource(sourcePath, { cwd });
@@ -179,10 +229,11 @@ export async function deriveSource(sourcePath, options = {}) {
   }
 
   // ── Derive mode: reuse embedded intermediate when fresh, else extract. ──
-  let intermediate;
+  let intermediate: ExtractionIntermediate;
   let reused = false;
-  if (reusableIntermediate) {
-    intermediate = (existing.kbx ?? existing.kbexplorer).extraction;
+  const stored = existing?.kbx ?? existing?.kbexplorer;
+  if (reusableIntermediate && stored?.extraction) {
+    intermediate = stored.extraction;
     reused = true;
   } else {
     intermediate = await runExtraction(document);
@@ -192,7 +243,7 @@ export async function deriveSource(sourcePath, options = {}) {
   if (!built.validation.ok) {
     const err = new Error(
       `Emitted JSON-LD for "${sourcePath}" failed contract validation:\n  - ${built.validation.errors.join('\n  - ')}`,
-    );
+    ) as ValidationError;
     err.validation = built.validation;
     throw err;
   }
@@ -205,7 +256,11 @@ export async function deriveSource(sourcePath, options = {}) {
   const status = unchanged ? 'unchanged' : existing ? 'updated' : 'created';
   return result(status, false, reused ? 'reused embedded extraction (no LLM call)' : 'extracted', built);
 
-  function buildAndStringify(doc, inter, ctx) {
+  function buildAndStringify(
+    doc: SourceDocument,
+    inter: ExtractionIntermediate,
+    ctx: string,
+  ): BuiltArtifact {
     const artifact = buildArtifact({
       source: { path: doc.path, format: doc.format, sha256: doc.sha256, bytes: doc.bytes, title: doc.title },
       intermediate: inter,
@@ -214,7 +269,7 @@ export async function deriveSource(sourcePath, options = {}) {
     return { artifact, bytes: canonicalStringify(artifact), validation: validateArtifact(artifact) };
   }
 
-  function result(status, drift, reason, built) {
+  function result(status: string, drift: boolean, reason: string, built?: BuiltArtifact): DeriveResult {
     return {
       source: document.path,
       outPath,
@@ -231,7 +286,7 @@ export async function deriveSource(sourcePath, options = {}) {
   }
 }
 
-export default async function derive(args = []) {
+export default async function derive(args: string[] = []): Promise<void> {
   const opts = parseDeriveArgs(args);
   if (opts.help) {
     printHelp();
@@ -253,8 +308,8 @@ export default async function derive(args = []) {
   const context = opts.context || DEFAULT_CONTEXT;
 
   // ── Resolve runtime adapter (precedence: --runtime flag > .kbx.json > env > default) ──
-  let runtimeConfig;
-  let runtimeAdapter;
+  let runtimeConfig: ReturnType<typeof loadRuntimeConfig>;
+  let runtimeAdapter: ReturnType<typeof resolveRuntime>;
   try {
     runtimeConfig = loadRuntimeConfig(cwd);
     runtimeAdapter = resolveRuntime({ flag: opts.runtime, config: runtimeConfig });
@@ -266,18 +321,22 @@ export default async function derive(args = []) {
     throw err;
   }
   // CLI --timeout wins; config timeoutMs fills the gap.
-  const runtimeOptions = applyRuntimeConfigDefaults(buildDeriveRuntimeOptions(opts, cwd), runtimeConfig);
+  const runtimeOptions = applyRuntimeConfigDefaults(
+    buildDeriveRuntimeOptions(opts, cwd),
+    runtimeConfig,
+  ) as DeriveRuntimeOptions;
 
   // ── Dry run: show the assembled command + planned outputs, run nothing. ──
   if (opts.dryRun) {
     const binary = resolveBinary({ envVar: runtimeAdapter.binaryEnv, defaultBinary: runtimeAdapter.defaultBinary });
     console.log(`Dry run — would derive the following sources (runtime: ${runtimeAdapter.name}):`);
     for (const src of opts.sources) {
-      let doc;
+      let doc: SourceDocument;
       try {
         doc = readSource(src, { cwd });
       } catch (err) {
-        console.log(`  ✗ ${src} — ${err.message}`);
+        const message = err instanceof Error ? err.message : String(err);
+        console.log(`  ✗ ${src} — ${message}`);
         continue;
       }
       const outPath = toPosix(relative(cwd, artifactPathFor(src, outDir)));
@@ -285,8 +344,6 @@ export default async function derive(args = []) {
       const argv = runtimeAdapter.buildArgs({
         prompt,
         outputFormat: 'json',
-        silent: true,
-        noColor: true,
         ...stripCwd(runtimeOptions),
       });
       console.log(`  • ${src} → ${outPath}`);
@@ -296,18 +353,18 @@ export default async function derive(args = []) {
   }
 
   // ── Fuzzy extractor (only used when a fresh extraction is needed). ──
-  const runExtraction = (document) =>
+  const runExtraction = (document: SourceDocument): Promise<ExtractionIntermediate> =>
     routeTask(
       { name: `extract:${document.path}`, kind: 'fuzzy', document },
       {
         logger: console,
         runFuzzy: (task) =>
           extractEntities({
-            document: task.document,
+            document: task.document as SourceDocument,
             runtimeOptions: { adapter: runtimeAdapter, ...runtimeOptions },
           }),
       },
-    ).then((r) => r.result);
+    ).then((r) => r.result as ExtractionIntermediate);
 
   // In derive (non-check) mode we may need the LLM — verify availability up front
   // unless every source can be served from a fresh committed artifact.
@@ -346,7 +403,7 @@ export default async function derive(args = []) {
     }
   }
 
-  const results = [];
+  const results: DeriveResult[] = [];
   let hadError = false;
   for (const src of opts.sources) {
     try {
@@ -367,7 +424,8 @@ export default async function derive(args = []) {
       } else if (err instanceof RuntimeAdapterError) {
         console.error(`✗ ${src}: ${runtimeAdapter.name} run failed (${err.code}): ${err.message}`);
       } else {
-        console.error(`✗ ${src}: ${err.message}`);
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`✗ ${src}: ${message}`);
       }
     }
   }
@@ -386,7 +444,7 @@ export default async function derive(args = []) {
   console.log(`\n✅ Derived ${results.length} source(s) → ${toPosix(relative(cwd, outDir))}/`);
 }
 
-function reportOne(res, check) {
+function reportOne(res: DeriveResult, check: boolean): void {
   if (check) {
     if (res.drift) console.error(`  ✗ drift: ${res.relOut} — ${res.reason}`);
     else console.log(`  ✓ ${res.relOut} — ${res.reason}`);
@@ -397,10 +455,10 @@ function reportOne(res, check) {
 }
 
 /** Whether any source still requires an LLM extraction (no fresh committed artifact). */
-function needsExtraction(opts, cwd, outDir) {
+function needsExtraction(opts: ReturnType<typeof parseDeriveArgs>, cwd: string, outDir: string): boolean {
   if (opts.refresh) return true;
   for (const src of opts.sources) {
-    let doc;
+    let doc: SourceDocument;
     try {
       doc = readSource(src, { cwd });
     } catch {
@@ -414,14 +472,15 @@ function needsExtraction(opts, cwd, outDir) {
   return false;
 }
 
-function stripCwd({ cwd, ...rest }) {
+function stripCwd<T extends { cwd?: string }>(options: T): Omit<T, 'cwd'> {
+  const { cwd, ...rest } = options;
   return rest;
 }
 
-function short(hash) {
+function short(hash: string | null | undefined): string {
   return String(hash ?? '∅').replace(/^sha256:/, '').slice(0, 12);
 }
 
-function toPosix(p) {
+function toPosix(p: string): string {
   return String(p).split('\\').join('/');
 }

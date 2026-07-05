@@ -15,6 +15,12 @@ import {
   ACTION_CLASSES,
 } from '../contract.ts';
 import { neighbors } from '../../lib/engine-graph.ts';
+import type { AffordanceContext } from '../context.ts';
+
+interface GraphNeighborsInput extends Record<string, unknown> {
+  id: string;
+  depth?: number;
+}
 
 export default defineAffordance({
   name: 'graph_neighbors',
@@ -30,14 +36,15 @@ export default defineAffordance({
     depth: { type: 'number' },
     neighbors: { type: 'array' },
   }),
-  async execute(context, input) {
+  async execute(context: AffordanceContext, input: Record<string, unknown>) {
+    const args = input as GraphNeighborsInput;
     const graph = await context.loadGraph();
-    if (!graph.nodes.has(input.id)) {
-      throw new AffordanceError(ERROR_CODES.NOT_FOUND, `Unknown node id: ${input.id}`, {
-        id: input.id,
+    if (!graph.nodes.has(args.id)) {
+      throw new AffordanceError(ERROR_CODES.NOT_FOUND, `Unknown node id: ${args.id}`, {
+        id: args.id,
       });
     }
-    const depth = input.depth ?? 1;
-    return { id: input.id, depth, neighbors: neighbors(graph, input.id, depth) };
+    const depth = args.depth ?? 1;
+    return { id: args.id, depth, neighbors: neighbors(graph, args.id, depth) };
   },
 });

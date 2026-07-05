@@ -99,9 +99,48 @@ export const TOPIC_ICON_MAP = {
   tag: 'Tag',
   table: 'Table',
   chart: 'ChartMultiple',
-};
+} as const;
 
-export function inferIcon(title, cluster) {
+interface ClusterConfig {
+  name?: string;
+  color?: string;
+  [key: string]: unknown;
+}
+
+interface ConnectionSpec {
+  to?: string;
+  description?: string;
+}
+
+interface CatalogueNode {
+  id: string;
+  title: string;
+  cluster: string;
+  emoji?: string;
+  parent?: string;
+  prompt?: string;
+  existing?: boolean;
+  connections?: Array<string | ConnectionSpec>;
+}
+
+interface Catalogue {
+  title?: string;
+  subtitle?: string;
+  clusters?: Record<string, ClusterConfig>;
+  nodes?: CatalogueNode[];
+}
+
+interface PresentationConfig {
+  visual?: string;
+  theme?: string;
+}
+
+interface TransformOptions {
+  preserveOrphanedClusters?: boolean;
+  presentation?: PresentationConfig;
+}
+
+export function inferIcon(title: string, cluster: string): string {
   const lower = `${title} ${cluster}`.toLowerCase();
   for (const [keyword, icon] of Object.entries(TOPIC_ICON_MAP)) {
     if (lower.includes(keyword)) return icon;
@@ -126,7 +165,7 @@ const CLUSTER_COLORS = [
  * @param {string} nodeId - Node ID / file stem
  * @param {string} outputDir - Absolute path to the content output directory
  */
-function findExistingBody(nodeId, outputDir) {
+function findExistingBody(nodeId: string, outputDir: string): string | null {
   const searchPaths = [
     resolve(outputDir, `${nodeId}.md`),
     resolve(outputDir, 'wiki', `${nodeId}.md`),
@@ -163,7 +202,7 @@ function findExistingBody(nodeId, outputDir) {
  * @param {string} outputDir - Absolute path to the content output directory
  * @returns {Map<string, {nodeId: string, filePath: string}>} clusterId → sample usage
  */
-export function collectExistingClusters(outputDir) {
+export function collectExistingClusters(outputDir: string): Map<string, { nodeId: string; filePath: string }> {
   const used = new Map(); // clusterId → { nodeId, filePath }
   if (!existsSync(outputDir)) return used;
 
@@ -214,19 +253,24 @@ export function collectExistingClusters(outputDir) {
  *   Set to false to disable (only do so with --force-clusters intent).
  * @returns {{ configPath, filesWritten, filesImported, totalNodes, orphanedClusters }}
  */
-export function transformCatalogue(catalogue, outputDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'content'), opts = {}) {
+export function transformCatalogue(
+  catalogue: Catalogue,
+  outputDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'content'),
+  opts: TransformOptions = {},
+) {
   const { preserveOrphanedClusters = true } = opts;
-  const { clusters = {}, nodes = [] } = catalogue;
+  const clusters = (catalogue.clusters ?? {}) as Record<string, ClusterConfig>;
+  const nodes = catalogue.nodes ?? [];
 
   // Resolve the presentation (visual mode + theme) the user chose at init time.
   // Priority: explicit opts.presentation → the persisted .kbx.json record at the
   // host root (parent of content/) → app defaults. Threading it here is what
   // makes the wizard's choice survive a regenerate/build (#150).
-  const persisted = opts.presentation
+  const persisted = (opts.presentation
     ?? readSourceRecord(resolve(outputDir, '..'))?.presentation
-    ?? {};
-  const visualMode = VISUAL_MODES.includes(persisted.visual) ? persisted.visual : 'emoji';
-  const themeDefault = THEMES.includes(persisted.theme) ? persisted.theme : 'dark';
+    ?? {}) as PresentationConfig;
+  const visualMode = persisted.visual && VISUAL_MODES.includes(persisted.visual) ? persisted.visual : 'emoji';
+  const themeDefault = persisted.theme && THEMES.includes(persisted.theme) ? persisted.theme : 'dark';
 
   // ── Merge orphaned clusters (fix #41) ────────────────────────────────────
   // Collect cluster IDs already in use by existing .md files in the output dir.
@@ -254,7 +298,7 @@ export function transformCatalogue(catalogue, outputDir = resolve(dirname(fileUR
 
   // Assign colors to clusters if not present
   let colorIdx = 0;
-  for (const [, cluster] of Object.entries(clusters)) {
+  for (const [, cluster] of Object.entries(clusters) as Array<[string, ClusterConfig]>) {
     if (!cluster.color) {
       cluster.color = CLUSTER_COLORS[colorIdx % CLUSTER_COLORS.length];
       colorIdx++;
@@ -265,7 +309,7 @@ export function transformCatalogue(catalogue, outputDir = resolve(dirname(fileUR
   // Visual/theme come from the user's init choice (persisted in .kbx.json) so
   // the wizard answer sticks across regenerate/build (#150).
   const clusterYaml = Object.entries(clusters)
-    .map(([id, c]) => `  ${id}:\n    name: "${c.name}"\n    color: "${c.color}"`)
+    .map(([id, c]: [string, ClusterConfig]) => `  ${id}:\n    name: "${c.name}"\n    color: "${c.color}"`)
     .join('\n');
 
   const configYaml = `title: "${catalogue.title || 'Knowledge Base'}"
@@ -294,7 +338,7 @@ theme:
     const emoji = node.emoji || inferIcon(node.title, node.cluster);
     // Fix #40: accept both string IDs and {to, description} connection objects
     const connections = (node.connections || [])
-      .map((c) => {
+      .map((c: string | ConnectionSpec) => {
         const to = typeof c === 'string' ? c : c?.to;
         const description = typeof c === 'string' ? '' : c?.description ?? '';
         if (!to) return null;
@@ -354,4 +398,3 @@ theme:
   console.log(`✓ Generated ${filesWritten} files (${filesImported} imported from existing content) in ${outputDir}`);
   return { configPath, filesWritten, filesImported, totalNodes: nodes.length, orphanedClusters };
 }
-

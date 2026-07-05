@@ -40,32 +40,95 @@ import {
   validateArtifact,
   DEFAULT_CONTEXT,
 } from '../../lib/jsonld.ts';
+import type { AffordanceContext, ExtractionIntermediate } from '../context.ts';
 
 const DEFAULT_OUT_DIR = 'content/derived';
 
-function toPosix(p) {
-  return String(p).split('\\').join('/');
+type IngestedDocument = ReturnType<typeof readSource>;
+type BuiltArtifact = {
+  artifact: ReturnType<typeof buildArtifact>;
+  bytes: string;
+  validation: ReturnType<typeof validateArtifact>;
+};
+
+interface DerivedKbBlock {
+  source?: {
+    sha256?: string;
+  };
+  extraction?: ExtractionIntermediate;
+  nodes?: unknown[];
+  edges?: unknown[];
 }
 
-function artifactPathFor(sourcePath, outDir) {
+interface DeriveOneOptions {
+  outDir: string;
+  cwd: string;
+  check?: boolean;
+  refresh?: boolean;
+  context?: string;
+  runExtraction?: ((document: IngestedDocument) => Promise<ExtractionIntermediate>) | undefined;
+}
+
+interface DeriveResult {
+  source: string;
+  outPath: string;
+  relOut: string;
+  status: string;
+  drift: boolean;
+  reason: string;
+  artifact?: ReturnType<typeof buildArtifact>;
+  bytes?: string;
+  validation?: ReturnType<typeof validateArtifact>;
+  nodeCount?: number;
+  edgeCount?: number;
+}
+
+interface DeriveInput extends Record<string, unknown> {
+  sources: string[];
+  out?: string;
+  check?: boolean;
+  refresh?: boolean;
+  context?: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isExtractionIntermediate(value: unknown): value is ExtractionIntermediate {
+  return isRecord(value) && Array.isArray(value.entities) && Array.isArray(value.relationships);
+}
+
+function toPosix(path: string): string {
+  return String(path).split('\\').join('/');
+}
+
+function artifactPathFor(sourcePath: string, outDir: string): string {
   const base = basename(sourcePath, extname(sourcePath));
   return resolve(outDir, `${base}.jsonld`);
 }
 
-function readArtifact(path) {
+function readArtifact(path: string): Record<string, unknown> | null {
   if (!existsSync(path)) return null;
   try {
-    return JSON.parse(readFileSync(path, 'utf-8'));
+    const parsed = JSON.parse(readFileSync(path, 'utf-8'));
+    return isRecord(parsed) ? parsed : null;
   } catch {
     return null;
   }
 }
 
-function kbBlock(artifact) {
-  return artifact?.kbx ?? artifact?.kbexplorer;
+function kbBlock(artifact: Record<string, unknown> | null): DerivedKbBlock | null {
+  if (!artifact) return null;
+  const block = artifact.kbx ?? artifact.kbexplorer;
+  return isRecord(block) ? (block as DerivedKbBlock) : null;
 }
 
-function buildAndStringify(document, intermediate, context) {
+function buildAndStringify(
+  document: IngestedDocument,
+  intermediate: ExtractionIntermediate,
+  context: string,
+): BuiltArtifact {
   const artifact = buildArtifact({
     source: {
       path: document.path,
@@ -93,7 +156,7 @@ function buildAndStringify(document, intermediate, context) {
  * @param {string}  [options.context=DEFAULT_CONTEXT]
  * @param {(document: object) => Promise<object>} [options.runExtraction]
  */
-async function deriveOne(sourcePath, options) {
+async function deriveOne(sourcePath: string, options: DeriveOneOptions): Promise<DeriveResult> {
   const {
     outDir,
     cwd,
@@ -108,11 +171,11 @@ async function deriveOne(sourcePath, options) {
   const outPath = artifactPathFor(sourcePath, outDir);
   const relOut = toPosix(relative(cwd, outPath));
   const existing = readArtifact(outPath);
-  const kb = existing ? kbBlock(existing) : null;
+  const kb = kbBlock(existing);
   const sourceFresh = kb?.source?.sha256 === document.sha256;
-  const reusable = Boolean(kb?.extraction && sourceFresh && !refresh);
+  const reusable = Boolean(isExtractionIntermediate(kb?.extraction) && sourceFresh && !refresh);
 
-  const result = (status, drift, reason, built) => ({
+  const result = (status: string, drift: boolean, reason: string, built?: BuiltArtifact): DeriveResult => ({
     source: document.path,
     outPath,
     relOut,
@@ -122,32 +185,33 @@ async function deriveOne(sourcePath, options) {
     artifact: built?.artifact,
     bytes: built?.bytes,
     validation: built?.validation,
-    nodeCount: built?.artifact && kbBlock(built.artifact)?.nodes?.length,
-    edgeCount: built?.artifact && kbBlock(built.artifact)?.edges?.length,
+    nodeCount: built?.artifact ? kbBlock(built.artifact as unknown as Record<string, unknown>)?.nodes?.length : undefined,
+    edgeCount: built?.artifact ? kbBlock(built.artifact as unknown as Record<string, unknown>)?.edges?.length : undefined,
   });
 
   // ── Drift mode: never extract, never write. ──
   if (check) {
     if (!existing) return result('drift', true, `no committed artifact at ${relOut} (run derive)`);
-    if (!kb?.extraction)
+    if (!isExtractionIntermediate(kb?.extraction)) {
       return result('drift', true, `committed ${relOut} has no embedded extraction to verify`);
-    if (!sourceFresh) return result('drift', true, `source changed since derivation`);
+    }
+    if (!sourceFresh) return result('drift', true, 'source changed since derivation');
     const expected = buildAndStringify(document, kb.extraction, context);
     if (expected.bytes !== readFileSync(outPath, 'utf-8')) {
       return result(
         'drift',
         true,
         `committed ${relOut} differs from a fresh deterministic emit`,
-        expected
+        expected,
       );
     }
     return result('ok', false, 'up to date', expected);
   }
 
   // ── Derive mode. ──
-  let intermediate;
+  let intermediate: ExtractionIntermediate;
   let reused = false;
-  if (reusable) {
+  if (reusable && isExtractionIntermediate(kb?.extraction)) {
     intermediate = kb.extraction;
     reused = true;
   } else {
@@ -156,7 +220,7 @@ async function deriveOne(sourcePath, options) {
         ERROR_CODES.UNSUPPORTED,
         `derive requires a fuzzy extraction runtime for "${sourcePath}", but none was supplied ` +
           `(context.seams.runExtraction). The contract does not own the LLM runtime.`,
-        { source: sourcePath }
+        { source: sourcePath },
       );
     }
     intermediate = await runExtraction(document);
@@ -167,11 +231,11 @@ async function deriveOne(sourcePath, options) {
     throw new AffordanceError(
       ERROR_CODES.EXECUTION_FAILED,
       `Emitted JSON-LD for "${sourcePath}" failed contract validation: ${built.validation.errors.join('; ')}`,
-      { validation: built.validation }
+      { validation: built.validation },
     );
   }
 
-  const unchanged = existing && readFileSync(outPath, 'utf-8') === built.bytes;
+  const unchanged = existsSync(outPath) && readFileSync(outPath, 'utf-8') === built.bytes;
   if (!unchanged) {
     mkdirSync(resolve(outPath, '..'), { recursive: true });
     writeFileSync(outPath, built.bytes, 'utf-8');
@@ -181,7 +245,7 @@ async function deriveOne(sourcePath, options) {
     status,
     false,
     reused ? 'reused embedded extraction (no LLM call)' : 'extracted',
-    built
+    built,
   );
 }
 
@@ -195,17 +259,18 @@ export default defineAffordance({
     // `check` mode is the deterministic, offline drift gate — it never writes or
     // extracts, so it is side-effect-free and skips the consent prompt (runs
     // unattended in CI). Any non-check invocation is gated as a write.
-    readOnlyWhen: (input) => Boolean(input?.check),
+    readOnlyWhen: (input: Record<string, unknown>) => Boolean((input as DeriveInput).check),
     // Write-class: discloses the committed *.jsonld artifacts it will write
     // (one per source, in the output directory). Deterministic from input.
-    disclose: (input) => {
-      const outDir = (input?.out && String(input.out)) || DEFAULT_OUT_DIR;
-      const sources = Array.isArray(input?.sources) ? input.sources : [];
+    disclose: (input: Record<string, unknown>) => {
+      const args = input as DeriveInput;
+      const outDir = (args.out && String(args.out)) || DEFAULT_OUT_DIR;
+      const sources = Array.isArray(args.sources) ? args.sources : [];
       // `check` mode never writes; disclose nothing to write in that case.
-      if (input?.check) return { writes: [] };
+      if (args.check) return { writes: [] };
       return {
-        writes: sources.map((s) => {
-          const base = basename(String(s), extname(String(s)));
+        writes: sources.map((source) => {
+          const base = basename(String(source), extname(String(source)));
           return toPosix(`${outDir}/${base}.jsonld`);
         }),
       };
@@ -239,39 +304,40 @@ export default defineAffordance({
     results: { type: 'array' },
     drift: { type: 'boolean' },
   }),
-  async execute(context, input) {
-    const outDir = resolve(context.cwd, input.out || DEFAULT_OUT_DIR);
-    const ctxIri = input.context || DEFAULT_CONTEXT;
+  async execute(context: AffordanceContext, input: Record<string, unknown>) {
+    const args = input as DeriveInput;
+    const outDir = resolve(context.cwd, args.out || DEFAULT_OUT_DIR);
+    const ctxIri = args.context || DEFAULT_CONTEXT;
     const runExtraction = context.seams?.runExtraction;
 
-    const results = [];
-    for (const src of input.sources) {
+    const results: DeriveResult[] = [];
+    for (const source of args.sources) {
       try {
         results.push(
-          await deriveOne(src, {
+          await deriveOne(source, {
             outDir,
             cwd: context.cwd,
-            check: input.check ?? false,
-            refresh: input.refresh ?? false,
+            check: args.check ?? false,
+            refresh: args.refresh ?? false,
             context: ctxIri,
             runExtraction,
-          })
+          }),
         );
-      } catch (err) {
+      } catch (err: unknown) {
         if (err instanceof AffordanceError) throw err;
         if (err instanceof IngestError) {
           throw new AffordanceError(ERROR_CODES.INVALID_INPUT, `[${err.code}] ${err.message}`, {
-            source: src,
+            source,
           });
         }
         throw new AffordanceError(
           ERROR_CODES.EXECUTION_FAILED,
-          `derive failed for "${src}": ${err.message}`
+          `derive failed for "${source}": ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
 
-    return { results, drift: results.some((r) => r.drift) };
+    return { results, drift: results.some((result) => result.drift) };
   },
 });
 

@@ -19,13 +19,7 @@
 
 import { buildToolErrorEnvelope, buildToolResultEnvelope } from '../affordances/tool-bridge.ts';
 
-/**
-* Wrap a successful affordance result as an MCP `CallToolResult`.
-*
-* @param {*} value  The affordance's typed result.
-* @returns {{ content: Array<{ type: 'text', text: string }> }}
-*/
-export function successResult(value) {
+export function successResult(value: unknown) {
  const envelope = buildToolResultEnvelope(value);
  return {
    content: [{ type: 'text', text: envelope.text }],
@@ -45,7 +39,7 @@ export function successResult(value) {
 * @param {unknown} err
 * @returns {{ isError: true, content: Array<{ type: 'text', text: string }> }}
 */
-export function errorResult(err) {
+export function errorResult(err: unknown) {
  const envelope = buildToolErrorEnvelope(err);
  return {
    isError: true,

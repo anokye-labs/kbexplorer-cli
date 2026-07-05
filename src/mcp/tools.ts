@@ -33,7 +33,7 @@
  * @module src/mcp/tools
  */
 
-import { describeAffordances } from '../affordances/index.ts';
+import { createAffordanceContext, describeAffordances } from '../affordances/index.ts';
 import { buildToolDefinition } from '../affordances/tool-bridge.ts';
 import { successResult, errorResult } from './tool-result.ts';
 
@@ -44,13 +44,30 @@ import { successResult, errorResult } from './tool-result.ts';
  */
 export const TOOL_PREFIX = 'kbx_';
 
+type DescribedAffordance = ReturnType<typeof describeAffordances>[number];
+type AffordanceContext = ReturnType<typeof createAffordanceContext>;
+type ToolExecutor = (
+  name: string,
+  input: Record<string, unknown>,
+  context?: AffordanceContext
+) => Promise<unknown> | unknown;
+
+interface ToolBuildOptions {
+  execute?: ToolExecutor;
+  contextFactory?: () => AffordanceContext;
+}
+
+interface BuildMcpToolsOptions extends ToolBuildOptions {
+  describe?: () => DescribedAffordance[];
+}
+
 /**
  * Map an affordance name to its MCP tool name.
  *
  * @param {string} affordanceName
  * @returns {string}
  */
-export function toolNameFor(affordanceName) {
+export function toolNameFor(affordanceName: string) {
   return `${TOOL_PREFIX}${affordanceName}`;
 }
 
@@ -69,7 +86,10 @@ export function toolNameFor(affordanceName) {
 *        passes a factory that threads MCP elicitation-based consent seams in.
 * @returns {{ name: string, description: string, inputSchema: object, actionClass: string, handler: (args: object) => Promise<object> }}
 */
-export function affordanceToMcpTool(described, opts = {}) {
+export function affordanceToMcpTool(
+ described: DescribedAffordance,
+ opts: ToolBuildOptions = {}
+) {
  const { execute, contextFactory } = opts;
  return buildToolDefinition(described, {
    prefix: TOOL_PREFIX,
@@ -91,7 +111,7 @@ export function affordanceToMcpTool(described, opts = {}) {
  * @returns {ReturnType<typeof affordanceToMcpTool>[]} One MCP tool per registered
  *          affordance, in canonical order.
  */
-export function buildMcpTools(opts = {}) {
+export function buildMcpTools(opts: BuildMcpToolsOptions = {}) {
   const { describe = describeAffordances, ...toolOpts } = opts;
   return describe().map((d) => affordanceToMcpTool(d, toolOpts));
 }
