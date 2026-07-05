@@ -17,7 +17,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { watch as fsWatch, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { getAppRoot, isTemplateRepo } from '../lib/detect-repo.js';
-import { generateManifest } from '../lib/manifest.js';
+import { generateManifest } from '../lib/repo-manifest.js';
 import { parseDevArgs } from '../lib/args.js';
 
 const DEBOUNCE_MS = 200;

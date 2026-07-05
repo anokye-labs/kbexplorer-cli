@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { DEFAULT_CONFIG, loadKnowledgeBase } from '@anokye-labs/kbexplorer-engine';
 import { FileSystemSource } from '@anokye-labs/kbexplorer-engine/sources';
-import { readConfig } from './manifest.js';
+import { readConfig } from './repo-manifest.js';
 import { resolveContentDir } from './kb-env.js';
 
 /**

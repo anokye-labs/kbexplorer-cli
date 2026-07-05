@@ -18,7 +18,7 @@
  */
 
 import { resolve } from 'node:path';
-import { validateContentModel } from '../lib/content-model.js';
+import { validateContentModel } from '../lib/descriptor-model.js';
 import { parseValidateArgs as parseSharedValidateArgs } from '../lib/args.js';
 
 function parseArgs(args) {

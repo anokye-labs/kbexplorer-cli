@@ -82,7 +82,7 @@ function bundledManifestCandidates(cwd) {
 export async function defaultGetManifest({ cwd = process.cwd(), existsSync = fsExistsSync, readFile = readFileSync, generate, warn = console.warn } = {}) {
   try {
     const gen = generate || (async () => {
-      const { generateManifest } = await import('../../lib/manifest.js');
+      const { generateManifest } = await import('../../lib/repo-manifest.js');
       return generateManifest(cwd);
     });
     return await gen();

@@ -16,7 +16,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
-import { readConfig, readAuthoredContent } from '../../src/lib/manifest.js';
+import { readConfig, readAuthoredContent } from '../../src/lib/repo-manifest.js';
 import { normalizeExtraction, canonicalStringify } from '../../src/lib/jsonld.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
