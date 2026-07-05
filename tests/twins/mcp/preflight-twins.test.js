@@ -16,10 +16,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const { detectConfiguredMcpServers, runMcpPreflight, formatMcpPreflightErrors } = await import(
-  '../../../src/lib/mcp-config-preflight.js'
+  '../../../src/lib/mcp-config-preflight.ts'
 );
 const { claudeAdapter, copilotAdapter, createCustomAdapter } = await import(
-  '../../../src/lib/copilot-runtime.js'
+  '../../../src/lib/copilot-runtime.ts'
 );
 const {
   writeClaudeRepoConfig,

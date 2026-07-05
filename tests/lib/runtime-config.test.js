@@ -13,12 +13,12 @@ const {
   RuntimeConfigError,
   RUNTIME_ENV,
   KNOWN_AGENTS,
-} = await import('../../src/lib/runtime-config.js');
+} = await import('../../src/lib/runtime-config.ts');
 
 const {
   copilotAdapter,
   claudeAdapter,
-} = await import('../../src/lib/copilot-runtime.js');
+} = await import('../../src/lib/copilot-runtime.ts');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

@@ -18,11 +18,11 @@ const {
   sampledSourceRef,
   stampProvenance,
   SAMPLE_GENERATOR,
-} = await import('../../src/affordances/provenance.js');
-const { extractInputRefs } = await import('../../src/lib/affected-graph.js');
-const { createAffordanceContext } = await import('../../src/affordances/context.js');
-const { executeAffordance } = await import('../../src/affordances/index.js');
-const { JobStore } = await import('../../src/affordances/jobs/store.js');
+} = await import('../../src/affordances/provenance.ts');
+const { extractInputRefs } = await import('../../src/lib/affected-graph.ts');
+const { createAffordanceContext } = await import('../../src/affordances/context.ts');
+const { executeAffordance } = await import('../../src/affordances/index.ts');
+const { JobStore } = await import('../../src/affordances/jobs/store.ts');
 
 describe('provenance — sampledSourceRef', () => {
   it('normalises strings and objects, dropping anything without a usable href', () => {

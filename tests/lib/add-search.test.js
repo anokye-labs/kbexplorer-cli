@@ -12,7 +12,7 @@ const {
   ADD_SEARCH_ERRORS,
   planAddSearch,
   applyAddSearch,
-} = await import('../../src/lib/add-search.js');
+} = await import('../../src/lib/add-search.ts');
 
 describe('planAddSearch (#151 pure planner)', () => {
   it('none is a no-op plan with no steps', () => {

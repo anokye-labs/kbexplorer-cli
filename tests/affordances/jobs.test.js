@@ -16,11 +16,11 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const { createAffordanceContext } = await import('../../src/affordances/context.js');
+const { createAffordanceContext } = await import('../../src/affordances/context.ts');
 const { executeAffordance, describeAffordances, ACTION_CLASSES, ERROR_CODES } =
-  await import('../../src/affordances/index.js');
+  await import('../../src/affordances/index.ts');
 const { JobStore, JOB_STATUS, CredentialRequiredError, defaultJobStore } =
-  await import('../../src/affordances/jobs/store.js');
+  await import('../../src/affordances/jobs/store.ts');
 
 /** A deferred promise helper for driving async runtimes deterministically. */
 function deferred() {
@@ -423,7 +423,7 @@ describe('job layer — store internals', () => {
       /(?:^|\n)\s*(?:import\b[^\n]*?from\s*|import\s*\(|(?:const|let|var)\s+[^\n=]*=\s*require\()\s*['"]([^'"]+)['"]/g;
     const forbidden = /modelcontextprotocol|json-?rpc|StdioServerTransport|server\/mcp/i;
     for (const e of readdirSync(root)) {
-      if (!e.endsWith('.js')) continue;
+      if (!e.endsWith('.ts')) continue;
       const src = rf(j(root, e), 'utf-8');
       let m;
       while ((m = importRe.exec(src)) !== null) {

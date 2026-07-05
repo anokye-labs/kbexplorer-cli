@@ -11,7 +11,7 @@ const {
   closure,
   computeAffected,
   affectedFromGraphs,
-} = await import('../../src/lib/affected-graph.js');
+} = await import('../../src/lib/affected-graph.ts');
 
 const hash = (digest) => ({ algorithm: 'sha256', digest, encoding: 'hex' });
 const ref = (href, digest) => ({ kind: 'git', href, ...(digest ? { contentHash: hash(digest) } : {}) });

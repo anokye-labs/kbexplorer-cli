@@ -16,7 +16,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-const doctorMod = await import('../../src/commands/doctor.js');
+const doctorMod = await import('../../src/commands/doctor.ts');
 const doctor = doctorMod.default;
 const { checkPlugin } = doctorMod;
 

@@ -14,7 +14,7 @@ import {
   MemoryGraphStore,
   CompositeIngestError,
   CompositeIngestErrorCode,
-} from '../../src/lib/composite-ingest.js';
+} from '../../src/lib/composite-ingest.ts';
 
 /**
  * Build an injectable provider factory that yields a fixed fragment. The engine

@@ -14,7 +14,7 @@ const {
   RuntimeErrorCode,
   COPILOT_BIN_ENV,
   CLAUDE_BIN_ENV,
-} = await import('../../src/lib/copilot-runtime.js');
+} = await import('../../src/lib/copilot-runtime.ts');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLAUDE_JSON_FIXTURE = readFileSync(resolve(__dirname, '..', 'fixtures', 'claude-json-result.json'), 'utf8');

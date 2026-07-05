@@ -5,14 +5,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const { deriveSource, artifactPathFor, buildDeriveRuntimeOptions } = await import(
-  '../../src/commands/derive.js'
+  '../../src/commands/derive.ts'
 );
-const { validateArtifact } = await import('../../src/lib/jsonld.js');
+const { validateArtifact } = await import('../../src/lib/jsonld.ts');
 const { makeDocx } = await import('../fixtures/make-docx.mjs');
 const { resolveRuntime, loadRuntimeConfig, validateRuntimeBlock } = await import(
-  '../../src/lib/runtime-config.js'
+  '../../src/lib/runtime-config.ts'
 );
-const { copilotAdapter, claudeAdapter } = await import('../../src/lib/copilot-runtime.js');
+const { copilotAdapter, claudeAdapter } = await import('../../src/lib/copilot-runtime.ts');
 
 async function withTempDir(fn) {
   const dir = mkdtempSync(join(tmpdir(), 'kb-derive-'));

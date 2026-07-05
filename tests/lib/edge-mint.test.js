@@ -6,8 +6,8 @@ import {
   resolveLinkedRef,
   buildResolutionIndex,
   EDGE_MINT_GENERATOR,
-} from '../../src/lib/edge-mint.js';
-import { canonicalStringify } from '../../src/lib/jsonld.js';
+} from '../../src/lib/edge-mint.ts';
+import { canonicalStringify } from '../../src/lib/jsonld.ts';
 
 /** Minimal valid KBNode with optional provenance/link substrate. */
 function node(id, extra = {}) {

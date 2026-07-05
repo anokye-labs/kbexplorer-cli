@@ -11,7 +11,7 @@ import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const pluginMod = await import('../../src/commands/plugin.js');
+const pluginMod = await import('../../src/commands/plugin.ts');
 const plugin = pluginMod.default;
 const { parsePluginArgs } = pluginMod;
 

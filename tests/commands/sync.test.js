@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const mod = await import('../../src/commands/sync.js');
+const mod = await import('../../src/commands/sync.ts');
 const syncCommand = mod.default;
 const { computeSync, evaluateConnect, DEFAULT_GRAPH } = mod;
 

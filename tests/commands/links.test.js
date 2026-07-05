@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 // Smoke test — verify the module imports and exports correctly
-const linksModule = await import('../../src/commands/links.js');
+const linksModule = await import('../../src/commands/links.ts');
 
 describe('links command', () => {
   it('exports a default function', () => {

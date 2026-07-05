@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { extractDocxText, docxXmlToText, readZipEntry, listZipEntries, DocxParseError } = await import(
-  '../../src/lib/docx.js'
+  '../../src/lib/docx.ts'
 );
 const { makeDocx, makeZip, paragraphsToDocumentXml } = await import('../fixtures/make-docx.mjs');
 

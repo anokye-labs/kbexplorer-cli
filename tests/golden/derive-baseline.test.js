@@ -14,7 +14,7 @@ import { readFileSync, mkdirSync, rmSync, appendFileSync, copyFileSync } from 'n
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { deriveSource } from '../../src/commands/derive.js';
+import { deriveSource } from '../../src/commands/derive.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(here, '..', '..');

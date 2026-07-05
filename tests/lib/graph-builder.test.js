@@ -4,7 +4,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { buildEngineGraph } from '../../src/lib/engine-graph-builder.js';
+import { buildEngineGraph } from '../../src/lib/engine-graph-builder.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

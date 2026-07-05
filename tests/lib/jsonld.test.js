@@ -16,7 +16,7 @@ const {
   KNOWN_RELATIONS,
   DEFAULT_CONTEXT,
   ARTIFACT_SCHEMA_VERSION,
-} = await import('../../src/lib/jsonld.js');
+} = await import('../../src/lib/jsonld.ts');
 
 const INTERMEDIATE = {
   entities: [

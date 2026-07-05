@@ -4,8 +4,8 @@ import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
-const scaffold = (await import('../../src/commands/scaffold.js')).default;
-const { parseFrontmatter } = await import('../../src/lib/markdown.js');
+const scaffold = (await import('../../src/commands/scaffold.ts')).default;
+const { parseFrontmatter } = await import('../../src/lib/markdown.ts');
 
 async function withTempCwd(fn) {
   const dir = mkdtempSync(join(tmpdir(), 'kb-scaffold-'));

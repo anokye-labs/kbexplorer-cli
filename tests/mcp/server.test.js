@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { registerKbxMcpServer } = await import('../../src/mcp/server.js');
-const { buildMcpTools } = await import('../../src/mcp/tools.js');
+const { registerKbxMcpServer } = await import('../../src/mcp/server.ts');
+const { buildMcpTools } = await import('../../src/mcp/tools.ts');
 
 /** Minimal fake low-level MCP Server that records setRequestHandler wiring. */
 function fakeServer() {

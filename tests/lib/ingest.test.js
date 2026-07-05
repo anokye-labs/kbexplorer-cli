@@ -13,7 +13,7 @@ const {
   IngestError,
   IngestErrorCode,
   SUPPORTED_FORMATS,
-} = await import('../../src/lib/ingest.js');
+} = await import('../../src/lib/ingest.ts');
 const { makeDocx } = await import('../fixtures/make-docx.mjs');
 
 function withTempDir(fn) {

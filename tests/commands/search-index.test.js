@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildProjectionMetadata } from '../../src/commands/search-index.js';
+import { buildProjectionMetadata } from '../../src/commands/search-index.ts';
 
 describe('search-index projection metadata', () => {
   it('records explicit access exclusion settings and unit-less node kinds', () => {

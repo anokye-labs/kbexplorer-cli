@@ -16,15 +16,15 @@ import { join } from 'node:path';
 
 const {
   runMcpPreflight,
-} = await import('../../src/lib/mcp-config-preflight.js');
+} = await import('../../src/lib/mcp-config-preflight.ts');
 
 const {
   claudeAdapter,
   copilotAdapter,
   createCustomAdapter,
-} = await import('../../src/lib/copilot-runtime.js');
+} = await import('../../src/lib/copilot-runtime.ts');
 
-const { parseDeriveArgs, parseGenerateArgs } = await import('../../src/lib/args.js');
+const { parseDeriveArgs, parseGenerateArgs } = await import('../../src/lib/args.ts');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

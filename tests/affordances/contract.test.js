@@ -9,7 +9,7 @@ const {
   AffordanceError,
   ERROR_CODES,
   ACTION_CLASSES,
-} = await import('../../src/affordances/contract.js');
+} = await import('../../src/affordances/contract.ts');
 
 describe('contract — validateInput', () => {
   it('applies defaults for absent fields', () => {

@@ -6,9 +6,9 @@ const {
   githubChangeProposalAdapter,
   bareGitChangeProposalAdapter,
   resolveChangeProposalAdapter,
-} = await import('../../src/lib/change-proposal-adapter.js');
+} = await import('../../src/lib/change-proposal-adapter.ts');
 
-const { HostKind } = await import('../../src/lib/forge-adapter.js');
+const { HostKind } = await import('../../src/lib/forge-adapter.ts');
 
 describe('ProposalKind', () => {
   it('declares the three host-neutral proposal kinds', () => {

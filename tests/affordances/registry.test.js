@@ -10,7 +10,7 @@ const {
   createAffordanceContext,
   ERROR_CODES,
   ACTION_CLASSES,
-} = await import('../../src/affordances/index.js');
+} = await import('../../src/affordances/index.ts');
 
 const EXPECTED = [
   'search',
@@ -102,7 +102,7 @@ describe('registry', () => {
       for (const e of readdirSync(d, { withFileTypes: true })) {
         const p = join(d, e.name);
         if (e.isDirectory()) walk(p);
-        else if (e.name.endsWith('.js')) files.push(p);
+        else if (e.name.endsWith('.ts')) files.push(p);
       }
     };
     walk(root);

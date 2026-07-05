@@ -4,8 +4,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
-const { buildViteEnv } = await import('../../src/commands/build.js');
-const { writeHostManifest } = await import('../../src/commands/dev.js');
+const { buildViteEnv } = await import('../../src/commands/build.ts');
+const { writeHostManifest } = await import('../../src/commands/dev.ts');
 
 describe('build command — host-root threading (regression for silent wrong-content ship)', () => {
   it('buildViteEnv threads VITE_KB_HOST_ROOT at the host repo (not the template)', () => {

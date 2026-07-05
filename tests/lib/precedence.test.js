@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolvePrecedence, pickWinner } from '../../src/lib/precedence.js';
-import { conflateReferents } from '../../src/lib/conflation.js';
-import { canonicalStringify } from '../../src/lib/jsonld.js';
+import { resolvePrecedence, pickWinner } from '../../src/lib/precedence.ts';
+import { conflateReferents } from '../../src/lib/conflation.ts';
+import { canonicalStringify } from '../../src/lib/jsonld.ts';
 
 function node(id, extra = {}) {
   return {

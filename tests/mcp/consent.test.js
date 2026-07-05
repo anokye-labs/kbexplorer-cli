@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { createMcpConsentSeam, createMcpContextFactory, renderConsentMessage, buildElicitationSchema } =
-  await import('../../src/mcp/consent.js');
+  await import('../../src/mcp/consent.ts');
 
 const sampleRequest = {
   affordance: 'start_generate',

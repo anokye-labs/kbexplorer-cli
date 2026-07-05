@@ -14,8 +14,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const { loadGraph } = await import('../../src/lib/engine-graph.js');
-const { normalizeAccessLabel } = await import('../../src/lib/access-label.js');
+const { loadGraph } = await import('../../src/lib/engine-graph.ts');
+const { normalizeAccessLabel } = await import('../../src/lib/access-label.ts');
 
 /** Build a temp dir with a couple of `.md` nodes (no `content/` subdir, so
  * loadGraph scans the root directly). */

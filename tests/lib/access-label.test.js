@@ -7,7 +7,7 @@ import {
   isMoreRestrictiveOrEqual,
   CLASSIFICATION_RANK,
   VISIBILITY_RANK,
-} from '../../src/lib/access-label.js';
+} from '../../src/lib/access-label.ts';
 
 describe('normalizeAccessLabel', () => {
   it('returns undefined for non-objects and empty blocks', () => {

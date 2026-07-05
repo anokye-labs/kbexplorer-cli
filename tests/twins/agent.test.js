@@ -19,16 +19,16 @@ import { tmpdir } from 'node:os';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TWIN = resolve(__dirname, '..', '..', 'twins', 'agent', 'fake-agent.mjs');
 
-const { extractEntities } = await import('../../src/lib/extract.js');
-const { ingestText } = await import('../../src/lib/ingest.js');
+const { extractEntities } = await import('../../src/lib/extract.ts');
+const { ingestText } = await import('../../src/lib/ingest.ts');
 const {
   runRuntimeTask,
   copilotAdapter,
   claudeAdapter,
   COPILOT_BIN_ENV,
-} = await import('../../src/lib/copilot-runtime.js');
-const { deriveSource, artifactPathFor } = await import('../../src/commands/derive.js');
-const { validateArtifact } = await import('../../src/lib/jsonld.js');
+} = await import('../../src/lib/copilot-runtime.ts');
+const { deriveSource, artifactPathFor } = await import('../../src/commands/derive.ts');
+const { validateArtifact } = await import('../../src/lib/jsonld.ts');
 const { makeDocx } = await import('../fixtures/make-docx.mjs');
 const { selectFixture, FIXTURES, DEFAULT_EXTRACTION } = await import(
   '../../twins/agent/fixtures.mjs'

@@ -4,8 +4,8 @@ import {
   conflateReferents,
   pickRepresentative,
   CONFLATE_GENERATOR,
-} from '../../src/lib/conflation.js';
-import { canonicalStringify } from '../../src/lib/jsonld.js';
+} from '../../src/lib/conflation.ts';
+import { canonicalStringify } from '../../src/lib/jsonld.ts';
 
 function node(id, extra = {}) {
   return {

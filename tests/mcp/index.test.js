@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 
 const { createKbxMcpServer, waitForClose, SERVER_NAME, SERVER_VERSION } = await import(
-  '../../src/mcp/index.js'
+  '../../src/mcp/index.ts'
 );
 
 const LIST = { __schema: 'list' };

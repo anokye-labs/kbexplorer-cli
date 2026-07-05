@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-const mcpMod = await import('../../src/commands/mcp.js');
+const mcpMod = await import('../../src/commands/mcp.ts');
 const mcp = mcpMod.default;
 const { parseMcpArgs } = mcpMod;
 

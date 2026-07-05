@@ -2,9 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { TOOL_PREFIX, toolNameFor, affordanceToTool, buildAffordanceTools } =
-  await import('../../src/extension/tools.js');
+  await import('../../src/extension/tools.ts');
 const { describeAffordances, ACTION_CLASSES, ERROR_CODES } =
-  await import('../../src/affordances/index.js');
+  await import('../../src/affordances/index.ts');
 
 const EXPECTED = [
   'search',
@@ -40,7 +40,7 @@ describe('affordance → tool binding', () => {
   });
 
   it('enumerates the same affordance set as the MCP host', async () => {
-    const { buildMcpTools } = await import('../../src/mcp/tools.js');
+    const { buildMcpTools } = await import('../../src/mcp/tools.ts');
     assert.deepEqual(buildAffordanceTools().map((t) => t.name), buildMcpTools().map((t) => t.name));
   });
 
@@ -90,7 +90,7 @@ describe('affordance → tool binding', () => {
   });
 
   it('maps a thrown AffordanceError to a failure tool result', async () => {
-    const { AffordanceError } = await import('../../src/affordances/contract.js');
+    const { AffordanceError } = await import('../../src/affordances/contract.ts');
     const tool = affordanceToTool(describeAffordances()[0], {
       execute: () => {
         throw new AffordanceError(ERROR_CODES.UNSUPPORTED, 'no engine');

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { request } from 'node:http';
 
 const { registerKbxExtension, createKbxExtensionConfig, KBX_CANVAS_ID } =
-  await import('../../src/extension/index.js');
+  await import('../../src/extension/index.ts');
 
 const httpPost = (url, json) =>
   new Promise((res, rej) => {

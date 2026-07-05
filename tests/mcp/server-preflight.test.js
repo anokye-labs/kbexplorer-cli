@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { runMcpServerPreflight, formatMcpServerPreflight, MIN_NODE_MAJOR } = await import(
-  '../../src/mcp/server-preflight.js'
+  '../../src/mcp/server-preflight.ts'
 );
 
 describe('mcp/preflight — runMcpServerPreflight', () => {

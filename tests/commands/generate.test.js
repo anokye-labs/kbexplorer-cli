@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-const generateMod = await import('../../src/commands/generate.js');
+const generateMod = await import('../../src/commands/generate.ts');
 const generate = generateMod.default;
 const { defaultArchitectPrompt, buildArchitectRuntimeOptions } = generateMod;
 
@@ -105,7 +105,7 @@ describe('generate.js — fix #39: VITE_KB_HOST_ROOT in manifest regeneration', 
     const { resolve, dirname } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
     const src = readFileSync(
-      resolve(dirname(fileURLToPath(import.meta.url)), '../../src/commands/generate.js'),
+      resolve(dirname(fileURLToPath(import.meta.url)), '../../src/commands/generate.ts'),
       'utf-8',
     );
     // Both the env var and the host root must be present in the regenerate block
@@ -118,7 +118,7 @@ describe('generate.js — fix #39: VITE_KB_HOST_ROOT in manifest regeneration', 
     const { resolve, dirname } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
     const src = readFileSync(
-      resolve(dirname(fileURLToPath(import.meta.url)), '../../src/commands/generate.js'),
+      resolve(dirname(fileURLToPath(import.meta.url)), '../../src/commands/generate.ts'),
       'utf-8',
     );
     // The Phase 2b regenerate-manifest block must use spawnSync
