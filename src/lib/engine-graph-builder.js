@@ -8,8 +8,8 @@ import { resolveContentDir } from './kb-env.js';
 /**
  * Build a KBGraph through the engine's config-first pipeline.
  *
- * This is additive and intentionally leaves the existing graph-builder.js path
- * untouched as the live default for the CLI's existing commands.
+ * This is additive and intentionally leaves the legacy graph-loading path
+ * untouched while the CLI and affordance layer migrate to the engine graph.
  */
 export async function buildEngineGraph(cwd, options = {}) {
   const { contentPath } = resolveContentDir(cwd, options.contentOverride);

@@ -21,7 +21,7 @@ import {
   ERROR_CODES,
   ACTION_CLASSES,
 } from '../contract.js';
-import { snippet } from '../../lib/graph.js';
+import { snippet } from '../../lib/engine-graph.js';
 
 export default defineAffordance({
   name: 'llm_context',
@@ -46,7 +46,7 @@ export default defineAffordance({
     nodeIds: { type: 'array' },
     roots: { type: 'array' },
   }),
-  execute(context, input) {
+  async execute(context, input) {
     const nodeIds = input.nodeIds.map(String).filter(Boolean);
     if (nodeIds.length === 0) {
       throw new AffordanceError(
@@ -55,7 +55,7 @@ export default defineAffordance({
       );
     }
 
-    const graph = context.loadGraph();
+    const graph = await context.loadGraph();
     const missing = nodeIds.filter((id) => !graph.nodes.has(id));
     if (missing.length) {
       throw new AffordanceError(

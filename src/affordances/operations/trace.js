@@ -19,7 +19,7 @@ import {
   ERROR_CODES,
   ACTION_CLASSES,
 } from '../contract.js';
-import { shortestPath, neighbors } from '../../lib/graph.js';
+import { shortestPath, neighbors } from '../../lib/engine-graph.js';
 
 export default defineAffordance({
   name: 'trace',
@@ -42,7 +42,7 @@ export default defineAffordance({
     path: { type: 'array' },
     nodes: { type: 'array' },
   }),
-  execute(context, input) {
+  async execute(context, input) {
     const fromId = input.fromId || input.nodeId;
     const toId = input.toId;
     if (!fromId) {
@@ -52,7 +52,7 @@ export default defineAffordance({
       );
     }
 
-    const graph = context.loadGraph();
+    const graph = await context.loadGraph();
     if (!graph.nodes.has(fromId)) {
       throw new AffordanceError(ERROR_CODES.NOT_FOUND, `Unknown node id: ${fromId}`, {
         id: fromId,

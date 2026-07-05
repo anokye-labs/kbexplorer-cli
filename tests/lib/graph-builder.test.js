@@ -4,7 +4,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { buildGraph } from '../../src/lib/graph-builder.js';
+import { buildEngineGraph } from '../../src/lib/engine-graph-builder.js';
 import { normalizeAccessLabel } from '../../src/lib/access-label.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -37,7 +37,7 @@ function makeTmpRepo(files) {
 }
 
 describe('buildGraph', () => {
-  it('builds nodes from content/*.md files', () => {
+  it('builds nodes from content/*.md files', async () => {
     const dir = makeTmpRepo({
       'content/config.yaml': `
 title: "Test KB"
@@ -68,7 +68,7 @@ Detailed content here.
     });
 
     try {
-      const graph = buildGraph(dir);
+      const graph = await buildEngineGraph(dir);
       assert.equal(graph.nodes.length, 2);
       assert.equal(graph.clusters.length, 1);
       assert.equal(graph.clusters[0].id, 'core');
@@ -98,10 +98,10 @@ Detailed content here.
     }
   });
 
-  it('returns empty graph for missing content dir', () => {
+  it('returns empty graph for missing content dir', async () => {
     const dir = mkdtempSync(resolve(tmpdir(), 'kbgraph-'));
     try {
-      const graph = buildGraph(dir);
+      const graph = await buildEngineGraph(dir);
       assert.equal(graph.nodes.length, 0);
       assert.equal(graph.edges.length, 0);
     } finally {
@@ -109,7 +109,7 @@ Detailed content here.
     }
   });
 
-  it('skips files without valid frontmatter', () => {
+  it('skips files without valid frontmatter', async () => {
     const dir = makeTmpRepo({
       'content/config.yaml': 'title: "Test"\n',
       'content/no-frontmatter.md': 'Just a plain markdown file.\n',
@@ -124,7 +124,7 @@ Content here.
     });
 
     try {
-      const graph = buildGraph(dir);
+      const graph = await buildEngineGraph(dir);
       assert.equal(graph.nodes.length, 1);
       assert.equal(graph.nodes[0].id, 'valid-node');
     } finally {
@@ -132,7 +132,7 @@ Content here.
     }
   });
 
-  it('deduplicates nodes with the same id', () => {
+  it('deduplicates nodes with the same id', async () => {
     const dir = makeTmpRepo({
       'content/config.yaml': 'title: "Test"\n',
       'content/a.md': `---
@@ -154,14 +154,14 @@ Second content.
     });
 
     try {
-      const graph = buildGraph(dir);
+      const graph = await buildEngineGraph(dir);
       assert.equal(graph.nodes.length, 1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it('carries identity and access from frontmatter onto the node (AF-009)', () => {
+  it('carries identity and access from frontmatter onto the node (AF-009)', async () => {
     const dir = makeTmpRepo({
       'content/config.yaml': 'title: "Test"\n',
       'content/labeled.md': `---
@@ -185,7 +185,7 @@ Body content.
     });
 
     try {
-      const graph = buildGraph(dir);
+      const graph = await buildEngineGraph(dir);
       const labeled = graph.nodes.find((n) => n.id === 'labeled');
       assert.ok(labeled);
       assert.equal(labeled.identity, 'kg://person/jane-doe');
@@ -203,7 +203,7 @@ Body content.
     }
   });
 
-  it('carries a restricted access label as an object search actually excludes (AF-009 no-op regression)', () => {
+  it('carries a restricted access label as an object search actually excludes (AF-009 no-op regression)', async () => {
     const dir = makeTmpRepo({
       'content/config.yaml': 'title: "Test"\n',
       'content/secret.md': `---
@@ -227,7 +227,7 @@ Public content that stays indexed.
     });
 
     try {
-      const graph = buildGraph(dir);
+      const graph = await buildEngineGraph(dir);
       const secret = graph.nodes.find((n) => n.id === 'secret');
       const open = graph.nodes.find((n) => n.id === 'open');
       assert.ok(secret && open);
@@ -249,7 +249,7 @@ Public content that stays indexed.
     }
   });
 
-  it('preserves rawContent from markdown body', () => {
+  it('preserves rawContent from markdown body', async () => {
     const dir = makeTmpRepo({
       'content/config.yaml': 'title: "Test"\n',
       'content/page.md': `---
@@ -265,7 +265,7 @@ Body content with **formatting**.
     });
 
     try {
-      const graph = buildGraph(dir);
+      const graph = await buildEngineGraph(dir);
       const node = graph.nodes[0];
       assert.ok(node.rawContent.includes('## Section One'));
       assert.ok(node.rawContent.includes('Body content with **formatting**.'));

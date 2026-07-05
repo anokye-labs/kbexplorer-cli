@@ -19,7 +19,7 @@
  */
 
 import { resolve } from 'node:path';
-import { loadGraph } from '../lib/graph.js';
+import { loadGraph } from '../lib/engine-graph.js';
 import { resolveContentDir } from '../lib/kb-env.js';
 
 /**
@@ -35,7 +35,7 @@ import { resolveContentDir } from '../lib/kb-env.js';
  * @property {string[]|undefined} roots
  * @property {AffordanceContextSeams} seams
  * @property {(opts?: {content?: string}) => {contentDir: string, contentPath: string}} resolveContent
- * @property {() => import('../lib/graph.js').Graph} loadGraph  Cached graph view.
+ * @property {() => Promise<import('../lib/engine-graph.js').Graph>} loadGraph  Cached graph view.
  */
 
 /**
@@ -50,7 +50,7 @@ import { resolveContentDir } from '../lib/kb-env.js';
  */
 export function createAffordanceContext({ cwd = process.cwd(), roots, seams = {} } = {}) {
   const absCwd = resolve(cwd);
-  /** @type {import('../lib/graph.js').Graph|null} */
+  /** @type {import('../lib/engine-graph.js').Graph|null} */
   let graphCache = null;
 
   return {
@@ -64,9 +64,9 @@ export function createAffordanceContext({ cwd = process.cwd(), roots, seams = {}
     },
 
     /** Load (and memoise) the knowledge graph scoped to `roots` (or `cwd`). */
-    loadGraph() {
+    async loadGraph() {
       if (!graphCache) {
-        graphCache = loadGraph(roots ? { roots, cwd: absCwd } : { cwd: absCwd });
+        graphCache = await loadGraph(roots ? { roots, cwd: absCwd } : { cwd: absCwd });
       }
       return graphCache;
     },
