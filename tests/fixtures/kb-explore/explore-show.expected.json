@@ -1,0 +1,42 @@
+{
+  "command": "show",
+  "node": {
+    "id": "home",
+    "title": "Home",
+    "cluster": "entry"
+  },
+  "neighbors": [
+    {
+      "id": "file-content/home.md",
+      "title": "home.md",
+      "cluster": "infra"
+    },
+    {
+      "id": "guide",
+      "title": "Guide",
+      "cluster": "docs"
+    },
+    {
+      "id": "impl",
+      "title": "Implementation",
+      "cluster": "docs"
+    }
+  ],
+  "related": [
+    {
+      "id": "file-content/home.md",
+      "title": "home.md",
+      "cluster": "infra"
+    },
+    {
+      "id": "guide",
+      "title": "Guide",
+      "cluster": "docs"
+    },
+    {
+      "id": "impl",
+      "title": "Implementation",
+      "cluster": "docs"
+    }
+  ]
+}
