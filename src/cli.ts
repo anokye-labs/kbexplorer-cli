@@ -19,6 +19,7 @@ import plugin from './commands/plugin.js';
 import searchIndex from './commands/search-index.js';
 import search from './commands/search.js';
 import mcp from './commands/mcp.js';
+import explore from './commands/explore.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -44,6 +45,7 @@ const COMMANDS = {
   'search-index': searchIndex,
   search,
   mcp,
+  explore,
 };
 
 function printUsage() {
@@ -68,6 +70,7 @@ function printUsage() {
     sync        Detect source drift + reconcile the deterministic KB (multi-source status)
     search-index  Build or check semantic search artifacts
     search      Semantic search over the knowledge graph
+    explore     Terminal explorer that hosts the real engine graph
     update      Pull latest template + refresh agents/skills
     doctor      Diagnose local runtime, MCP, template setup, and adoption readiness
     plugin      Install or share the kbx Copilot plugin bundle (install/share/resolve)
