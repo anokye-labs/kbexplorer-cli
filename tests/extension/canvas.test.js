@@ -9,9 +9,9 @@ import {
   buildCanvasOptions,
   buildCanvasActions,
   KBX_CANVAS_ID,
-} from '../../src/extension/canvas.js';
-import { createCanvasRegistry, SSE_EVENTS } from '../../src/extension/canvas-server.js';
-import { createAffordanceContext } from '../../src/affordances/index.js';
+} from '../../src/extension/canvas.ts';
+import { createCanvasRegistry, SSE_EVENTS } from '../../src/extension/canvas-server.ts';
+import { createAffordanceContext } from '../../src/affordances/index.ts';
 
 /** A fake registry that records open/close/emit/search calls and returns a canned url. */
 function makeFakeRegistry({ search } = {}) {

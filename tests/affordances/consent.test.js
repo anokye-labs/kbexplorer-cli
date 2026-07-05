@@ -18,9 +18,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const { createAffordanceContext } = await import('../../src/affordances/context.js');
+const { createAffordanceContext } = await import('../../src/affordances/context.ts');
 const { executeAffordance, ERROR_CODES, ACTION_CLASSES } = await import(
-  '../../src/affordances/index.js'
+  '../../src/affordances/index.ts'
 );
 const {
   enforceConsent,
@@ -29,10 +29,10 @@ const {
   buildConsentRequest,
   buildDisclosure,
   CONSENT_REQUIRED_CLASSES,
-} = await import('../../src/affordances/consent.js');
-const { defineAffordance, defineSchema } = await import('../../src/affordances/contract.js');
-const { getAffordance } = await import('../../src/affordances/index.js');
-const { JobStore } = await import('../../src/affordances/jobs/store.js');
+} = await import('../../src/affordances/consent.ts');
+const { defineAffordance, defineSchema } = await import('../../src/affordances/contract.ts');
+const { getAffordance } = await import('../../src/affordances/index.ts');
+const { JobStore } = await import('../../src/affordances/jobs/store.ts');
 
 let dir;
 beforeEach(() => {

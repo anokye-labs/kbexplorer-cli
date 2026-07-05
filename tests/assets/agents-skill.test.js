@@ -23,8 +23,8 @@ const ASSETS = resolve(__dirname, '..', '..', 'src', 'assets');
 const AGENTS_DIR = join(ASSETS, 'agents');
 const SKILL_DIR = join(ASSETS, 'skills', 'kbx');
 
-const { buildAffordanceTools, toolNameFor } = await import('../../src/extension/index.js');
-const { assembleBundle } = await import('../../src/lib/plugin-bundle.js');
+const { buildAffordanceTools, toolNameFor } = await import('../../src/extension/index.ts');
+const { assembleBundle } = await import('../../src/lib/plugin-bundle.ts');
 
 /** Real, host-unique tool names exposed by the merged extension-tool adapter. */
 const REAL_TOOL_NAMES = new Set(buildAffordanceTools().map((t) => t.name));

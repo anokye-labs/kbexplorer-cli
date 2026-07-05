@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { TaskKind, classifyTask, routeTask, routeTasks } =
-  await import('../../src/lib/runtime-router.js');
+  await import('../../src/lib/runtime-router.ts');
 
 function captureLogger() {
   const lines = [];

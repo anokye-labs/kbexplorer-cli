@@ -13,9 +13,9 @@ const {
   isTerminal,
   nextActions,
   driveOnboarding,
-} = await import('../../src/lib/onboarding.js');
+} = await import('../../src/lib/onboarding.ts');
 
-const { SEARCH_MODES, ADD_SEARCH_STATUS } = await import('../../src/lib/add-search.js');
+const { SEARCH_MODES, ADD_SEARCH_STATUS } = await import('../../src/lib/add-search.ts');
 
 /** Apply a sequence of events, returning the final state (effects discarded). */
 function run(state, events) {

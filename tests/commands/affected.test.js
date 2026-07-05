@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-const affectedModule = await import('../../src/commands/affected.js');
+const affectedModule = await import('../../src/commands/affected.ts');
 const { loadBaselineGraph } = affectedModule;
 const affectedCommand = affectedModule.default;
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildEngineGraph } from '../../src/lib/engine-graph-builder.js';
+import { buildEngineGraph } from '../../src/lib/engine-graph-builder.ts';
 
 const repoRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 

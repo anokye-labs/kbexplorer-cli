@@ -309,3 +309,365 @@ export function parseDoctorArgs(args: string[] = []): DoctorArgs {
     args,
   ) as unknown as DoctorArgs;
 }
+
+// ---- parsers merged from former args.js shim (cli#238) ----
+
+export interface AffectedArgs {
+  json: boolean;
+  ref: string;
+  content: string | null;
+  graph: string | null;
+  since: string;
+  positionals: string[];
+  unknown: string[];
+}
+
+export interface AuditArgs {
+  json: boolean;
+  content: string | null;
+  unknown: string[];
+}
+
+export interface BuildArgs {
+  base: string | null;
+  unknown: string[];
+}
+
+export interface ConnectArgs {
+  check: boolean;
+  help: boolean;
+  unknown: string[];
+}
+
+export interface DevArgs {
+  noWatch: boolean;
+  viteArgs: string[];
+  unknown: string[];
+}
+
+export interface LinksArgs {
+  json: boolean;
+  unknown: string[];
+}
+
+export interface ManifestArgs {
+  unknown: string[];
+}
+
+export interface McpArgs {
+  help: boolean;
+  allow: boolean;
+  skipPreflight: boolean;
+  name: string | undefined;
+  unknown: string[];
+}
+
+export interface PluginArgs {
+  sub: string | null;
+  scope: string;
+  sessionDir: string | null;
+  json: boolean;
+  help: boolean;
+  unknown: string[];
+  positionals: string[];
+  _: string[];
+}
+
+export interface ScaffoldArgs {
+  slug: string | null;
+  cluster: string | null;
+  parent: string | null;
+  title: string | null;
+  emoji: string | null;
+  content: string | null;
+  force: boolean;
+  unknown: string[];
+  positionals: string[];
+}
+
+export interface SearchIndexArgs {
+  check: boolean;
+  dryRun: boolean;
+  help: boolean;
+  json: boolean;
+  dir: string | null;
+  provider: string | null;
+  model: string | null;
+  content: string | null;
+  batchSize: number | null;
+  unknown: string[];
+}
+
+export interface SearchArgs {
+  query: string | null;
+  help: boolean;
+  json: boolean;
+  limit: number | null;
+  cluster: string | null;
+  entityType: string | null;
+  minScore: number | null;
+  dir: string | null;
+  provider: string | null;
+  model: string | null;
+  positionals: string[];
+  unknown: string[];
+}
+
+export interface SyncArgs {
+  check: boolean;
+  json: boolean;
+  graph: string;
+  since: string;
+  against: string | null;
+  help: boolean;
+  unknown: string[];
+}
+
+export interface ValidateArgs {
+  json: boolean;
+  dir: string | null;
+  help: boolean;
+  unknown: string[];
+}
+
+export function parseAffectedArgs(args: string[] = []): AffectedArgs {
+  const out = parseArgs(
+   {
+     defaults: { json: false, ref: 'HEAD', content: null, graph: null, since: 'HEAD', unknown: [] },
+     options: [
+       { name: 'json', aliases: ['--json'], type: 'boolean' },
+       { name: 'content', aliases: ['--content'], type: 'value' },
+       { name: 'graph', aliases: ['--graph'], type: 'value' },
+       { name: 'since', aliases: ['--since'], type: 'value' },
+     ],
+     positionals: 'positionals',
+   },
+   args,
+  ) as unknown as AffectedArgs;
+  out.ref = out.positionals[0] ?? out.ref;
+  return out;
+}
+
+export function parseAuditArgs(args: string[] = []): AuditArgs {
+  return parseArgs(
+   {
+     defaults: { json: false, content: null, unknown: [] },
+     options: [
+       { name: 'json', aliases: ['--json'], type: 'boolean' },
+       { name: 'content', aliases: ['--content'], type: 'value' },
+     ],
+   },
+   args,
+  ) as unknown as AuditArgs;
+}
+
+export function parseBuildArgs(args: string[] = []): BuildArgs {
+  return parseArgs(
+   {
+     defaults: { base: null, unknown: [] },
+     options: [{ name: 'base', aliases: ['--base'], type: 'value' }],
+   },
+   args,
+  ) as unknown as BuildArgs;
+}
+
+export function parseConnectArgs(args: string[] = []): ConnectArgs {
+  const out: ConnectArgs = { check: false, help: false, unknown: [] };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--check') out.check = true;
+    else if (arg === '--help' || arg === '-h') out.help = true;
+    else if (arg.startsWith('-')) out.unknown.push(arg);
+  }
+  return out;
+}
+
+export function parseDevArgs(args: string[] = []): DevArgs {
+  const out = parseArgs(
+   {
+     defaults: { noWatch: false, viteArgs: [], unknown: [] },
+     options: [{ name: 'noWatch', aliases: ['--no-watch'], type: 'boolean' }],
+     collectUnknown: false,
+   },
+   args,
+  ) as unknown as DevArgs;
+  out.viteArgs = args.filter((arg) => arg !== '--no-watch');
+  return out;
+}
+
+export function parseLinksArgs(args: string[] = []): LinksArgs {
+  return parseArgs(
+   {
+     defaults: { json: false, unknown: [] },
+     options: [{ name: 'json', aliases: ['--json'], type: 'boolean' }],
+   },
+   args,
+  ) as unknown as LinksArgs;
+}
+
+export function parseManifestArgs(args: string[] = []): ManifestArgs {
+  return parseArgs({ defaults: { unknown: [] }, options: [] }, args) as unknown as ManifestArgs;
+}
+
+export function parseMcpArgs(args: string[] = []): McpArgs {
+  const out = parseArgs(
+   {
+     defaults: { help: false, allow: false, skipPreflight: false, name: undefined, unknown: [] },
+     options: [
+       { name: 'help', aliases: ['--help', '-h'], type: 'boolean' },
+       { name: 'allow', aliases: ['--allow'], type: 'boolean' },
+       { name: 'skipPreflight', aliases: ['--skip-preflight'], type: 'boolean' },
+       { name: 'name', aliases: ['--name'], type: 'value' },
+     ],
+   },
+   args,
+  ) as unknown as McpArgs;
+  out.name = out.name ?? undefined;
+  return out;
+}
+
+export function parsePluginArgs(args: string[] = []): PluginArgs {
+  const out = parseArgs(
+   {
+     defaults: { sub: null, scope: 'project', sessionDir: null, json: false, help: false, unknown: [] },
+     options: [
+       { name: 'help', aliases: ['--help', '-h'], type: 'boolean' },
+       { name: 'json', aliases: ['--json'], type: 'boolean' },
+       { name: 'scope', aliases: ['--scope', '-s'], type: 'value' },
+       { name: 'sessionDir', aliases: ['--session-dir'], type: 'value' },
+     ],
+     positionals: 'positionals',
+   },
+   args,
+  ) as unknown as PluginArgs;
+  out.sub = out.positionals[0] ?? null;
+  out._ = out.positionals.slice(1);
+  return out;
+}
+
+export function parseScaffoldArgs(args: string[] = []): ScaffoldArgs {
+  const out = parseArgs(
+   {
+     defaults: {
+       slug: null,
+       cluster: null,
+       parent: null,
+       title: null,
+       emoji: null,
+       content: null,
+       force: false,
+       unknown: [],
+     },
+     options: [
+       { name: 'cluster', aliases: ['--cluster'], type: 'value' },
+       { name: 'parent', aliases: ['--parent'], type: 'value' },
+       { name: 'title', aliases: ['--title'], type: 'value' },
+       { name: 'emoji', aliases: ['--emoji'], type: 'value' },
+       { name: 'content', aliases: ['--content'], type: 'value' },
+       { name: 'force', aliases: ['--force', '-f'], type: 'boolean' },
+     ],
+     positionals: 'positionals',
+   },
+   args,
+  ) as unknown as ScaffoldArgs;
+  out.slug = out.positionals[0] ?? null;
+  return out;
+}
+
+export function parseSearchIndexArgs(args: string[] = []): SearchIndexArgs {
+  return parseArgs(
+   {
+     defaults: {
+       check: false,
+       dryRun: false,
+       help: false,
+       json: false,
+       dir: null,
+       provider: null,
+       model: null,
+       content: null,
+       batchSize: null,
+       unknown: [],
+     },
+     options: [
+       { name: 'check', aliases: ['--check'], type: 'boolean' },
+       { name: 'dryRun', aliases: ['--dry-run'], type: 'boolean' },
+       { name: 'json', aliases: ['--json'], type: 'boolean' },
+       { name: 'help', aliases: ['--help', '-h'], type: 'boolean' },
+       { name: 'dir', aliases: ['--dir'], type: 'value' },
+       { name: 'provider', aliases: ['--provider'], type: 'value' },
+       { name: 'model', aliases: ['--model'], type: 'value' },
+       { name: 'content', aliases: ['--content'], type: 'value' },
+       { name: 'batchSize', aliases: ['--batch-size'], type: 'number' },
+     ],
+   },
+   args,
+  ) as unknown as SearchIndexArgs;
+}
+
+export function parseSearchArgs(args: string[] = []): SearchArgs {
+  const out = parseArgs(
+   {
+     defaults: {
+       query: null,
+       help: false,
+       json: false,
+       limit: null,
+       cluster: null,
+       entityType: null,
+       minScore: null,
+       dir: null,
+       provider: null,
+       model: null,
+       unknown: [],
+     },
+     options: [
+       { name: 'help', aliases: ['--help', '-h'], type: 'boolean' },
+       { name: 'json', aliases: ['--json'], type: 'boolean' },
+       { name: 'limit', aliases: ['--limit'], type: 'number' },
+       { name: 'cluster', aliases: ['--cluster'], type: 'value' },
+       { name: 'entityType', aliases: ['--entity-type'], type: 'value' },
+       { name: 'minScore', aliases: ['--min-score'], type: 'number' },
+       { name: 'dir', aliases: ['--dir'], type: 'value' },
+       { name: 'provider', aliases: ['--provider'], type: 'value' },
+       { name: 'model', aliases: ['--model'], type: 'value' },
+     ],
+     positionals: 'positionals',
+   },
+   args,
+  ) as unknown as SearchArgs;
+  out.query = out.positionals.join(' ') || null;
+  return out;
+}
+
+export function parseSyncArgs(args: string[] = []): SyncArgs {
+  return parseArgs(
+   {
+     defaults: { check: false, json: false, graph: '.kbx/connection/composite-graph.json', since: 'HEAD', against: null, help: false, unknown: [] },
+     options: [
+       { name: 'check', aliases: ['--check'], type: 'boolean' },
+       { name: 'json', aliases: ['--json'], type: 'boolean' },
+       { name: 'graph', aliases: ['--graph'], type: 'value' },
+       { name: 'since', aliases: ['--since'], type: 'value' },
+       { name: 'against', aliases: ['--against'], type: 'value' },
+       { name: 'help', aliases: ['--help', '-h'], type: 'boolean' },
+     ],
+   },
+   args,
+  ) as unknown as SyncArgs;
+}
+
+export function parseValidateArgs(args: string[] = []): ValidateArgs {
+  return parseArgs(
+   {
+     defaults: { json: false, dir: null, help: false, unknown: [] },
+     options: [
+       { name: 'json', aliases: ['--json'], type: 'boolean' },
+       { name: 'help', aliases: ['--help', '-h'], type: 'boolean' },
+       { name: 'dir', aliases: ['--content-model', '--dir'], type: 'value' },
+     ],
+   },
+   args,
+  ) as unknown as ValidateArgs;
+}
+

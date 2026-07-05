@@ -25,7 +25,7 @@ describe('neutrality — the MCP SDK stays out of the static module graph', () =
   it('no src/mcp module statically imports the MCP SDK (only dynamic import in main)', () => {
     const dir = join(SRC, 'mcp');
     for (const entry of readdirSync(dir)) {
-      if (!entry.endsWith('.js')) continue;
+      if (!entry.endsWith('.ts')) continue;
       const src = readFileSync(join(dir, entry), 'utf-8');
       for (const spec of staticImportSpecifiers(src)) {
         assert.doesNotMatch(
@@ -38,7 +38,7 @@ describe('neutrality — the MCP SDK stays out of the static module graph', () =
   });
 
   it('src/mcp/index.js loads the SDK via dynamic import()', () => {
-    const src = readFileSync(join(SRC, 'mcp', 'index.js'), 'utf-8');
+    const src = readFileSync(join(SRC, 'mcp', 'index.ts'), 'utf-8');
     assert.match(src, /import\(\s*['"]@modelcontextprotocol/, 'main() must dynamic-import the SDK');
   });
 });
@@ -54,7 +54,7 @@ describe('neutrality — the affordance contract imports no MCP', () => {
           walk(full);
           continue;
         }
-        if (!entry.name.endsWith('.js')) continue;
+        if (!entry.name.endsWith('.ts')) continue;
         const src = readFileSync(full, 'utf-8');
         // Catch both static AND dynamic imports here: the contract must never
         // reach for a transport by any means.

@@ -16,8 +16,8 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
-import { readConfig, readAuthoredContent } from '../../src/lib/repo-manifest.js';
-import { normalizeExtraction, canonicalStringify } from '../../src/lib/jsonld.js';
+import { readConfig, readAuthoredContent } from '../../src/lib/repo-manifest.ts';
+import { normalizeExtraction, canonicalStringify } from '../../src/lib/jsonld.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(here, '..', '..');

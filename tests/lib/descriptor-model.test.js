@@ -9,7 +9,7 @@ const {
   KIND_DIRS,
   KNOWN_KINDS,
   _internal,
-} = await import('../../src/lib/descriptor-model.js');
+} = await import('../../src/lib/descriptor-model.ts');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(__dirname, '..', 'fixtures', 'content-model');

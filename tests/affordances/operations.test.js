@@ -4,9 +4,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const { createAffordanceContext } = await import('../../src/affordances/context.js');
+const { createAffordanceContext } = await import('../../src/affordances/context.ts');
 const { executeAffordance, ERROR_CODES, AffordanceError } =
-  await import('../../src/affordances/index.js');
+  await import('../../src/affordances/index.ts');
 
 /** Build a temp repo with a small content/ graph + a prose source. */
 function makeFixture() {

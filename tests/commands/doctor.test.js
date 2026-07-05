@@ -11,12 +11,12 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const doctorMod = await import('../../src/commands/doctor.js');
+const doctorMod = await import('../../src/commands/doctor.ts');
 const doctor = doctorMod.default;
 const { checkRuntime, checkMcp, checkTemplate, checkAdoption, checkSources, checkEnvironment } = doctorMod;
 
-const { copilotAdapter, claudeAdapter, createCustomAdapter } = await import('../../src/lib/copilot-runtime.js');
-const { parseDoctorArgs } = await import('../../src/lib/args.js');
+const { copilotAdapter, claudeAdapter, createCustomAdapter } = await import('../../src/lib/copilot-runtime.ts');
+const { parseDoctorArgs } = await import('../../src/lib/args.ts');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import {
   loadCompositeKnowledgeBase,
   mergeSourceQualified,
-} from '../../src/lib/composite-ingest.js';
-import { normalizeCompositeConfig, CompositeConfigError } from '../../src/lib/composite-config.js';
-import { normalizeExtraction } from '../../src/lib/jsonld.js';
-import { conflateReferents } from '../../src/lib/conflation.js';
-import { isMoreRestrictiveOrEqual } from '../../src/lib/access-label.js';
+} from '../../src/lib/composite-ingest.ts';
+import { normalizeCompositeConfig, CompositeConfigError } from '../../src/lib/composite-config.ts';
+import { normalizeExtraction } from '../../src/lib/jsonld.ts';
+import { conflateReferents } from '../../src/lib/conflation.ts';
+import { isMoreRestrictiveOrEqual } from '../../src/lib/access-label.ts';
 
 // ── composite-config: optional per-source access label ──────────────────────
 describe('composite-config — source access label', () => {

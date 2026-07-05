@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
-const { audit, _internal } = await import('../../src/lib/audit.js');
+const { audit, _internal } = await import('../../src/lib/audit.ts');
 
 function makeFixture() {
   const dir = mkdtempSync(join(tmpdir(), 'kb-audit-'));

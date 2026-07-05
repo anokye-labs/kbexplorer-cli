@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { successResult, errorResult } = await import('../../src/mcp/tool-result.js');
-const { AffordanceError, ERROR_CODES } = await import('../../src/affordances/contract.js');
+const { successResult, errorResult } = await import('../../src/mcp/tool-result.ts');
+const { AffordanceError, ERROR_CODES } = await import('../../src/affordances/contract.ts');
 
 describe('mcp/tool-result — successResult', () => {
   it('wraps a value as a single text content block', () => {

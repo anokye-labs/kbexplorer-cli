@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { successResult, errorResult } = await import('../../src/extension/tool-result.js');
-const { AffordanceError, ERROR_CODES } = await import('../../src/affordances/contract.js');
+const { successResult, errorResult } = await import('../../src/extension/tool-result.ts');
+const { AffordanceError, ERROR_CODES } = await import('../../src/affordances/contract.ts');
 
 describe('tool-result bridge', () => {
   it('wraps a value as a success result (pretty JSON)', () => {

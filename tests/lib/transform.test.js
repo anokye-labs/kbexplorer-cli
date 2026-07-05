@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const { inferIcon, transformCatalogue, collectExistingClusters, TOPIC_ICON_MAP } = await import('../../src/lib/transform.js');
+const { inferIcon, transformCatalogue, collectExistingClusters, TOPIC_ICON_MAP } = await import('../../src/lib/transform.ts');
 
 describe('inferIcon', () => {
   it('returns Building for architecture', () => {

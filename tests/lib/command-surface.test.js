@@ -21,7 +21,7 @@ const {
   validateSurface,
   renderCommandMarkdown,
   renderAllCommands,
-} = await import('../../src/lib/command-surface.js');
+} = await import('../../src/lib/command-surface.ts');
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const COMMANDS_DIR = resolve(ROOT, 'src', 'assets', 'commands');

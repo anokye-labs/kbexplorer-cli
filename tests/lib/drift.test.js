@@ -7,7 +7,7 @@ import {
   computeSyncStatus,
   sourceContentDrift,
   UNKNOWN_SOURCE,
-} from '../../src/lib/drift.js';
+} from '../../src/lib/drift.ts';
 
 const hash = (d) => ({ algorithm: 'sha256', digest: d, encoding: 'hex' });
 

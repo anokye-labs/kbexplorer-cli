@@ -17,8 +17,8 @@ import {
   ARTIFACT_FILES,
   CONFLATION_MAP_FILE,
   MINTED_EDGES_FILE,
-} from '../../src/lib/connect.js';
-import { runConnectCommand } from '../../src/commands/connect.js';
+} from '../../src/lib/connect.ts';
+import { runConnectCommand } from '../../src/commands/connect.ts';
 
 function node(id, extra = {}) {
   return {

@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
 const { buildCitationIndex, findAffected, affected } = await import(
-  '../../src/lib/affected.js'
+  '../../src/lib/affected.ts'
 );
-const { extractCitedFiles } = await import('../../src/lib/citations.js');
+const { extractCitedFiles } = await import('../../src/lib/citations.ts');
 
 function makeFixture() {
   const dir = mkdtempSync(join(tmpdir(), 'kb-affected-'));

@@ -17,7 +17,7 @@ import {
   SSE_EVENTS,
   CANVAS_ENTRY_FILE,
   CANVAS_ENTRY_CANDIDATES,
-} from '../../src/extension/canvas-server.js';
+} from '../../src/extension/canvas-server.ts';
 
 /**
  * A fake `http.Server` that records the handler and simulates listen/close/

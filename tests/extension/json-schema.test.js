@@ -2,8 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { fieldToJsonSchema, descriptorToJsonSchema } =
-  await import('../../src/extension/json-schema.js');
-const { defineSchema } = await import('../../src/affordances/contract.js');
+  await import('../../src/extension/json-schema.ts');
+const { defineSchema } = await import('../../src/affordances/contract.ts');
 
 describe('json-schema bridge', () => {
   it('maps scalar fields with description and default', () => {

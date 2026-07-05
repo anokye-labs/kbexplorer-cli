@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
-const { writeHostManifest, manifestOutPath, watchPaths } = await import('../../src/commands/dev.js');
+const { writeHostManifest, manifestOutPath, watchPaths } = await import('../../src/commands/dev.ts');
 
 function makeHostWithVendoredTemplate() {
   const host = mkdtempSync(join(tmpdir(), 'kb-dev-'));

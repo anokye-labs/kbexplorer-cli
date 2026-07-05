@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const { classifyRef, readSourceRecord, writeSourceRecord, SOURCE_FILE } =
-  await import('../../src/lib/source.js');
+  await import('../../src/lib/source.ts');
 
 function tmp(label) {
   const dir = join(tmpdir(), `kbe-src-${label}-${Date.now()}-${Math.random().toString(16).slice(2)}`);

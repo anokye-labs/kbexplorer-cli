@@ -2,9 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { buildMcpTools, affordanceToMcpTool, toolNameFor, TOOL_PREFIX } = await import(
-  '../../src/mcp/tools.js'
+  '../../src/mcp/tools.ts'
 );
-const { describeAffordances } = await import('../../src/affordances/index.js');
+const { describeAffordances } = await import('../../src/affordances/index.ts');
 
 describe('mcp/tools — buildMcpTools', () => {
   it('produces one kbx_-prefixed tool per affordance, in canonical order', () => {
@@ -32,7 +32,7 @@ describe('mcp/tools — buildMcpTools', () => {
   });
 
   it('is the structural twin of the extension-tool adapter: no dead `affordance` field (AF-027)', async () => {
-    const { buildAffordanceTools } = await import('../../src/extension/tools.js');
+    const { buildAffordanceTools } = await import('../../src/extension/tools.ts');
     const mcpTool = buildMcpTools()[0];
     const extTool = buildAffordanceTools()[0];
     assert.equal('affordance' in mcpTool, false);

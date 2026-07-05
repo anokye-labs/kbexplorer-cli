@@ -21,7 +21,7 @@ const {
   parseSearchArgs,
   parseSyncArgs,
   parseValidateArgs,
-} = await import('../../src/lib/args.js');
+} = await import('../../src/lib/args.ts');
 
 describe('parseInitArgs', () => {
   it('returns defaults for no args', () => {

@@ -25,7 +25,7 @@ const {
   gistShareManifest,
   loadPluginManifest,
   loadExtensionDescriptor,
-} = await import('../../src/lib/plugin-bundle.js');
+} = await import('../../src/lib/plugin-bundle.ts');
 
 // ── Synthetic assets root ───────────────────────────────────────────────────────
 

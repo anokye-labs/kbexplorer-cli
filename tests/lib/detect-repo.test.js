@@ -4,7 +4,7 @@ import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const { isTemplateRepo, hasSubmodule, hasTemplate, isSubmoduleInstall, getSubmoduleUrl } = await import('../../src/lib/detect-repo.js');
+const { isTemplateRepo, hasSubmodule, hasTemplate, isSubmoduleInstall, getSubmoduleUrl } = await import('../../src/lib/detect-repo.ts');
 
 describe('isTemplateRepo', () => {
   it('returns true for kbexplorer package name', () => {

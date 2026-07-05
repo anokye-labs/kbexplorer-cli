@@ -10,9 +10,9 @@ const {
   extractEntities,
   ExtractionError,
   ExtractionErrorCode,
-} = await import('../../src/lib/extract.js');
-const { runCopilot } = await import('../../src/lib/copilot-runtime.js');
-const { ingestText } = await import('../../src/lib/ingest.js');
+} = await import('../../src/lib/extract.ts');
+const { runCopilot } = await import('../../src/lib/copilot-runtime.ts');
+const { ingestText } = await import('../../src/lib/ingest.ts');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MOCK = resolve(__dirname, '..', 'fixtures', 'mock-copilot.mjs');

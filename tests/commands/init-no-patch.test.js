@@ -13,8 +13,8 @@ const SRC = resolve(fileURLToPath(new URL('../..', import.meta.url)), 'src', 'co
  * removed and that init no longer mutates the manifest script.
  */
 describe('init/update no longer patch the template manifest script (#78)', () => {
-  const initSrc = readFileSync(resolve(SRC, 'init.js'), 'utf-8');
-  const updateSrc = readFileSync(resolve(SRC, 'update.js'), 'utf-8');
+  const initSrc = readFileSync(resolve(SRC, 'init.ts'), 'utf-8');
+  const updateSrc = readFileSync(resolve(SRC, 'update.ts'), 'utf-8');
 
   it('init.js does not define or call patchTemplateManifestScript', () => {
     assert.doesNotMatch(initSrc, /patchTemplateManifestScript/);
@@ -32,7 +32,7 @@ describe('init/update no longer patch the template manifest script (#78)', () =>
   });
 
   it('init module loads cleanly with the helper removed', async () => {
-    const mod = await import('../../src/commands/init.js');
+    const mod = await import('../../src/commands/init.ts');
     assert.equal(typeof mod.default, 'function');
     assert.equal('patchTemplateManifestScript' in mod, false);
   });

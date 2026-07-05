@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { HostKind, githubForgeAdapter, resolveForgeRef, resolveRepositoryRef } = await import(
-  '../../src/lib/forge-adapter.js'
+  '../../src/lib/forge-adapter.ts'
 );
 
 describe('HostKind', () => {

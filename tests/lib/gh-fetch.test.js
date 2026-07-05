@@ -26,7 +26,7 @@ const {
   GH_API_BASE_ENV,
   GH_TOKEN_ENV,
   GH_TOKEN_FALLBACK_ENV,
-} = await import('../../src/lib/gh-fetch.js');
+} = await import('../../src/lib/gh-fetch.ts');
 
 // ── Fixtures ───────────────────────────────────────────────────────────────────
 

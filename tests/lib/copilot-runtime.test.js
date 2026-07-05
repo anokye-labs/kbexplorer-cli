@@ -20,7 +20,7 @@ const {
   copilotAdapter,
   quoteCmdArg,
   resolveSpawnPlan,
-} = await import('../../src/lib/copilot-runtime.js');
+} = await import('../../src/lib/copilot-runtime.ts');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MOCK = resolve(__dirname, '..', 'fixtures', 'mock-copilot.mjs');

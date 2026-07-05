@@ -5,7 +5,7 @@ import {
   CompositeConfigError,
   CompositeConfigErrorCode,
   DEFAULT_INGESTION,
-} from '../../src/lib/composite-config.js';
+} from '../../src/lib/composite-config.ts';
 
 const TWO_SOURCES = {
   kbx: {

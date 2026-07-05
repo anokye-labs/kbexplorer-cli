@@ -25,7 +25,7 @@ before(() => {
 
 after(() => { rmSync(FIXTURES, { recursive: true, force: true }); });
 
-const { walkFileSystem, readAuthoredContent, readConfig, readReadme, fetchLocalCommits, fetchLocalReleases } = await import('../../src/lib/repo-manifest.js');
+const { walkFileSystem, readAuthoredContent, readConfig, readReadme, fetchLocalCommits, fetchLocalReleases } = await import('../../src/lib/repo-manifest.ts');
 
 describe('walkFileSystem', () => {
   it('produces entries for files and directories', () => {
