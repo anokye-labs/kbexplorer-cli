@@ -33,7 +33,11 @@ export function runTests(passthrough = []) {
     return Promise.resolve(1);
   }
   return new Promise((res) => {
-    const child = spawn(process.execPath, ['--test', ...passthrough, ...files], {
+    // PR #230: --test-force-exit ensures the process exits after all tests complete.
+    // Without it, the runner hangs indefinitely because the engine's SQLite (sql.js WASM)
+    // database leaves an open handle. The engine does not expose a dispose/close API,
+    // and all tests genuinely complete before the hang.
+    const child = spawn(process.execPath, ['--test', '--test-force-exit', ...passthrough, ...files], {
       stdio: 'inherit',
       cwd: ROOT,
     });
