@@ -33,8 +33,8 @@ export default defineAffordance({
     relPath: { type: 'string' },
     body: { type: 'string' },
   }),
-  execute(context, input) {
-    const graph = context.loadGraph();
+  async execute(context, input) {
+    const graph = await context.loadGraph();
     const node = graph.nodes.get(input.id);
     if (!node) {
       throw new AffordanceError(ERROR_CODES.NOT_FOUND, `Unknown node id: ${input.id}`, {

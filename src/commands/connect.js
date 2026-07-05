@@ -13,8 +13,8 @@
 
 import { resolve, relative } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
-import { buildGraph } from '../lib/graph-builder.js';
 import { parseConnectArgs } from '../lib/args.js';
+import { buildEngineGraph } from '../lib/engine-graph-builder.js';
 import {
   CONNECT_DIR,
   OVERRIDES_FILE,
@@ -69,14 +69,14 @@ function loadPrecedence(cwd) {
  * @param {object} [options]
  * @param {string}  [options.cwd=process.cwd()]
  * @param {boolean} [options.check=false]
- * @param {object}  [options.graph]  Inject a graph (tests); defaults to buildGraph(cwd).
+ * @param {object}  [options.graph]  Inject a graph (tests); defaults to buildEngineGraph(cwd).
  * @returns {{ check: boolean, dir: string, ok: boolean,
  *            report?: Array<object>, drift?: Array<object>, stats: object }}
  */
-export function runConnectCommand(options = {}) {
+export async function runConnectCommand(options = {}) {
   const cwd = options.cwd ?? process.cwd();
   const dir = resolve(cwd, CONNECT_DIR);
-  const graph = options.graph ?? buildGraph(cwd);
+  const graph = options.graph ?? (await buildEngineGraph(cwd));
   const overrides = loadOverrides(dir);
   const precedence = options.precedence ?? loadPrecedence(cwd);
 
@@ -107,7 +107,7 @@ export default async function connect(args = []) {
   const cwd = process.cwd();
   let res;
   try {
-    res = runConnectCommand({ cwd, check });
+    res = await runConnectCommand({ cwd, check });
   } catch (err) {
     if (err instanceof ConnectError) {
       console.error(`✗ ${err.message}`);

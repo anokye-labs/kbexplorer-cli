@@ -184,23 +184,23 @@ describe('connect — overrides loading: input file is never written, missing = 
 });
 
 describe('connect — runConnectCommand end-to-end over a temp repo (injected graph)', () => {
-  it('writes artifacts, then --check passes; mutating an artifact makes --check report drift', () => {
+  it('writes artifacts, then --check passes; mutating an artifact makes --check report drift', async () => {
     const dir = tmpDir();
     try {
       const graph = {
         nodes: [node('a', { sourceId: 's1', identity: 'kg://a', linkedRefs: [{ kind: 'kg', href: 'kg://b', role: 'leads' }] }), node('b', { sourceId: 's2', identity: 'kg://b' })],
         edges: [],
       };
-      const w = runConnectCommand({ cwd: dir, graph });
+      const w = await runConnectCommand({ cwd: dir, graph });
       assert.equal(w.check, false);
       assert.equal(w.stats.mintedEdges, 1);
       assert.ok(existsSync(resolve(dir, CONNECT_DIR, MINTED_EDGES_FILE)));
 
-      const ok = runConnectCommand({ cwd: dir, graph, check: true });
+      const ok = await runConnectCommand({ cwd: dir, graph, check: true });
       assert.equal(ok.ok, true);
 
       writeFileSync(resolve(dir, CONNECT_DIR, MINTED_EDGES_FILE), '[]\n', 'utf-8');
-      const drifted = runConnectCommand({ cwd: dir, graph, check: true });
+      const drifted = await runConnectCommand({ cwd: dir, graph, check: true });
       assert.equal(drifted.ok, false);
       assert.equal(drifted.drift[0].file, MINTED_EDGES_FILE);
     } finally {

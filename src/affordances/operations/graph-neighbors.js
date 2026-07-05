@@ -14,7 +14,7 @@ import {
   ERROR_CODES,
   ACTION_CLASSES,
 } from '../contract.js';
-import { neighbors } from '../../lib/graph.js';
+import { neighbors } from '../../lib/engine-graph.js';
 
 export default defineAffordance({
   name: 'graph_neighbors',
@@ -30,8 +30,8 @@ export default defineAffordance({
     depth: { type: 'number' },
     neighbors: { type: 'array' },
   }),
-  execute(context, input) {
-    const graph = context.loadGraph();
+  async execute(context, input) {
+    const graph = await context.loadGraph();
     if (!graph.nodes.has(input.id)) {
       throw new AffordanceError(ERROR_CODES.NOT_FOUND, `Unknown node id: ${input.id}`, {
         id: input.id,

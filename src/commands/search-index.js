@@ -17,12 +17,76 @@
  */
 
 import { resolve, relative } from 'node:path';
-import { buildGraph } from '../lib/graph-builder.js';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { parseSearchIndexArgs } from '../lib/args.js';
+import { buildEngineGraph } from '../lib/engine-graph-builder.js';
+import { DEFAULT_ACCESS_EXCLUSION, isExcludedByDefault } from '../lib/access-label.js';
 
 const DEFAULT_ARTIFACT_DIR = '.search';
 const DEFAULT_PROVIDER = 'openai';
 const DEFAULT_MODEL = 'text-embedding-3-small';
+
+function normalizeProjectionSettings(settings = {}) {
+  return {
+    mode: settings.mode ?? DEFAULT_ACCESS_EXCLUSION?.mode ?? 'exclude',
+    excludedClassifications: [...(settings.excludedClassifications ?? DEFAULT_ACCESS_EXCLUSION?.excludedClassifications ?? [])].sort(),
+    excludedVisibilities: [...(settings.excludedVisibilities ?? DEFAULT_ACCESS_EXCLUSION?.excludedVisibilities ?? [])].sort(),
+  };
+}
+
+// A node produces a SearchUnit iff it has non-empty body content — this mirrors
+// @anokye-labs/kbexplorer-search's extractSearchUnits, which uses
+// `rawContent` (falling back to stripped `content`) as the unit body and SKIPS
+// any node whose body is empty. A title alone does NOT make a unit, so
+// structural provider entities (pull_request, issue, workflow, …) that carry a
+// title but no prose are correctly reported as unit-less here.
+function hasUnitCandidate(node) {
+  if (!node) return false;
+  const content = typeof node.rawContent === 'string' ? node.rawContent : typeof node.content === 'string' ? node.content : '';
+  return content.trim().length > 0;
+}
+
+export function buildProjectionMetadata(graph) {
+  const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+  const projectedNodeIds = nodes
+    .filter((node) => !isExcludedByDefault(node?.access, DEFAULT_ACCESS_EXCLUSION))
+    .map((node) => node.id)
+    .sort();
+  const unitLessNodeKinds = [...new Set(nodes.filter((node) => !hasUnitCandidate(node)).map((node) => node.nodeType ?? node.kind ?? 'unknown'))].sort();
+  return {
+    projectedNodeIds,
+    engineNodeIdSetHash: createHash('sha256').update(projectedNodeIds.join('\n')).digest('hex'),
+    projection: {
+      accessExclusion: normalizeProjectionSettings(DEFAULT_ACCESS_EXCLUSION),
+      unitLessNodeKinds,
+    },
+  };
+}
+
+function readExistingArtifactMeta(artifactDir) {
+  const metaPath = resolve(artifactDir, 'index-meta.json');
+  if (!metaPath) return null;
+  try {
+    return JSON.parse(readFileSync(metaPath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function persistProjectionMetadata(artifactDir, meta) {
+  const indexMetaPath = resolve(artifactDir, 'index-meta.json');
+  const existing = readExistingArtifactMeta(artifactDir) ?? {};
+  const nextMeta = {
+    ...existing,
+    ...meta,
+    projection: meta.projection ?? existing.projection ?? {
+      accessExclusion: normalizeProjectionSettings(DEFAULT_ACCESS_EXCLUSION),
+      unitLessNodeKinds: [],
+    },
+  };
+  writeFileSync(indexMetaPath, JSON.stringify(nextMeta, null, 2) + '\n');
+}
 
 function printHelp() {
   console.log(`
@@ -58,9 +122,10 @@ export default async function searchIndex(args = []) {
   const providerName = opts.provider || DEFAULT_PROVIDER;
   const modelName = opts.model || DEFAULT_MODEL;
 
-  // Build the graph from content/
-  const graph = buildGraph(cwd, { contentOverride: opts.content });
-  if (graph.nodes.length === 0) {
+  // Build the graph via the engine-backed pipeline so search-index uses the
+  // same KBGraph shape as the SPA and the affordance layer.
+  const graph = await buildEngineGraph(cwd, { contentOverride: opts.content });
+  if (!Array.isArray(graph.nodes) || graph.nodes.length === 0) {
     console.error('✗ No content nodes found. Is there a content/ directory with .md files?');
     process.exit(1);
   }
@@ -76,6 +141,7 @@ export default async function searchIndex(args = []) {
   }
 
   const { extractSearchUnits, computeContentHash, readArtifacts, writeArtifacts, checkDrift, generateEmbeddings, getProvider } = search;
+  const projectionMeta = buildProjectionMetadata(graph);
 
   // ── Dry run ──
   if (opts.dryRun) {
@@ -85,6 +151,7 @@ export default async function searchIndex(args = []) {
     console.log(`Dry run — search-index plan:`);
     console.log(`  Content nodes:    ${graph.nodes.length}`);
     console.log(`  Search units:     ${units.length}`);
+    console.log(`  Engine node hash: ${projectionMeta.engineNodeIdSetHash}`);
     console.log(`  Artifact dir:     ${relDir}/`);
     console.log(`  Provider:         ${providerName}`);
     console.log(`  Model:            ${modelName}`);
@@ -95,16 +162,36 @@ export default async function searchIndex(args = []) {
   // ── Check mode ──
   if (opts.check) {
     const result = checkDrift(artifactDir, graph);
+    const previousMeta = readArtifacts(artifactDir)?.meta ?? {};
+    const nodeHashMatch = previousMeta.engineNodeIdSetHash === projectionMeta.engineNodeIdSetHash;
+    const projectionMatch = JSON.stringify(previousMeta.projection ?? null) === JSON.stringify(projectionMeta.projection);
+    const fresh = Boolean(result.fresh && nodeHashMatch && projectionMatch);
     const relDir = relative(cwd, artifactDir);
+    const payload = {
+      ...result,
+      fresh,
+      engineNodeIdSetHash: projectionMeta.engineNodeIdSetHash,
+      previousEngineNodeIdSetHash: previousMeta.engineNodeIdSetHash,
+      projection: projectionMeta.projection,
+      previousProjection: previousMeta.projection,
+      nodeHashMatch,
+      projectionMatch,
+    };
 
     if (opts.json) {
-      console.log(JSON.stringify(result, null, 2));
-    } else if (result.fresh) {
+      console.log(JSON.stringify(payload, null, 2));
+    } else if (fresh) {
       console.log(`✅ Search artifacts in ${relDir}/ are up to date.`);
     } else {
       console.error(`✗ Search artifacts in ${relDir}/ are stale:`);
       if (!result.contentHashMatch) {
         console.error(`  Content hash mismatch (graph has changed).`);
+      }
+      if (!nodeHashMatch) {
+        console.error(`  Engine node-id-set hash mismatch (graph projection changed).`);
+      }
+      if (!projectionMatch) {
+        console.error(`  Projection metadata mismatch (access exclusion / unit-less node kinds changed).`);
       }
       if (result.missingUnits.length > 0) {
         console.error(`  Missing units: ${result.missingUnits.join(', ')}`);
@@ -118,7 +205,7 @@ export default async function searchIndex(args = []) {
       console.error(`\n  Run \`kbx search-index\` to update.`);
     }
 
-    process.exit(result.fresh ? 0 : 1);
+    process.exit(fresh ? 0 : 1);
     return;
   }
 
@@ -156,6 +243,12 @@ export default async function searchIndex(args = []) {
     artifacts: { dir: relDir },
   };
   writeArtifacts(artifactDir, units, vectors, config, contentHash);
+  persistProjectionMetadata(artifactDir, {
+    contentHash,
+    unitCount: units.length,
+    engineNodeIdSetHash: projectionMeta.engineNodeIdSetHash,
+    projection: projectionMeta.projection,
+  });
 
   console.log(`✅ Search artifacts written to ${relDir}/`);
   console.log(`   index-meta.json  units.json  vectors.json`);
