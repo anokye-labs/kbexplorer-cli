@@ -15,7 +15,7 @@
 import { resolve } from 'node:path';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { getAppRoot } from '../lib/detect-repo.js';
-import { generateManifest } from '../lib/manifest.js';
+import { generateManifest } from '../lib/repo-manifest.js';
 import { parseFrontmatter as parseFrontmatterRich } from '../lib/markdown.js';
 import { parseLinksArgs } from '../lib/args.js';
 

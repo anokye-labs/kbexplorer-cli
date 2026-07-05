@@ -18,7 +18,7 @@ import { resolve, dirname } from 'node:path';
 import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { getAppRoot } from '../lib/detect-repo.js';
-import { generateManifest } from '../lib/manifest.js';
+import { generateManifest } from '../lib/repo-manifest.js';
 import { manifestOutPath } from './dev.js';
 import { parseManifestArgs } from '../lib/args.js';
 

@@ -20,7 +20,7 @@ const {
   fetchLocalIssues,
   fetchLocalPullRequests,
   fetchLocalReleases,
-} = await import('../../src/lib/manifest.js');
+} = await import('../../src/lib/repo-manifest.js');
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
