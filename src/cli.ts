@@ -9,6 +9,7 @@ import update from './commands/update.js';
 import links from './commands/links.js';
 import audit from './commands/audit.js';
 import validate from './commands/validate.js';
+import graph from './commands/graph.js';
 import affected from './commands/affected.js';
 import scaffold from './commands/scaffold.js';
 import derive from './commands/derive.js';
@@ -38,6 +39,7 @@ const COMMANDS = {
   affected,
   scaffold,
   derive,
+  graph,
   connect,
   sync,
   doctor,
@@ -66,6 +68,7 @@ function printUsage() {
     affected    Map a git diff to impacted content nodes via citations
     scaffold    Create a new content/<slug>.md skeleton with valid frontmatter
     derive      Extract entities from .docx/prose into committed *.jsonld (F8)
+    graph       Authored-content graph validate/assess/derive/compare/enrich
     connect     Persist + drift-check the cross-source connection layer (.kbx/connection/)
     sync        Detect source drift + reconcile the deterministic KB (multi-source status)
     search-index  Build or check semantic search artifacts
@@ -115,6 +118,16 @@ function printUsage() {
     --dir <dir>                Alias of --content-model
     --json                     Emit machine-readable JSON
 
+  graph options (kbx graph <validate|assess|derive|compare|enrich>):
+    --content <dir>            Content directory (default: content)
+    --catalogue <file>         Override content/catalogue.json path (derive/compare/enrich)
+    --baseline <dir>           Content-files directory to compare against (compare)
+    --gate                     Evaluate quality-score thresholds (assess, informational only)
+    --manifest <file>          Read a RepoManifest JSON file instead of building one (enrich)
+    --repo <owner/name>        Build a remote RepoManifest via the GitHub API (enrich)
+    --out <file>               Output path (enrich; default <content>/catalogue-enriched.json)
+    --json                     Emit machine-readable JSON
+
   doctor options:
     --runtime <name>           Check a specific adapter ("copilot" | "claude" | "custom")
     --json                     Emit machine-readable JSON
@@ -133,6 +146,11 @@ function printUsage() {
     npx kbx build --base /docs/
     npx kbx validate
     npx kbx validate --json
+    npx kbx graph validate
+    npx kbx graph assess --gate
+    npx kbx graph derive --json
+    npx kbx graph compare --baseline content
+    npx kbx graph enrich --repo anokye-labs/kbexplorer-cli
     npx kbx doctor
     npx kbx doctor --runtime claude
     npx kbx doctor --json
