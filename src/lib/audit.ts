@@ -23,7 +23,7 @@
 import { basename } from 'node:path';
 import { statSync } from 'node:fs';
 import { readContentFile } from './markdown.ts';
-import { readConfig } from './repo-manifest.ts';
+import { readConfig } from './kb-env.ts';
 import { listMarkdownFiles } from './fs-utils.ts';
 
 const SEVERITY = { ERROR: 'error', WARNING: 'warning' };

@@ -20,14 +20,14 @@ const JSONLD_GOLDEN = join(FIXTURES, 'content-jsonld.golden.json');
 const UPDATE = process.env.GOLDEN_UPDATE === '1';
 
 describe('golden: deterministic content manifest projection (T0c.1)', () => {
-  it('serializes byte-for-byte identical to the committed golden', () => {
-    const actual = buildContentManifestGolden();
+  it('serializes byte-for-byte identical to the committed golden', async () => {
+    const actual = await buildContentManifestGolden();
     if (UPDATE) writeFileSync(MANIFEST_GOLDEN, actual);
     assert.equal(actual, readFileSync(MANIFEST_GOLDEN, 'utf-8'));
   });
 
-  it('is deterministic: two builds produce identical bytes', () => {
-    assert.equal(buildContentManifestGolden(), buildContentManifestGolden());
+  it('is deterministic: two builds produce identical bytes', async () => {
+    assert.equal(await buildContentManifestGolden(), await buildContentManifestGolden());
   });
 });
 

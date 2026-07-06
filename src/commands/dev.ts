@@ -17,7 +17,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { watch as fsWatch, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { getAppRoot, isTemplateRepo } from '../lib/detect-repo.ts';
-import { generateManifest } from '../lib/repo-manifest.ts';
+import { buildRepoManifest } from '../lib/manifest-build.ts';
 import { parseDevArgs } from '../lib/args.ts';
 
 const DEBOUNCE_MS = 200;
@@ -27,7 +27,7 @@ type WriteHostManifestResult =
   | {
       outPath: string;
       via: 'cli-fallback';
-      manifest: Awaited<ReturnType<typeof generateManifest>>;
+      manifest: Awaited<ReturnType<typeof buildRepoManifest>>;
     };
 
 export function manifestOutPath(appRoot: string): string {
@@ -37,11 +37,11 @@ export function manifestOutPath(appRoot: string): string {
 /**
  * Regenerate the manifest by invoking the template's own generate-manifest.js
  * with VITE_KB_HOST_ROOT pointing at the host repo. This preserves the
- * template's full enriched schema (themeFileRaw, nodemap*, etc.) which our
- * in-CLI generateManifest() doesn't know about.
+ * template's full enriched schema (themeFileRaw, nodemap*, etc.) which the
+ * engine's buildManifest() doesn't know about.
  *
- * Falls back to the in-CLI generator if the template script is missing or
- * exits non-zero — better a partial manifest than a blank UI.
+ * Falls back to the engine-backed thin builder if the template script is
+ * missing or exits non-zero — better a partial manifest than a blank UI.
  */
 export async function writeHostManifest(cwd: string, appRoot: string): Promise<WriteHostManifestResult> {
   const script = resolve(appRoot, 'scripts', 'generate-manifest.js');
@@ -54,7 +54,7 @@ export async function writeHostManifest(cwd: string, appRoot: string): Promise<W
     if (r.status === 0) return { outPath: manifestOutPath(appRoot), via: 'template-script' };
     console.warn(`⚠ Template manifest script exited ${r.status}; falling back. stderr: ${r.stderr?.slice(0, 200)}`);
   }
-  const manifest = await generateManifest(cwd);
+  const manifest = await buildRepoManifest(cwd);
   const outPath = manifestOutPath(appRoot);
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, JSON.stringify(manifest, null, 2), 'utf-8');

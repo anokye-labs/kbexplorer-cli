@@ -50,3 +50,32 @@ export function resolveContentDir(cwd: string, override?: string) {
     || 'content';
   return { contentDir: resolve(cwd, contentPath), contentPath };
 }
+
+/**
+ * Read the raw (pre-YAML-parse) `config.yaml` text for a repo root.
+ *
+ * Tries `<contentPath>/config.yaml`, `<contentPath>/config.yml`, then a
+ * root-level `config.yaml`, in that order, normalizing CRLF → LF. Returns
+ * `null` when none exist.
+ *
+ * This is the one field the engine's `buildManifest()`/`RepoSource`
+ * contract cannot uniformly supply (see `@anokye-labs/kbexplorer-engine`'s
+ * `BuildManifestOptions.configRaw` docs) — callers (manifest generation,
+ * `kbx audit`, the engine-graph pipeline) read it directly and pass it in.
+ * Relocated from the now-deleted `src/lib/repo-manifest.ts` fork (cli#258).
+ */
+export function readConfig(root: string, contentPath = 'content'): string | null {
+  const paths = [
+    resolve(root, contentPath, 'config.yaml'),
+    resolve(root, contentPath, 'config.yml'),
+    resolve(root, 'config.yaml'),
+  ];
+  for (const p of paths) {
+    if (existsSync(p)) {
+      try {
+        return readFileSync(p, 'utf-8').replace(/\r\n/g, '\n');
+      } catch { /* continue */ }
+    }
+  }
+  return null;
+}

@@ -3,8 +3,7 @@ import { existsSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { DEFAULT_CONFIG, loadKnowledgeBase } from '@anokye-labs/kbexplorer-engine';
 import { FileSystemSource } from '@anokye-labs/kbexplorer-engine/sources';
-import { readConfig } from './repo-manifest.ts';
-import { resolveContentDir } from './kb-env.ts';
+import { readConfig, resolveContentDir } from './kb-env.ts';
 
 interface BuildEngineGraphOptions {
   contentOverride?: string;
