@@ -327,7 +327,17 @@ describe('parseLinksArgs', () => {
 
 describe('parseManifestArgs', () => {
   it('returns empty defaults', () => {
-    assert.deepStrictEqual(parseManifestArgs([]), { unknown: [] });
+    assert.deepStrictEqual(parseManifestArgs([]), { check: false, help: false, unknown: [] });
+  });
+
+  it('parses --check and --help', () => {
+    assert.strictEqual(parseManifestArgs(['--check']).check, true);
+    assert.strictEqual(parseManifestArgs(['--help']).help, true);
+    assert.strictEqual(parseManifestArgs(['-h']).help, true);
+  });
+
+  it('collects unknown flags', () => {
+    assert.deepStrictEqual(parseManifestArgs(['--bogus']).unknown, ['--bogus']);
   });
 });
 

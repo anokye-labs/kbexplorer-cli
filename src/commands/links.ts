@@ -15,7 +15,7 @@
 import { resolve } from 'node:path';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { getAppRoot } from '../lib/detect-repo.ts';
-import { generateManifest } from '../lib/repo-manifest.ts';
+import { buildRepoManifest } from '../lib/manifest-build.ts';
 import { parseFrontmatter as parseFrontmatterRich } from '../lib/markdown.ts';
 import { parseLinksArgs } from '../lib/args.ts';
 
@@ -31,7 +31,7 @@ type AuthoredNode = ParsedFrontmatter & { path: string; raw: string };
 type ManifestIssue = { number: number; body?: string | null };
 type ManifestPullRequest = { number: number };
 type ManifestTreeItem = { path: string; type: string };
-type RepoManifest = Awaited<ReturnType<typeof generateManifest>> & {
+type RepoManifest = Awaited<ReturnType<typeof buildRepoManifest>> & {
   authoredContent?: Record<string, string>;
   issues?: ManifestIssue[];
   pullRequests?: ManifestPullRequest[];
@@ -433,7 +433,7 @@ export default async function links(args: string[] = []): Promise<void> {
     manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
   } else {
     console.log('📋 Generating manifest for analysis...');
-    manifest = generateManifest(cwd) as unknown as RepoManifest;
+    manifest = await buildRepoManifest(cwd) as unknown as RepoManifest;
   }
 
   const report = analyzeGraph(manifest, cwd);

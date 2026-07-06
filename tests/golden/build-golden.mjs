@@ -16,18 +16,25 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
-import { readConfig, readAuthoredContent } from '../../src/lib/repo-manifest.ts';
+import { buildRepoManifest } from '../../src/lib/manifest-build.ts';
 import { normalizeExtraction, canonicalStringify } from '../../src/lib/jsonld.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(here, '..', '..');
 export const DERIVED_DIR = join(REPO_ROOT, 'content', 'derived');
 
-/** Canonical snapshot of the deterministic content/ projection of the manifest. */
-export function buildContentManifestGolden(root = REPO_ROOT) {
+/**
+ * Canonical snapshot of the deterministic content/ projection of the manifest.
+ * Routed through the real `buildRepoManifest()` production path (cli#258) so
+ * this golden doubles as the objective `kbx manifest` parity gate: any drift
+ * in `configRaw`/`authoredContent` between the old fork and the new thin
+ * wrapper fails this test until the golden is knowingly regenerated.
+ */
+export async function buildContentManifestGolden(root = REPO_ROOT) {
+  const manifest = await buildRepoManifest(root);
   const projection = {
-    configRaw: readConfig(root, 'content'),
-    authoredContent: readAuthoredContent(join(root, 'content'), 'content'),
+    configRaw: manifest.configRaw,
+    authoredContent: manifest.authoredContent,
   };
   return canonicalStringify(projection);
 }

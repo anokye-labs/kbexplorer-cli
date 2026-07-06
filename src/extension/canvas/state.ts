@@ -201,8 +201,8 @@ export async function defaultGetManifest({
 }: DefaultGetManifestOptions = {}): Promise<RepoManifest> {
   try {
     const gen = generate || (async () => {
-      const { generateManifest } = await import('../../lib/repo-manifest.ts');
-      return generateManifest(cwd);
+      const { buildRepoManifest } = await import('../../lib/manifest-build.ts');
+      return buildRepoManifest(cwd);
     });
     return await gen() as RepoManifest;
   } catch (err) {

@@ -351,6 +351,8 @@ export interface LinksArgs {
 }
 
 export interface ManifestArgs {
+  check: boolean;
+  help: boolean;
   unknown: string[];
 }
 
@@ -506,7 +508,13 @@ export function parseLinksArgs(args: string[] = []): LinksArgs {
 }
 
 export function parseManifestArgs(args: string[] = []): ManifestArgs {
-  return parseArgs({ defaults: { unknown: [] }, options: [] }, args) as unknown as ManifestArgs;
+  const out: ManifestArgs = { check: false, help: false, unknown: [] };
+  for (const arg of args) {
+    if (arg === '--check') out.check = true;
+    else if (arg === '--help' || arg === '-h') out.help = true;
+    else if (arg.startsWith('-')) out.unknown.push(arg);
+  }
+  return out;
 }
 
 export function parseMcpArgs(args: string[] = []): McpArgs {
