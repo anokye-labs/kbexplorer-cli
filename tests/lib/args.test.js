@@ -336,6 +336,22 @@ describe('parseManifestArgs', () => {
     assert.strictEqual(parseManifestArgs(['-h']).help, true);
   });
 
+  it('parses --repo and --repo=slug', () => {
+    assert.strictEqual(parseManifestArgs(['--repo', 'anokye-labs/kbexplorer-template']).repo, 'anokye-labs/kbexplorer-template');
+    assert.strictEqual(parseManifestArgs(['--repo=anokye-labs/kbexplorer-template']).repo, 'anokye-labs/kbexplorer-template');
+  });
+
+  it('parses --branch and --branch=dev', () => {
+    assert.strictEqual(parseManifestArgs(['--branch', 'dev']).branch, 'dev');
+    assert.strictEqual(parseManifestArgs(['--branch=dev']).branch, 'dev');
+  });
+
+  it('leaves repo undefined when --repo is missing a value', () => {
+    const out = parseManifestArgs(['--repo']);
+    assert.strictEqual(out.repo, undefined);
+    assert.deepStrictEqual(out.unknown, []);
+  });
+
   it('collects unknown flags', () => {
     assert.deepStrictEqual(parseManifestArgs(['--bogus']).unknown, ['--bogus']);
   });
