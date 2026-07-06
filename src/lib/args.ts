@@ -679,3 +679,153 @@ export function parseValidateArgs(args: string[] = []): ValidateArgs {
   ) as unknown as ValidateArgs;
 }
 
+// ---- kbx graph <sub> (cli#265, engine#18/#19) ----
+
+export interface GraphArgs {
+  sub: string | null;
+  help: boolean;
+  positionals: string[];
+  _: string[];
+  unknown: string[];
+}
+
+export interface GraphValidateArgs {
+  content: string | null;
+  json: boolean;
+  help: boolean;
+  unknown: string[];
+}
+
+export interface GraphAssessArgs {
+  content: string | null;
+  gate: boolean;
+  json: boolean;
+  help: boolean;
+  unknown: string[];
+}
+
+export interface GraphDeriveArgs {
+  content: string | null;
+  catalogue: string | null;
+  json: boolean;
+  help: boolean;
+  unknown: string[];
+}
+
+export interface GraphCompareArgs {
+  content: string | null;
+  baseline: string | null;
+  catalogue: string | null;
+  json: boolean;
+  help: boolean;
+  unknown: string[];
+}
+
+export interface GraphEnrichArgs {
+  content: string | null;
+  catalogue: string | null;
+  manifest: string | null;
+  repo: string | null;
+  out: string | null;
+  json: boolean;
+  help: boolean;
+  unknown: string[];
+}
+
+export function parseGraphArgs(args: string[] = []): GraphArgs {
+  // Deliberately NOT parsed via the generic parseArgs()/optionSpecs mechanism:
+  // each subcommand (validate/assess/derive/compare/enrich) owns its own flag
+  // vocabulary (--json, --gate, --catalogue, ...) and re-parses `_` itself, so
+  // this top-level parser must forward the raw remainder untouched rather than
+  // splitting flags into `unknown` and positionals into `_`.
+  const first = args[0];
+  const isFlag = typeof first === 'string' && first.startsWith('-');
+  const sub = !isFlag && first ? first : null;
+  const help = args.length === 0 || (isFlag && (first === '--help' || first === '-h'));
+  return {
+    sub,
+    help,
+    positionals: sub ? [sub] : [],
+    _: sub ? args.slice(1) : [],
+    unknown: [],
+  };
+}
+
+export function parseGraphValidateArgs(args: string[] = []): GraphValidateArgs {
+  return parseArgs(
+   {
+     defaults: { content: null, json: false, help: false, unknown: [] },
+     options: [
+       { name: 'content', aliases: ['--content', '--dir'], type: 'value' },
+       { name: 'json', aliases: ['--json'], type: 'boolean' },
+       { name: 'help', aliases: ['--help', '-h'], type: 'boolean' },
+     ],
+   },
+   args,
+  ) as unknown as GraphValidateArgs;
+}
+
+export function parseGraphAssessArgs(args: string[] = []): GraphAssessArgs {
+  return parseArgs(
+   {
+     defaults: { content: null, gate: false, json: false, help: false, unknown: [] },
+     options: [
+       { name: 'content', aliases: ['--content', '--dir'], type: 'value' },
+       { name: 'gate', aliases: ['--gate'], type: 'boolean' },
+       { name: 'json', aliases: ['--json'], type: 'boolean' },
+       { name: 'help', aliases: ['--help', '-h'], type: 'boolean' },
+     ],
+   },
+   args,
+  ) as unknown as GraphAssessArgs;
+}
+
+export function parseGraphDeriveArgs(args: string[] = []): GraphDeriveArgs {
+  return parseArgs(
+   {
+     defaults: { content: null, catalogue: null, json: false, help: false, unknown: [] },
+     options: [
+       { name: 'content', aliases: ['--content', '--dir'], type: 'value' },
+       { name: 'catalogue', aliases: ['--catalogue'], type: 'value' },
+       { name: 'json', aliases: ['--json'], type: 'boolean' },
+       { name: 'help', aliases: ['--help', '-h'], type: 'boolean' },
+     ],
+   },
+   args,
+  ) as unknown as GraphDeriveArgs;
+}
+
+export function parseGraphCompareArgs(args: string[] = []): GraphCompareArgs {
+  return parseArgs(
+   {
+     defaults: { content: null, baseline: null, catalogue: null, json: false, help: false, unknown: [] },
+     options: [
+       { name: 'content', aliases: ['--content', '--dir'], type: 'value' },
+       { name: 'baseline', aliases: ['--baseline'], type: 'value' },
+       { name: 'catalogue', aliases: ['--catalogue'], type: 'value' },
+       { name: 'json', aliases: ['--json'], type: 'boolean' },
+       { name: 'help', aliases: ['--help', '-h'], type: 'boolean' },
+     ],
+   },
+   args,
+  ) as unknown as GraphCompareArgs;
+}
+
+export function parseGraphEnrichArgs(args: string[] = []): GraphEnrichArgs {
+  return parseArgs(
+   {
+     defaults: { content: null, catalogue: null, manifest: null, repo: null, out: null, json: false, help: false, unknown: [] },
+     options: [
+       { name: 'content', aliases: ['--content', '--dir'], type: 'value' },
+       { name: 'catalogue', aliases: ['--catalogue'], type: 'value' },
+       { name: 'manifest', aliases: ['--manifest'], type: 'value' },
+       { name: 'repo', aliases: ['--repo'], type: 'value' },
+       { name: 'out', aliases: ['--out', '-o'], type: 'value' },
+       { name: 'json', aliases: ['--json'], type: 'boolean' },
+       { name: 'help', aliases: ['--help', '-h'], type: 'boolean' },
+     ],
+   },
+   args,
+  ) as unknown as GraphEnrichArgs;
+}
+
