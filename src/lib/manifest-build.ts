@@ -33,6 +33,12 @@ import { canonicalStringify } from './jsonld.ts';
 
 export type { RepoManifest };
 
+export const manifestBuildDeps = {
+  buildManifest,
+  FileSystemSource,
+  GitHubApiSource,
+};
+
 /**
  * Fields excluded from `--check` drift comparison: the volatile/GitHub-live
  * fields a `FileSystemSource`-backed rebuild cannot reproduce (`generatedAt`
@@ -63,6 +69,8 @@ export interface BuildRepoManifestOptions {
   contentOverride?: string;
   /** `owner/name` — when set, builds from the live GitHub API instead of the local filesystem. */
   repo?: string;
+  /** Override the GitHub branch used in remote mode (defaults to `main`). */
+  branch?: string;
 }
 
 /**
@@ -74,9 +82,17 @@ export interface BuildRepoManifestOptions {
  * one field `buildManifest` cannot derive from `RepoData`).
  *
  * Remote mode (`options.repo` set): constructs a `GitHubApiSource`, mirroring
- * the `--repo owner/name` convention already used by `kbx explore`. `configRaw`
- * is left `undefined` in this mode — a remote caller has no local file to read
- * and the engine's `GitHubApiSource` does not expose raw config text.
+ * the `--repo owner/name` convention already used by `kbx explore`. The
+ * constructor is called with the `'full'` preset and an injected `EngineEnv`
+ * carrying `GITHUB_TOKEN`/`GH_TOKEN` when present, because `GitHubApiSource`
+ * only fetches commits under the `'full'` preset (the default `'standard'`
+ * preset omits them, and the old generator shipped 50 commits) and the engine's
+ * `ghFetch` reads `GITHUB_TOKEN ?? GH_TOKEN` from that injected environment.
+ * When no token is set, `env` stays `undefined` and the build remains
+ * unauthenticated (still works for public repos, just rate-limited).
+ * `configRaw` is left `undefined` in this mode — a remote caller has no local
+ * file to read and the engine's `GitHubApiSource` does not expose raw config
+ * text.
  */
 export async function buildRepoManifest(
   cwd: string,
@@ -87,8 +103,14 @@ export async function buildRepoManifest(
     if (!owner || !repo) {
       throw new Error('repo must be in owner/name form');
     }
-    const source = new GitHubApiSource({ owner, repo, path: 'content', branch: 'main' });
-    return buildManifest(source, { generatedAt: options.generatedAt });
+    const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+    const env = token ? { GITHUB_TOKEN: token } : undefined;
+    const source = new manifestBuildDeps.GitHubApiSource(
+      { owner, repo, path: 'content', branch: options.branch ?? 'main' },
+      'full',
+      env,
+    );
+    return manifestBuildDeps.buildManifest(source, { generatedAt: options.generatedAt });
   }
 
   const { contentPath } = resolveContentDir(cwd, options.contentOverride);
@@ -99,8 +121,8 @@ export async function buildRepoManifest(
   const sourceContentPath = hasContentDir ? contentPath : '';
 
   const configRaw = readConfig(cwd, contentPath);
-  const source = new FileSystemSource(cwd, { contentPath: sourceContentPath });
-  return buildManifest(source, { configRaw, generatedAt: options.generatedAt });
+  const source = new manifestBuildDeps.FileSystemSource(cwd, { contentPath: sourceContentPath });
+  return manifestBuildDeps.buildManifest(source, { configRaw, generatedAt: options.generatedAt });
 }
 
 /** A single drifted top-level manifest field (`kbx manifest --check`). */

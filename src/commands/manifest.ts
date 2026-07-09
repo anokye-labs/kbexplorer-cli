@@ -28,17 +28,23 @@ import { parseManifestArgs } from '../lib/args.ts';
 function printHelp() {
   console.log(`
   kbx manifest — build the repo manifest
-
+  
   Usage: kbx manifest [options]
-
-  Drives the engine's buildManifest() producer over a local FileSystemSource
-  and writes the result to <appRoot>/src/generated/repo-manifest.json.
-
-  Options:
-        --check   Drift gate: rebuild in memory and diff against the on-disk
-                  manifest (excluding generatedAt + live-GitHub fields); exit
-                  non-zero on drift, zero when in sync. Never writes.
-    -h, --help    Show this help
+  
+Drives the engine's buildManifest() producer over a local FileSystemSource by
+default, or a live GitHub API source when --repo <owner/name> is provided, and
+writes the result to <appRoot>/src/generated/repo-manifest.json.
+  
+Options:
+      --check               Drift gate: rebuild in memory and diff against the
+                            on-disk manifest (excluding generatedAt +
+                            live-GitHub fields); exit non-zero on drift,
+                            zero when in sync. Never writes.
+      --repo <owner/name>   Build from the live GitHub API instead of the local
+                            filesystem. Reads GITHUB_TOKEN/GH_TOKEN for auth.
+      --branch <name>       Git branch to read from when --repo is used
+                            (defaults to main).
+  -h, --help                Show this help
 `);
 }
 
@@ -75,7 +81,7 @@ export default async function manifest(args: string[] = []): Promise<void> {
       process.exit(1);
     }
     const onDisk = JSON.parse(readFileSync(outPath, 'utf-8')) as RepoManifest;
-    const fresh = await buildRepoManifest(cwd);
+    const fresh = await buildRepoManifest(cwd, { repo: opts.repo, branch: opts.branch });
     const drift = diffManifests(onDisk, fresh);
     if (drift.length > 0) {
       console.error(`\n✗ Manifest drift in ${drift.length} field(s):`);
@@ -87,8 +93,8 @@ export default async function manifest(args: string[] = []): Promise<void> {
     return;
   }
 
-  const manifestData = await buildRepoManifest(cwd);
+  const manifestData = await buildRepoManifest(cwd, { repo: opts.repo, branch: opts.branch });
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, JSON.stringify(manifestData, null, 2), 'utf-8');
-  console.log(`✓ Manifest written to ${outPath}`);
+  console.log(`✓ Manifest written to ${outPath}${opts.repo ? ' (remote GitHub source)' : ''}`);
 }

@@ -353,6 +353,8 @@ export interface LinksArgs {
 export interface ManifestArgs {
   check: boolean;
   help: boolean;
+  repo?: string;
+  branch?: string;
   unknown: string[];
 }
 
@@ -509,9 +511,26 @@ export function parseLinksArgs(args: string[] = []): LinksArgs {
 
 export function parseManifestArgs(args: string[] = []): ManifestArgs {
   const out: ManifestArgs = { check: false, help: false, unknown: [] };
-  for (const arg of args) {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
     if (arg === '--check') out.check = true;
     else if (arg === '--help' || arg === '-h') out.help = true;
+    else if (arg.startsWith('--repo=')) out.repo = arg.slice('--repo='.length);
+    else if (arg === '--repo') {
+      const next = args[i + 1];
+      if (next !== undefined && !next.startsWith('-')) {
+        out.repo = next;
+        i++;
+      }
+    }
+    else if (arg.startsWith('--branch=')) out.branch = arg.slice('--branch='.length);
+    else if (arg === '--branch') {
+      const next = args[i + 1];
+      if (next !== undefined && !next.startsWith('-')) {
+        out.branch = next;
+        i++;
+      }
+    }
     else if (arg.startsWith('-')) out.unknown.push(arg);
   }
   return out;
