@@ -346,6 +346,18 @@ describe('parseManifestArgs', () => {
     assert.strictEqual(parseManifestArgs(['--branch=dev']).branch, 'dev');
   });
 
+  it('parses --augment and --augment=slug', () => {
+    assert.strictEqual(parseManifestArgs(['--augment', 'anokye-labs/kbexplorer-cli']).augment, 'anokye-labs/kbexplorer-cli');
+    assert.strictEqual(parseManifestArgs(['--augment=anokye-labs/kbexplorer-cli']).augment, 'anokye-labs/kbexplorer-cli');
+  });
+
+  it('rejects --repo and --augment together', () => {
+    assert.throws(
+      () => parseManifestArgs(['--repo', 'anokye-labs/kbexplorer-template', '--augment', 'anokye-labs/kbexplorer-cli']),
+      /mutually exclusive/,
+    );
+  });
+
   it('leaves repo undefined when --repo is missing a value', () => {
     const out = parseManifestArgs(['--repo']);
     assert.strictEqual(out.repo, undefined);

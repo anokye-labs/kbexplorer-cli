@@ -28,32 +28,42 @@ import { parseManifestArgs } from '../lib/args.ts';
 function printHelp() {
   console.log(`
   kbx manifest — build the repo manifest
-  
+   
   Usage: kbx manifest [options]
-  
+   
 Drives the engine's buildManifest() producer over a local FileSystemSource by
-default, or a live GitHub API source when --repo <owner/name> is provided, and
-writes the result to <appRoot>/src/generated/repo-manifest.json.
-  
-Options:
+  default, a live GitHub API source when --repo <owner/name> is provided, or a
+  hybrid local+GitHub manifest when --augment <owner/name> is provided, and
+  writes the result to <appRoot>/src/generated/repo-manifest.json.
+   
+  Options:
       --check               Drift gate: rebuild in memory and diff against the
                             on-disk manifest (excluding generatedAt +
                             live-GitHub fields); exit non-zero on drift,
                             zero when in sync. Never writes.
       --repo <owner/name>   Build from the live GitHub API instead of the local
                             filesystem. Reads GITHUB_TOKEN/GH_TOKEN for auth.
-      --branch <name>       Git branch to read from when --repo is used
-                            (defaults to main).
+      --augment <owner/name>
+                            Hybrid: local content + live GitHub augmentation
+                            (repoMetadata/issues/PRs/commits/branches/releases).
+      --branch <name>       Git branch to read from when --repo or --augment is
+                            used (defaults to main).
   -h, --help                Show this help
 `);
 }
-
 function toPosix(p: string): string {
   return String(p).split('\\').join('/');
 }
 
 export default async function manifest(args: string[] = []): Promise<void> {
-  const opts = parseManifestArgs(args);
+  let opts: ReturnType<typeof parseManifestArgs>;
+  try {
+    opts = parseManifestArgs(args);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message);
+    process.exit(1);
+  }
   if (opts.help) {
     printHelp();
     return;
@@ -81,7 +91,7 @@ export default async function manifest(args: string[] = []): Promise<void> {
       process.exit(1);
     }
     const onDisk = JSON.parse(readFileSync(outPath, 'utf-8')) as RepoManifest;
-    const fresh = await buildRepoManifest(cwd, { repo: opts.repo, branch: opts.branch });
+    const fresh = await buildRepoManifest(cwd, { repo: opts.repo, branch: opts.branch, augment: opts.augment });
     const drift = diffManifests(onDisk, fresh);
     if (drift.length > 0) {
       console.error(`\n✗ Manifest drift in ${drift.length} field(s):`);
@@ -93,8 +103,9 @@ export default async function manifest(args: string[] = []): Promise<void> {
     return;
   }
 
-  const manifestData = await buildRepoManifest(cwd, { repo: opts.repo, branch: opts.branch });
+  const manifestData = await buildRepoManifest(cwd, { repo: opts.repo, branch: opts.branch, augment: opts.augment });
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, JSON.stringify(manifestData, null, 2), 'utf-8');
-  console.log(`✓ Manifest written to ${outPath}${opts.repo ? ' (remote GitHub source)' : ''}`);
+  const sourceLabel = opts.repo ? ' (remote GitHub source)' : opts.augment ? ' (hybrid manifest)' : '';
+  console.log(`✓ Manifest written to ${outPath}${sourceLabel}`);
 }
