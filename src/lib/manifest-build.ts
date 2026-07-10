@@ -69,7 +69,9 @@ export interface BuildRepoManifestOptions {
   contentOverride?: string;
   /** `owner/name` — when set, builds from the live GitHub API instead of the local filesystem. */
   repo?: string;
-  /** Override the GitHub branch used in remote mode (defaults to `main`). */
+  /** `owner/name` — when set, augments the local filesystem manifest with live GitHub data. */
+  augment?: string;
+  /** Override the GitHub branch used in remote/hybrid mode (defaults to `main`). */
   branch?: string;
 }
 
@@ -122,6 +124,19 @@ export async function buildRepoManifest(
 
   const configRaw = readConfig(cwd, contentPath);
   const source = new manifestBuildDeps.FileSystemSource(cwd, { contentPath: sourceContentPath });
+  if (options.augment) {
+    const [owner, repo] = options.augment.split('/');
+    if (!owner || !repo) {
+      throw new Error('augment must be in owner/name form');
+    }
+    const augmentFrom = new manifestBuildDeps.GitHubApiSource(
+      { owner, repo, path: 'content', branch: options.branch ?? 'main' },
+      'full',
+      { GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN },
+    );
+    return manifestBuildDeps.buildManifest(source, { configRaw, generatedAt: options.generatedAt, augmentFrom });
+  }
+
   return manifestBuildDeps.buildManifest(source, { configRaw, generatedAt: options.generatedAt });
 }
 

@@ -354,6 +354,7 @@ export interface ManifestArgs {
   check: boolean;
   help: boolean;
   repo?: string;
+  augment?: string;
   branch?: string;
   unknown: string[];
 }
@@ -523,6 +524,14 @@ export function parseManifestArgs(args: string[] = []): ManifestArgs {
         i++;
       }
     }
+    else if (arg.startsWith('--augment=')) out.augment = arg.slice('--augment='.length);
+    else if (arg === '--augment') {
+      const next = args[i + 1];
+      if (next !== undefined && !next.startsWith('-')) {
+        out.augment = next;
+        i++;
+      }
+    }
     else if (arg.startsWith('--branch=')) out.branch = arg.slice('--branch='.length);
     else if (arg === '--branch') {
       const next = args[i + 1];
@@ -532,6 +541,9 @@ export function parseManifestArgs(args: string[] = []): ManifestArgs {
       }
     }
     else if (arg.startsWith('-')) out.unknown.push(arg);
+  }
+  if (out.repo && out.augment) {
+    throw new Error('Options --repo and --augment are mutually exclusive');
   }
   return out;
 }
