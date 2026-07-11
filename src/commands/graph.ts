@@ -8,7 +8,7 @@
  * (content/*.md + config.yaml + catalogue.json) via five engine exports:
  *
  *   kbx graph validate   → validateGraph(input)       — gates (exit 1 on error)
- *   kbx graph assess     → assessGraph(input, opts)   — non-gating (always exit 0)
+ *   kbx graph assess     → assessGraph(input, opts)   — non-gating quality scoring; --gate exits 1 on sub-threshold scores
  *   kbx graph derive     → deriveNeeds(catalogue, contentFiles)
  *   kbx graph compare    → compareContent(catalogue, contentFiles)
  *   kbx graph enrich     → enrichFromManifest(catalogue, manifest)
@@ -56,7 +56,7 @@ const USAGE = `
 
   Subcommands:
     validate    Structural integrity gate (dangling links, dup ids, ...) — exits 1 on error
-    assess      Non-gating quality scoring + suggestions — always exits 0
+    assess      Non-gating quality scoring + suggestions — --gate exits 1 on sub-threshold scores
     derive      Report catalogue.json nodes missing authored content
     compare     Compare catalogue.json against existing content files
     enrich      Cross-reference catalogue.json with repo issues/PRs/commits
@@ -200,7 +200,7 @@ function printAssessHuman(result: AssessmentResult): void {
     if (result.gate.pass) {
       console.log('✅ Quality gate passed — all scores above minimums.');
     } else {
-      console.log('❌ Quality gate FAILED (informational — kbx graph assess never gates):');
+      console.log('❌ Quality gate FAILED — scores below minimums:');
       for (const f of result.gate.failures) {
         console.log(`  ${f.metric} = ${f.actual}/100 (minimum: ${f.minimum})`);
       }
@@ -286,7 +286,11 @@ async function runAssess(cwd: string, args: string[]): Promise<void> {
   } else {
     printAssessHuman(result);
   }
-  // Non-gating by design (anokye-labs/kbexplorer-engine#18): always exits 0.
+  // Default: non-gating (engine#18) — always exits 0.
+  // Opt-in: --gate turns quality thresholds into a real CI gate (exit 1 on failure).
+  if (opts.gate && result.gate && !result.gate.pass) {
+    process.exitCode = 1;
+  }
 }
 
 function runDerive(cwd: string, args: string[]): void {
