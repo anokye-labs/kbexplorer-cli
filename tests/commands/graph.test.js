@@ -8,7 +8,7 @@
  * `deriveNeeds`/`compareContent`/`enrichFromManifest`, already covered by the
  * engine's own test suite). Coverage here:
  *   - validate: gates (exit 1 on structural errors), --json shape, --content override
- *   - assess:   never gates even with --gate and a failing metric (always exit 0)
+ *   - assess:   honors --gate as a real CI gate, while bare assess remains non-gating
  *   - derive/compare: catalogue.json + content-file wiring, missing-catalogue exit 1
  *   - enrich:   --manifest file wiring, catalogue-enriched.json side effect
  */
@@ -133,12 +133,37 @@ describe('graph validate — gates on structural errors', () => {
   });
 });
 
-describe('graph assess — never gates', () => {
-  it('always exits 0, even with --gate and a failing metric', async () => {
+function writePassingAssessFixture(host) {
+  for (let i = 0; i < 100; i++) {
+    const id = `node-${i}`;
+    const targets = [];
+    const seen = new Set();
+    const pushTarget = (targetId) => {
+      if (targetId !== id && !seen.has(targetId)) {
+        targets.push(targetId);
+        seen.add(targetId);
+      }
+    };
+    const partner = i % 2 === 0 && i + 1 < 100 ? i + 1 : i - 1;
+    if (partner >= 0 && partner < 100) {
+      pushTarget(`node-${partner}`);
+    }
+    for (let offset = 1; targets.length < 5; offset++) {
+      const candidate = (i + offset + (i % 2 === 0 ? 3 : 1)) % 100;
+      pushTarget(`node-${candidate}`);
+    }
+    const body = `${'This is a long body paragraph with enough content to satisfy the content depth threshold. '.repeat(25)}\n\n${targets.map((target) => `- [${target}](${target})`).join('\n')}\n`;
+    writeFileSync(
+      resolve(host, 'content', `${id}.md`),
+      `---\nid: ${id}\ntitle: ${id}\ncluster: core\n---\n\n${body}`,
+    );
+  }
+}
+
+describe('graph assess — gates when opted in', () => {
+  it('exits 1 when --gate is passed and scores fall below minimums', async () => {
     const host = makeHost();
     try {
-      // A single node with no links will fail plenty of quality thresholds,
-      // but `kbx graph assess` is documented as non-gating (engine#18).
       writeFileSync(
         resolve(host, 'content', 'home.md'),
         '---\nid: home\ntitle: Home\ncluster: x\nconnections: []\n---\n\nbody\n',
@@ -146,6 +171,37 @@ describe('graph assess — never gates', () => {
       const { out, exitCode } = await inDir(host, () => graphCommand(['assess', '--gate', '--json']));
       const result = JSON.parse(out);
       assert.ok(result.gate, 'gate info should be populated when --gate is passed');
+      assert.equal(result.gate.pass, false);
+      assert.equal(exitCode, 1);
+    } finally {
+      rmSync(host, { recursive: true, force: true });
+    }
+  });
+
+  it('exits 0 when --gate is passed and all scores meet minimums', async () => {
+    const host = makeHost();
+    try {
+      writePassingAssessFixture(host);
+      const { out, exitCode } = await inDir(host, () => graphCommand(['assess', '--gate', '--json']));
+      const result = JSON.parse(out);
+      assert.ok(result.gate, 'gate info should be populated when --gate is passed');
+      assert.equal(result.gate.pass, true);
+      assert.notEqual(exitCode, 1);
+    } finally {
+      rmSync(host, { recursive: true, force: true });
+    }
+  });
+
+  it('exits 0 without --gate even when scores fall below minimums', async () => {
+    const host = makeHost();
+    try {
+      writeFileSync(
+        resolve(host, 'content', 'home.md'),
+        '---\nid: home\ntitle: Home\ncluster: x\nconnections: []\n---\n\nbody\n',
+      );
+      const { out, exitCode } = await inDir(host, () => graphCommand(['assess', '--json']));
+      const result = JSON.parse(out);
+      assert.equal(result.gate, undefined);
       assert.notEqual(exitCode, 1);
     } finally {
       rmSync(host, { recursive: true, force: true });
