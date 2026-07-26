@@ -1,0 +1,2 @@
+allow-ghsas:
+  - GHSA-frvp-7c67-39w9  # Pre-existing in main; see issue #275
