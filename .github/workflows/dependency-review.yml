@@ -17,9 +17,13 @@ jobs:
     name: dependency-review
     runs-on: ubuntu-latest
     steps:
+      - name: checkout
+        uses: actions/checkout@v4
       - name: dependency-review-private-skip
         if: ${{ github.event.repository.private }}
         run: echo "Dependency review is skipped on private repositories unless GitHub Advanced Security is enabled."
       - name: dependency-review
         if: ${{ !github.event.repository.private }}
         uses: actions/dependency-review-action@v5
+        with:
+          config-file: ./.github/dependency-review.yml
