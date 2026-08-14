@@ -1,6 +1,6 @@
 {
   "name": "@anokye-labs/kbx",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CLI tool for the kbexplorer interactive knowledge base — turn any repo into a navigable knowledge graph",
   "type": "module",
   "bin": {
