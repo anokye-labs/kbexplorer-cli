@@ -7,7 +7,8 @@
   "packageRules": [
     {
       "matchManagers": ["npm"],
-      "matchPackagePatterns": ["^@anokye-labs/"],
+      "matchDatasources": ["npm"],
+      "matchPackageNames": ["@anokye-labs/**"],
       "groupName": "anokye-labs",
       "groupSlug": "anokye-labs"
     },
