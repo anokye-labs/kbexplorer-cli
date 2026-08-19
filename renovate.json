@@ -1,0 +1,21 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "enabledManagers": ["npm"],
+  "schedule": [
+    "before 5am on Monday"
+  ],
+  "packageRules": [
+    {
+      "matchManagers": ["npm"],
+      "matchDatasources": ["npm"],
+      "matchPackageNames": ["@anokye-labs/**"],
+      "groupName": "anokye-labs",
+      "groupSlug": "anokye-labs"
+    },
+    {
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    }
+  ]
+}
