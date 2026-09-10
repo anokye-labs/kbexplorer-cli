@@ -33,7 +33,7 @@ jobs:
       - run: npm ci
 
       - run: npm install -g npm@latest
-
+      
       # OIDC trusted publishing (npmjs.com) is the auth path for this workflow.
       # NODE_AUTH_TOKEN is explicitly set to '' rather than omitted: setup-node
       # unconditionally writes `_authToken=${NODE_AUTH_TOKEN}` into .npmrc, and
@@ -41,6 +41,8 @@ jobs:
       # UNDEFINED is left unreplaced (the literal, bogus string), whereas a
       # DEFINED-but-empty var substitutes cleanly to "". If trusted publishing
       # isn't registered yet, this step fails with ENEEDAUTH until it is.
-      - run: npm publish --access public
+      # `npm stage publish` creates a private staged candidate and defers the
+      # proof-of-presence/2FA step until a later maintainer approval.
+      - run: npm stage publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ''
