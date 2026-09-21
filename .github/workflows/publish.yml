@@ -3,27 +3,61 @@ name: Publish to npm
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Immutable release tag to recover (must be exactly v0.2.1)'
+        required: true
+        type: string
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
+  # Manual recovery is tightly scoped to the single immutable tag v0.2.1 whose
+  # tag-push run (34838185854) failed safely before publication. This job is a
+  # no-op for ordinary `git push --tags` runs; it only gates workflow_dispatch.
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate manual recovery target
+        if: github.event_name == 'workflow_dispatch'
+        # The requested tag is untrusted user input. It is passed in only via
+        # the RECOVERY_TAG environment variable (never interpolated into the
+        # shell source through ${{ }}) and read/quoted safely with "$..." so
+        # it can never be treated as shell syntax, even if it contains quotes
+        # or command substitution.
+        env:
+          RECOVERY_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          if [ "$RECOVERY_TAG" != "v0.2.1" ]; then
+            echo "::error::Manual recovery is only permitted for the immutable tag v0.2.1. Refusing to run for the requested tag."
+            exit 1
+          fi
+          echo "Validated manual recovery target: v0.2.1"
+
   test:
+    needs: guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'refs/tags/v0.2.1' || github.ref }}
       - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: npm ci
+      - run: npm run build
       - run: npm test
 
   publish:
-    needs: test
+    needs: [guard, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'refs/tags/v0.2.1' || github.ref }}
 
       - uses: actions/setup-node@v7
         with:
@@ -32,8 +66,10 @@ jobs:
 
       - run: npm ci
 
-      - run: npm install -g npm@latest
+      - run: npm run build
 
+      - run: npm install -g npm@latest
+      
       # OIDC trusted publishing (npmjs.com) is the auth path for this workflow.
       # NODE_AUTH_TOKEN is explicitly set to '' rather than omitted: setup-node
       # unconditionally writes `_authToken=${NODE_AUTH_TOKEN}` into .npmrc, and
@@ -41,6 +77,8 @@ jobs:
       # UNDEFINED is left unreplaced (the literal, bogus string), whereas a
       # DEFINED-but-empty var substitutes cleanly to "". If trusted publishing
       # isn't registered yet, this step fails with ENEEDAUTH until it is.
-      - run: npm publish --access public
+      # `npm stage publish` creates a private staged candidate and defers the
+      # proof-of-presence/2FA step until a later maintainer approval.
+      - run: npm stage publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ''
