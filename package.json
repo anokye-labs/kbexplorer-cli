@@ -1,6 +1,6 @@
 {
   "name": "@anokye-labs/kbx",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "CLI tool for the kbexplorer interactive knowledge base — turn any repo into a navigable knowledge graph",
   "type": "module",
   "bin": {
@@ -44,9 +44,9 @@
   ],
   "dependencies": {
     "@anokye-labs/kbexplorer-core": "^0.6.0",
-    "@anokye-labs/kbexplorer-engine": "^0.1.0",
-    "@anokye-labs/kbexplorer-provider-rich-markdown": "^0.1.2",
-    "@anokye-labs/kbexplorer-search": "github:anokye-labs/kbexplorer-search#v0.1.0",
+    "@anokye-labs/kbexplorer-engine": "^0.1.1",
+    "@anokye-labs/kbexplorer-provider-rich-markdown": "^0.1.3",
+    "@anokye-labs/kbexplorer-search": "^0.1.1",
     "@modelcontextprotocol/sdk": "1.29.0",
     "yaml": "^2.9.0"
   },
