@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Squash-merge ready agent PRs
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             // Allowlist of agent authors whose PRs may auto-merge. Human PRs are
