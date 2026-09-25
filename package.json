@@ -47,7 +47,7 @@
     "@anokye-labs/kbexplorer-engine": "^0.1.1",
     "@anokye-labs/kbexplorer-provider-rich-markdown": "^0.1.3",
     "@anokye-labs/kbexplorer-search": "^0.1.1",
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
